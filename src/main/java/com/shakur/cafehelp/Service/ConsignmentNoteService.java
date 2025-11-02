@@ -10,7 +10,7 @@ import java.util.List;
 
 @Service
 public class ConsignmentNoteService {
-    private DSLContext dsl;
+    private DSLContext  dsl;
     public ConsignmentNoteService(DSLContext dsl) {this.dsl = dsl;}
     public List<ConsignmentNoteDTO> getConsignmentNotes() {
         return dsl.selectFrom(Consignmentnote.CONSIGNMENTNOTE)
