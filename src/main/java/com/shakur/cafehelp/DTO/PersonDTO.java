@@ -1,12 +1,14 @@
 package com.shakur.cafehelp.DTO;
 
+import java.math.BigDecimal;
+
 public class PersonDTO {
     public int personID;
 
     public String name;
-    public Double salary;
-    public Double numDays;
-    public Double salaryPerDay;
+    public BigDecimal salary;
+    public BigDecimal numDays;
+    public BigDecimal salaryPerDay;
 
     public int getPersonID() {
         return personID;
@@ -26,27 +28,27 @@ public class PersonDTO {
         this.name = name;
     }
 
-    public Double getSalary() {
+    public BigDecimal getSalary() {
         return salary;
     }
 
-    public void setSalary(Double salary) {
+    public void setSalary(BigDecimal salary) {
         this.salary = salary;
     }
 
-    public Double getNumDays() {
+    public BigDecimal getNumDays() {
         return numDays;
     }
 
-    public void setNumDays(Double numDays) {
+    public void setNumDays(BigDecimal numDays) {
         this.numDays = numDays;
     }
 
-    public Double getSalaryPerDay() {
+    public BigDecimal getSalaryPerDay() {
         return salaryPerDay;
     }
 
-    public void setSalaryPerDay(Double salaryPerDay) {
+    public void setSalaryPerDay(BigDecimal salaryPerDay) {
         this.salaryPerDay = salaryPerDay;
     }
 }
