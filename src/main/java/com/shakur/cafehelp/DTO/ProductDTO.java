@@ -1,11 +1,13 @@
 package com.shakur.cafehelp.DTO;
 
+import java.math.BigDecimal;
+
 public class ProductDTO {
     public int productId;
     public int supplierId;
     public String productName;
-    public Double productPrice;
-    public int waste;
+    public BigDecimal productPrice;
+    public BigDecimal waste;
 
     public int getProductId() {
         return productId;
@@ -31,19 +33,19 @@ public class ProductDTO {
         this.productName = productName;
     }
 
-    public Double getProductPrice() {
+    public BigDecimal getProductPrice() {
         return productPrice;
     }
 
-    public void setProductPrice(Double productPrice) {
+    public void setProductPrice(BigDecimal productPrice) {
         this.productPrice = productPrice;
     }
 
-    public int getWaste() {
+    public BigDecimal getWaste() {
         return waste;
     }
 
-    public void setWaste(int waste) {
+    public void setWaste(BigDecimal waste) {
         this.waste = waste;
     }
 }

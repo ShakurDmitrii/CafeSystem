@@ -1,17 +1,15 @@
 package com.shakur.cafehelp.DTO;
 
-import javax.xml.crypto.Data;
-import java.sql.Time;
+import java.math.BigDecimal;
 import java.time.LocalTime;
 
 public class ShiftDTO {
     public int shiftId;
-    public Data data;
+    public String data;
     public LocalTime startTime;
     public LocalTime endTime;
-    public Double profit;
-    public int expenses;
-    public int consignmentNoteCode;
+    public BigDecimal profit;
+    public BigDecimal expenses;
     public int personCode;
 
    public int getId(){
@@ -21,11 +19,11 @@ public class ShiftDTO {
        this.shiftId = id;
    }
 
-    public Data getData() {
+    public String getData() {
         return data;
     }
 
-    public void setData(Data data) {
+    public void setData(String data) {
         this.data = data;
     }
 
@@ -45,28 +43,20 @@ public class ShiftDTO {
         this.endTime = endTime;
     }
 
-    public Double getProfit() {
+    public BigDecimal getProfit() {
         return profit;
     }
 
-    public void setProfit(Double profit) {
+    public void setProfit(BigDecimal profit) {
         this.profit = profit;
     }
 
-    public int getExpenses() {
+    public BigDecimal getExpenses() {
         return expenses;
     }
 
-    public void setExpenses(int expenses) {
+    public void setExpenses(BigDecimal expenses) {
         this.expenses = expenses;
-    }
-
-    public int getConsignmentNoteCode() {
-        return consignmentNoteCode;
-    }
-
-    public void setConsignmentNoteCode(int consignmentNoteCode) {
-        this.consignmentNoteCode = consignmentNoteCode;
     }
 
     public int getPersonCode() {

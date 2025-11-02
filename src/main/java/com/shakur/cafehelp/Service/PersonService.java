@@ -33,6 +33,7 @@ public class PersonService {
     }
     public List<PersonDTO> findByName(String name) {
         return dsl.selectFrom(Person.PERSON)
+                .where(Person.PERSON.NAME.eq(name))
                 .fetch()
                 .stream()
                 .map(personRecord -> {
