@@ -1,0 +1,81 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.7'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'nu.studer.jooq' version '8.1'
+}
+
+group = 'com.shakur'
+version = '0.0.1-SNAPSHOT'
+description = 'Cafehelp'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-jooq'
+    jooqGenerator "org.postgresql:postgresql"
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    runtimeOnly 'org.postgresql:postgresql'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    jooqGenerator "org.jooq:jooq-codegen:3.19.9"
+    jooqGenerator "org.jooq:jooq-meta:3.19.9"
+    jooqGenerator "org.jooq:jooq-meta-extensions:3.19.9"
+    jooqGenerator "org.postgresql:postgresql:42.7.3"
+}
+jooq {
+    version = "3.19.9"
+    configurations {
+        main {
+            generationTool {
+                logging = 'WARN'
+                jdbc {
+                    driver = 'org.postgresql.Driver'
+                    url = "jdbc:postgresql://localhost:5432/Cafe"
+                    user = "postgres"
+                    password = "2002"
+                }
+                generator {
+                    name = 'org.jooq.codegen.JavaGenerator'
+                    database {
+                        name = 'org.jooq.meta.postgres.PostgresDatabase'
+                        includes = '.*'
+                        excludes = '^(Fly|XFly).*'
+                        schemata {
+                            schema {
+                                inputSchema = "sales"
+                            }
+                        }
+                    }
+                    target {
+                        packageName = 'jooqdata'
+                        directory = "src/main/java/jooq"
+                    }
+                    generate {
+                        newline = '\\r\\n'
+                        javaTimeTypes = true
+                        records = true
+                        relations = true
+                        daos = false
+                        deprecated = false
+                        instanceFields = true
+                    }
+                    strategy.name = "org.jooq.codegen.DefaultGeneratorStrategy"
+                }
+            }
+        }
+    }
+}
+
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
