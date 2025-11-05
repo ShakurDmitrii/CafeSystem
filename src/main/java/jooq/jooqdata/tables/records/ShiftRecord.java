@@ -26,12 +26,9 @@ public class ShiftRecord extends UpdatableRecordImpl<ShiftRecord> implements Rec
 
     /**
      * Setter for <code>sales.shift.shiftid</code>.
-     *
-     * @return
      */
-    public int setShiftid(Integer value) {
+    public void setShiftid(Integer value) {
         set(0, value);
-        return 0;
     }
 
     /**

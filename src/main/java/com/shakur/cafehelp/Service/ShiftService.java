@@ -42,18 +42,34 @@ public class ShiftService {
         record.store();
         return dto;
     }
-    public ShiftDTO updateShift(ShiftDTO shiftId, ShiftDTO dto) {
-        ShiftRecord record =dsl.fetchOne(jooqdata.tables.Shift.SHIFT,
-                Shift.SHIFT.SHIFTID.eq((Select<? extends Record1<Integer>>) shiftId));
-        if (record == null) {
-            throw new RuntimeException("No record found for id " + shiftId);
+    public ShiftDTO updateShift(int shiftId, ShiftDTO dto) {
+        int rows = dsl.update(jooqdata.tables.Shift.SHIFT)
+                .set(Shift.SHIFT.DATA, dto.data)
+                .set(Shift.SHIFT.EXPENSES, dto.expenses)
+                .set(Shift.SHIFT.PROFIT, dto.profit)
+                .set(Shift.SHIFT.STARTTIME, dto.startTime)
+                .set(Shift.SHIFT.ENDTIME, dto.endTime)
+                .where(Shift.SHIFT.SHIFTID.eq(shiftId))
+                .execute();
+
+        if (rows != 1) {
+            throw new RuntimeException("Update affected " + rows + " rows");
         }
-        dto.shiftId = record.setShiftid(dto.shiftId);
-        dto.data = record.getData();
-        dto.expenses = record.getExpenses();
-        dto.profit = record.getProfit();
-        dto.startTime = record.getStarttime();
-        dto.endTime = record.getEndtime();
+
+        // опционально — получить обновлённую запись и вернуть DTO
+        ShiftRecord updated = dsl.fetchOne(
+                jooqdata.tables.Shift.SHIFT,
+                Shift.SHIFT.SHIFTID.eq(shiftId)
+        );
+
+        // преобразуем в dto
+        dto.shiftId = updated.getShiftid();
+        dto.data = updated.getData();
+        dto.expenses = updated.getExpenses();
+        dto.profit = updated.getProfit();
+        dto.startTime = updated.getStarttime();
+        dto.endTime = updated.getEndtime();
+
         return dto;
     }
 }

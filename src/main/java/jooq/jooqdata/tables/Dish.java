@@ -10,14 +10,19 @@ import java.util.function.Function;
 
 import jooqdata.Keys;
 import jooqdata.Sales;
+import jooqdata.tables.Clientdish.ClientdishPath;
 import jooqdata.tables.records.DishRecord;
 
 import org.jooq.Condition;
 import org.jooq.Field;
+import org.jooq.ForeignKey;
 import org.jooq.Function5;
+import org.jooq.InverseForeignKey;
 import org.jooq.Name;
+import org.jooq.Path;
 import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
+import org.jooq.Record;
 import org.jooq.Records;
 import org.jooq.Row5;
 import org.jooq.SQL;
@@ -109,6 +114,39 @@ public class Dish extends TableImpl<DishRecord> {
         this(DSL.name("dish"), null);
     }
 
+    public <O extends Record> Dish(Table<O> path, ForeignKey<O, DishRecord> childPath, InverseForeignKey<O, DishRecord> parentPath) {
+        super(path, childPath, parentPath, DISH);
+    }
+
+    /**
+     * A subtype implementing {@link Path} for simplified path-based joins.
+     */
+    public static class DishPath extends Dish implements Path<DishRecord> {
+
+        private static final long serialVersionUID = 1L;
+        public <O extends Record> DishPath(Table<O> path, ForeignKey<O, DishRecord> childPath, InverseForeignKey<O, DishRecord> parentPath) {
+            super(path, childPath, parentPath);
+        }
+        private DishPath(Name alias, Table<DishRecord> aliased) {
+            super(alias, aliased);
+        }
+
+        @Override
+        public DishPath as(String alias) {
+            return new DishPath(DSL.name(alias), this);
+        }
+
+        @Override
+        public DishPath as(Name alias) {
+            return new DishPath(alias, this);
+        }
+
+        @Override
+        public DishPath as(Table<?> alias) {
+            return new DishPath(alias.getQualifiedName(), this);
+        }
+    }
+
     @Override
     public Schema getSchema() {
         return aliased() ? null : Sales.SALES;
@@ -117,6 +155,19 @@ public class Dish extends TableImpl<DishRecord> {
     @Override
     public UniqueKey<DishRecord> getPrimaryKey() {
         return Keys.DISH_PK;
+    }
+
+    private transient ClientdishPath _clientdish;
+
+    /**
+     * Get the implicit to-many join path to the <code>sales.clientdish</code>
+     * table
+     */
+    public ClientdishPath clientdish() {
+        if (_clientdish == null)
+            _clientdish = new ClientdishPath(this, null, Keys.CLIENTDISH__CLIENTDISH_DISH_FK.getInverseKey());
+
+        return _clientdish;
     }
 
     @Override

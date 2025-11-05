@@ -4,6 +4,8 @@
 package jooqdata;
 
 
+import jooqdata.tables.Client;
+import jooqdata.tables.Clientdish;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
@@ -15,6 +17,8 @@ import jooqdata.tables.Shiftperson;
 import jooqdata.tables.Supplier;
 import jooqdata.tables.Techproduct;
 import jooqdata.tables.Warehouse;
+import jooqdata.tables.records.ClientRecord;
+import jooqdata.tables.records.ClientdishRecord;
 import jooqdata.tables.records.ConsignmentnoteRecord;
 import jooqdata.tables.records.ConsproductRecord;
 import jooqdata.tables.records.DishRecord;
@@ -45,6 +49,7 @@ public class Keys {
     // UNIQUE and PRIMARY KEY definitions
     // -------------------------------------------------------------------------
 
+    public static final UniqueKey<ClientRecord> CLIENT_PK = Internal.createUniqueKey(Client.CLIENT, DSL.name("client_pk"), new TableField[] { Client.CLIENT.CLIENTID }, true);
     public static final UniqueKey<ConsignmentnoteRecord> CONSIGNMENTNOTE_PK = Internal.createUniqueKey(Consignmentnote.CONSIGNMENTNOTE, DSL.name("consignmentnote_pk"), new TableField[] { Consignmentnote.CONSIGNMENTNOTE.CONSIGNMENTID }, true);
     public static final UniqueKey<DishRecord> DISH_PK = Internal.createUniqueKey(Dish.DISH, DSL.name("dish_pk"), new TableField[] { Dish.DISH.DISHID }, true);
     public static final UniqueKey<FavoriteproductRecord> FAVORITEPRODUCT_PK = Internal.createUniqueKey(Favoriteproduct.FAVORITEPRODUCT, DSL.name("favoriteproduct_pk"), new TableField[] { Favoriteproduct.FAVORITEPRODUCT.ID }, true);
@@ -59,6 +64,8 @@ public class Keys {
     // FOREIGN KEY definitions
     // -------------------------------------------------------------------------
 
+    public static final ForeignKey<ClientdishRecord, ClientRecord> CLIENTDISH__CLIENTDISH_CLIENT_FK = Internal.createForeignKey(Clientdish.CLIENTDISH, DSL.name("clientdish_client_fk"), new TableField[] { Clientdish.CLIENTDISH.CLIENTID }, Keys.CLIENT_PK, new TableField[] { Client.CLIENT.CLIENTID }, true);
+    public static final ForeignKey<ClientdishRecord, DishRecord> CLIENTDISH__CLIENTDISH_DISH_FK = Internal.createForeignKey(Clientdish.CLIENTDISH, DSL.name("clientdish_dish_fk"), new TableField[] { Clientdish.CLIENTDISH.DISHID }, Keys.DISH_PK, new TableField[] { Dish.DISH.DISHID }, true);
     public static final ForeignKey<ConsignmentnoteRecord, SupplierRecord> CONSIGNMENTNOTE__CONSIGNMENTNOTE_SUPPLIER_FK = Internal.createForeignKey(Consignmentnote.CONSIGNMENTNOTE, DSL.name("consignmentnote_supplier_fk"), new TableField[] { Consignmentnote.CONSIGNMENTNOTE.SUPPLIERID }, Keys.SUPPLIER_PK, new TableField[] { Supplier.SUPPLIER.SUPPLIERID }, true);
     public static final ForeignKey<ConsproductRecord, ConsignmentnoteRecord> CONSPRODUCT__CONSPRODUCT_CONSIGNMENTNOTE_FK = Internal.createForeignKey(Consproduct.CONSPRODUCT, DSL.name("consproduct_consignmentnote_fk"), new TableField[] { Consproduct.CONSPRODUCT.CONSIGNMENTID }, Keys.CONSIGNMENTNOTE_PK, new TableField[] { Consignmentnote.CONSIGNMENTNOTE.CONSIGNMENTID }, true);
     public static final ForeignKey<ConsproductRecord, ProductRecord> CONSPRODUCT__CONSPRODUCT_PRODUCT_FK = Internal.createForeignKey(Consproduct.CONSPRODUCT, DSL.name("consproduct_product_fk"), new TableField[] { Consproduct.CONSPRODUCT.PRODUCTID }, Keys.PRODUCT_PK, new TableField[] { Product.PRODUCT.PRODUCTID }, true);

@@ -7,6 +7,8 @@ package jooqdata;
 import java.util.Arrays;
 import java.util.List;
 
+import jooqdata.tables.Client;
+import jooqdata.tables.Clientdish;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
@@ -36,6 +38,16 @@ public class Sales extends SchemaImpl {
      * The reference instance of <code>sales</code>
      */
     public static final Sales SALES = new Sales();
+
+    /**
+     * The table <code>sales.client</code>.
+     */
+    public final Client CLIENT = Client.CLIENT;
+
+    /**
+     * The table <code>sales.clientdish</code>.
+     */
+    public final Clientdish CLIENTDISH = Clientdish.CLIENTDISH;
 
     /**
      * The table <code>sales.consignmentnote</code>.
@@ -108,6 +120,8 @@ public class Sales extends SchemaImpl {
     @Override
     public final List<Table<?>> getTables() {
         return Arrays.asList(
+            Client.CLIENT,
+            Clientdish.CLIENTDISH,
             Consignmentnote.CONSIGNMENTNOTE,
             Consproduct.CONSPRODUCT,
             Dish.DISH,

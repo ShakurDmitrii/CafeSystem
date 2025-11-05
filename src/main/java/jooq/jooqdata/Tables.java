@@ -4,6 +4,8 @@
 package jooqdata;
 
 
+import jooqdata.tables.Client;
+import jooqdata.tables.Clientdish;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
@@ -22,6 +24,16 @@ import jooqdata.tables.Warehouse;
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class Tables {
+
+    /**
+     * The table <code>sales.client</code>.
+     */
+    public static final Client CLIENT = Client.CLIENT;
+
+    /**
+     * The table <code>sales.clientdish</code>.
+     */
+    public static final Clientdish CLIENTDISH = Clientdish.CLIENTDISH;
 
     /**
      * The table <code>sales.consignmentnote</code>.
