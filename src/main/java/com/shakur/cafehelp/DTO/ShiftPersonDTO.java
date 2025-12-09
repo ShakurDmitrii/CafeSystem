@@ -1,6 +1,6 @@
 package com.shakur.cafehelp.DTO;
 
-public class ShiftPerson {
+public class ShiftPersonDTO {
     public int shiftPersonID;
     public int shiftId;
     public int personId;

@@ -1,22 +1,31 @@
 package com.shakur.cafehelp.DTO;
 
 public class WareHouse {
-    public int productID;
-    public Double NET;
+    public int warehouseId;
+    public String warehouseName;
+    public int productWarehouse;
 
-    public int getProductID() {
-        return productID;
+    public int getWarehouseId() {
+        return warehouseId;
     }
 
-    public void setProductID(int productID) {
-        this.productID = productID;
+    public void setWarehouseId(int warehouseId) {
+        this.warehouseId = warehouseId;
     }
 
-    public Double getNET() {
-        return NET;
+    public String getWarehouseName() {
+        return warehouseName;
     }
 
-    public void setNET(Double NET) {
-        this.NET = NET;
+    public void setWarehouseName(String warehouseName) {
+        this.warehouseName = warehouseName;
+    }
+
+    public int getWarehouseProduct() {
+        return productWarehouse;
+    }
+
+    public void setWarehouseProduct(int productWarehouse) {
+        this.productWarehouse = productWarehouse;
     }
 }

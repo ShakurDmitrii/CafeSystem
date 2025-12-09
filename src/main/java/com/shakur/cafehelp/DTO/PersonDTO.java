@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 
 public class PersonDTO {
     public int personID;
-
     public String name;
     public BigDecimal salary;
     public BigDecimal numDays;

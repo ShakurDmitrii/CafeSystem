@@ -39,7 +39,7 @@ jooq {
                 logging = 'WARN'
                 jdbc {
                     driver = 'org.postgresql.Driver'
-                    url = "jdbc:postgresql://localhost:5432/Cafe"
+                    url = "jdbc:postgresql://localhost:5432/postgres"
                     user = "postgres"
                     password = "2002"
                 }

@@ -1,8 +1,6 @@
 package com.shakur.cafehelp.DTO;
 
-import java.util.List;
-
-public class Dish {
+public class DishDTO {
     public int dishId;
     public String dishName;
     public Double weight;

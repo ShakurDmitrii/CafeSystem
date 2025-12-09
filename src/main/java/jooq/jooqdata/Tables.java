@@ -4,18 +4,6 @@
 package jooqdata;
 
 
-import jooqdata.tables.Client;
-import jooqdata.tables.Clientdish;
-import jooqdata.tables.Consignmentnote;
-import jooqdata.tables.Consproduct;
-import jooqdata.tables.Dish;
-import jooqdata.tables.Favoriteproduct;
-import jooqdata.tables.Person;
-import jooqdata.tables.Product;
-import jooqdata.tables.Shift;
-import jooqdata.tables.Shiftperson;
-import jooqdata.tables.Supplier;
-import jooqdata.tables.Techproduct;
 import jooqdata.tables.Warehouse;
 
 
@@ -24,66 +12,6 @@ import jooqdata.tables.Warehouse;
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class Tables {
-
-    /**
-     * The table <code>sales.client</code>.
-     */
-    public static final Client CLIENT = Client.CLIENT;
-
-    /**
-     * The table <code>sales.clientdish</code>.
-     */
-    public static final Clientdish CLIENTDISH = Clientdish.CLIENTDISH;
-
-    /**
-     * The table <code>sales.consignmentnote</code>.
-     */
-    public static final Consignmentnote CONSIGNMENTNOTE = Consignmentnote.CONSIGNMENTNOTE;
-
-    /**
-     * The table <code>sales.consproduct</code>.
-     */
-    public static final Consproduct CONSPRODUCT = Consproduct.CONSPRODUCT;
-
-    /**
-     * The table <code>sales.dish</code>.
-     */
-    public static final Dish DISH = Dish.DISH;
-
-    /**
-     * The table <code>sales.favoriteproduct</code>.
-     */
-    public static final Favoriteproduct FAVORITEPRODUCT = Favoriteproduct.FAVORITEPRODUCT;
-
-    /**
-     * The table <code>sales.Person</code>.
-     */
-    public static final Person PERSON = Person.PERSON;
-
-    /**
-     * The table <code>sales.product</code>.
-     */
-    public static final Product PRODUCT = Product.PRODUCT;
-
-    /**
-     * The table <code>sales.shift</code>.
-     */
-    public static final Shift SHIFT = Shift.SHIFT;
-
-    /**
-     * The table <code>sales.shiftperson</code>.
-     */
-    public static final Shiftperson SHIFTPERSON = Shiftperson.SHIFTPERSON;
-
-    /**
-     * The table <code>sales.supplier</code>.
-     */
-    public static final Supplier SUPPLIER = Supplier.SUPPLIER;
-
-    /**
-     * The table <code>sales.techproduct</code>.
-     */
-    public static final Techproduct TECHPRODUCT = Techproduct.TECHPRODUCT;
 
     /**
      * The table <code>sales.warehouse</code>.

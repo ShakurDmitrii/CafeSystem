@@ -12,19 +12,14 @@ import java.util.function.Function;
 
 import jooqdata.Keys;
 import jooqdata.Sales;
-import jooqdata.tables.Product.ProductPath;
 import jooqdata.tables.records.WarehouseRecord;
 
 import org.jooq.Condition;
 import org.jooq.Field;
-import org.jooq.ForeignKey;
 import org.jooq.Function2;
-import org.jooq.InverseForeignKey;
 import org.jooq.Name;
-import org.jooq.Path;
 import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
-import org.jooq.Record;
 import org.jooq.Records;
 import org.jooq.Row2;
 import org.jooq.SQL;
@@ -35,6 +30,7 @@ import org.jooq.Stringly;
 import org.jooq.Table;
 import org.jooq.TableField;
 import org.jooq.TableOptions;
+import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
 import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
@@ -62,14 +58,14 @@ public class Warehouse extends TableImpl<WarehouseRecord> {
     }
 
     /**
-     * The column <code>sales.warehouse.productid</code>.
+     * The column <code>sales.warehouse.warehouseid</code>.
      */
-    public final TableField<WarehouseRecord, Integer> PRODUCTID = createField(DSL.name("productid"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<WarehouseRecord, BigDecimal> WAREHOUSEID = createField(DSL.name("warehouseid"), SQLDataType.NUMERIC.nullable(false), this, "");
 
     /**
-     * The column <code>sales.warehouse.net</code>.
+     * The column <code>sales.warehouse.warehousename</code>.
      */
-    public final TableField<WarehouseRecord, BigDecimal> NET = createField(DSL.name("net"), SQLDataType.NUMERIC.nullable(false), this, "");
+    public final TableField<WarehouseRecord, String> WAREHOUSENAME = createField(DSL.name("warehousename"), SQLDataType.VARCHAR.nullable(false), this, "");
 
     private Warehouse(Name alias, Table<WarehouseRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -100,59 +96,19 @@ public class Warehouse extends TableImpl<WarehouseRecord> {
         this(DSL.name("warehouse"), null);
     }
 
-    public <O extends Record> Warehouse(Table<O> path, ForeignKey<O, WarehouseRecord> childPath, InverseForeignKey<O, WarehouseRecord> parentPath) {
-        super(path, childPath, parentPath, WAREHOUSE);
-    }
-
-    /**
-     * A subtype implementing {@link Path} for simplified path-based joins.
-     */
-    public static class WarehousePath extends Warehouse implements Path<WarehouseRecord> {
-
-        private static final long serialVersionUID = 1L;
-        public <O extends Record> WarehousePath(Table<O> path, ForeignKey<O, WarehouseRecord> childPath, InverseForeignKey<O, WarehouseRecord> parentPath) {
-            super(path, childPath, parentPath);
-        }
-        private WarehousePath(Name alias, Table<WarehouseRecord> aliased) {
-            super(alias, aliased);
-        }
-
-        @Override
-        public WarehousePath as(String alias) {
-            return new WarehousePath(DSL.name(alias), this);
-        }
-
-        @Override
-        public WarehousePath as(Name alias) {
-            return new WarehousePath(alias, this);
-        }
-
-        @Override
-        public WarehousePath as(Table<?> alias) {
-            return new WarehousePath(alias.getQualifiedName(), this);
-        }
-    }
-
     @Override
     public Schema getSchema() {
         return aliased() ? null : Sales.SALES;
     }
 
     @Override
-    public List<ForeignKey<WarehouseRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.WAREHOUSE__WAREHOUSE_PRODUCT_FK);
+    public UniqueKey<WarehouseRecord> getPrimaryKey() {
+        return Keys.WAREHOUSE_PK;
     }
 
-    private transient ProductPath _product;
-
-    /**
-     * Get the implicit join path to the <code>sales.product</code> table.
-     */
-    public ProductPath product() {
-        if (_product == null)
-            _product = new ProductPath(this, Keys.WAREHOUSE__WAREHOUSE_PRODUCT_FK, null);
-
-        return _product;
+    @Override
+    public List<UniqueKey<WarehouseRecord>> getUniqueKeys() {
+        return Arrays.asList(Keys.WAREHOUSE_UNIQUE);
     }
 
     @Override
@@ -283,14 +239,14 @@ public class Warehouse extends TableImpl<WarehouseRecord> {
     // -------------------------------------------------------------------------
 
     @Override
-    public Row2<Integer, BigDecimal> fieldsRow() {
+    public Row2<BigDecimal, String> fieldsRow() {
         return (Row2) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function2<? super Integer, ? super BigDecimal, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function2<? super BigDecimal, ? super String, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -298,7 +254,7 @@ public class Warehouse extends TableImpl<WarehouseRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function2<? super Integer, ? super BigDecimal, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function2<? super BigDecimal, ? super String, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }
