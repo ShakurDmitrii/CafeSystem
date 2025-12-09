@@ -80,7 +80,7 @@ public class Shift extends TableImpl<ShiftRecord> {
     /**
      * The column <code>sales.shift.endtime</code>.
      */
-    public final TableField<ShiftRecord, LocalTime> ENDTIME = createField(DSL.name("endtime"), SQLDataType.LOCALTIME(6).nullable(false), this, "");
+    public final TableField<ShiftRecord, LocalTime> ENDTIME = createField(DSL.name("endtime"), SQLDataType.LOCALTIME(6), this, "");
 
     /**
      * The column <code>sales.shift.profit</code>.

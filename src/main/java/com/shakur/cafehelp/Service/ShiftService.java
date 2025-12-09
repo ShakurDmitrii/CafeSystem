@@ -78,4 +78,20 @@ public class ShiftService {
 
         return dto;
     }
+
+    public ShiftDTO getShiftById(int id) {
+        return dsl.selectFrom(Shift.SHIFT)
+                .where(Shift.SHIFT.SHIFTID.eq(id))
+                .fetchOptional()
+                .map(shiftRecord -> {
+                    ShiftDTO dto = new ShiftDTO();
+                    dto.shiftId = shiftRecord.getShiftid();
+                    dto.data = shiftRecord.getData();
+                    dto.expenses = shiftRecord.getExpenses();
+                    dto.profit = shiftRecord.getProfit();
+                    dto.startTime = shiftRecord.getStarttime();
+                    dto.endTime = shiftRecord.getEndtime();
+                    return dto;
+                }).orElseThrow(() -> new RuntimeException("Shift not found with id: " + id));
+    }
 }
