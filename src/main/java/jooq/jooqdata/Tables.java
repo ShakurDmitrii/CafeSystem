@@ -10,6 +10,7 @@ import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
 import jooqdata.tables.Favoriteproduct;
+import jooqdata.tables.Order;
 import jooqdata.tables.Person;
 import jooqdata.tables.Product;
 import jooqdata.tables.Productwarehouseid;
@@ -55,6 +56,11 @@ public class Tables {
      * The table <code>sales.favoriteproduct</code>.
      */
     public static final Favoriteproduct FAVORITEPRODUCT = Favoriteproduct.FAVORITEPRODUCT;
+
+    /**
+     * The table <code>sales.order</code>.
+     */
+    public static final Order ORDER = Order.ORDER;
 
     /**
      * The table <code>sales.person</code>.
