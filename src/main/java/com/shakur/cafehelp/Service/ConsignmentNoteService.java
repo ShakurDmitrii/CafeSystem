@@ -5,6 +5,7 @@ import jooqdata.tables.Consignmentnote;
 import org.jooq.DSLContext;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -22,7 +23,7 @@ public class ConsignmentNoteService {
                     dto.consignmentId = record.getConsignmentid();
                     dto.supplierId = record.getSupplierid();
                     dto.amount = record.getAmount();
-                    dto.date = LocalDateTime.parse(record.getData());
+                    dto.date = record.getDate();
                     return dto;
                 }).toList();
     }

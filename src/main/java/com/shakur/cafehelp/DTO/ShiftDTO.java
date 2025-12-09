@@ -1,11 +1,12 @@
 package com.shakur.cafehelp.DTO;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalTime;
 
 public class ShiftDTO {
     public int shiftId;
-    public String data;
+    public LocalDate data;
     public LocalTime startTime;
     public LocalTime endTime;
     public BigDecimal profit;
@@ -19,11 +20,11 @@ public class ShiftDTO {
        this.shiftId = id;
    }
 
-    public String getData() {
+    public LocalDate getData() {
         return data;
     }
 
-    public void setData(String data) {
+    public void setData(LocalDate data) {
         this.data = data;
     }
 

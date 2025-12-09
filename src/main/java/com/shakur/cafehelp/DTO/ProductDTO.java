@@ -7,7 +7,7 @@ public class ProductDTO {
     public int supplierId;
     public String productName;
     public BigDecimal productPrice;
-    public BigDecimal waste;
+    public Double waste;
 
     public int getProductId() {
         return productId;

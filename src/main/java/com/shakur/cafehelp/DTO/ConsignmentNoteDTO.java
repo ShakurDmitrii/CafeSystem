@@ -1,13 +1,14 @@
 package com.shakur.cafehelp.DTO;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public class ConsignmentNoteDTO {
     public int consignmentId;
     public int supplierId;
     public BigDecimal amount;
-    public LocalDateTime date;
+    public LocalDate date;
 
 
     public int getConsignmentId() {
@@ -36,11 +37,11 @@ public class ConsignmentNoteDTO {
         this.amount = amount;
     }
 
-    public LocalDateTime getDate() {
+    public LocalDate getDate() {
         return date;
     }
 
-    public void setDate(LocalDateTime date) {
+    public void setDate(LocalDate date) {
         this.date = date;
     }
 

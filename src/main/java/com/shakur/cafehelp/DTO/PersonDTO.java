@@ -6,7 +6,7 @@ public class PersonDTO {
     public int personID;
     public String name;
     public BigDecimal salary;
-    public BigDecimal numDays;
+    public int numDays;
     public BigDecimal salaryPerDay;
 
     public int getPersonID() {
@@ -35,11 +35,11 @@ public class PersonDTO {
         this.salary = salary;
     }
 
-    public BigDecimal getNumDays() {
+    public int getNumDays() {
         return numDays;
     }
 
-    public void setNumDays(BigDecimal numDays) {
+    public void setNumDays(int numDays) {
         this.numDays = numDays;
     }
 

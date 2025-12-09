@@ -6,13 +6,13 @@ public class DishDTO {
     public Double weight;
     public Double firstCost;
     public Double price;
-    public TechProduct techProduct;
+    public int techProduct;
 
-    public TechProduct getTechProduct() {
+    public int getTechProduct() {
         return techProduct;
     }
 
-    public void setTechProduct(TechProduct techProduct) {
+    public void setTechProduct(int techProduct) {
         this.techProduct = techProduct;
     }
 

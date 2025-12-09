@@ -8,6 +8,8 @@ import org.jooq.Record1;
 import org.jooq.Select;
 import org.springframework.stereotype.Service;
 import jooqdata.tables.Person;
+
+import java.math.BigDecimal;
 import java.util.List;
 
 @Service

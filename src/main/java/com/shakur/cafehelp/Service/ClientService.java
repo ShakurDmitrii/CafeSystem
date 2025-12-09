@@ -6,9 +6,7 @@ import jooqdata.tables.Client;
 import jooqdata.tables.Clientdish;
 import jooqdata.tables.Dish;
 import jooqdata.tables.records.ClientRecord;
-import jooqdata.tables.records.ClientdishRecord;
 import org.jooq.DSLContext;
-import org.jooq.SQL;
 import org.springframework.stereotype.Service;
 
 import java.util.List;

@@ -9,6 +9,9 @@ import org.jooq.Record1;
 import org.jooq.Select;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 
 @Service
@@ -42,7 +45,10 @@ public class ShiftService {
         record.store();
         return dto;
     }
+
     public ShiftDTO updateShift(int shiftId, ShiftDTO dto) {
+
+
         int rows = dsl.update(jooqdata.tables.Shift.SHIFT)
                 .set(Shift.SHIFT.DATA, dto.data)
                 .set(Shift.SHIFT.EXPENSES, dto.expenses)
