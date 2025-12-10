@@ -19,7 +19,7 @@ import jooqdata.tables.records.FavoriteproductRecord;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function4;
+import org.jooq.Function5;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -27,7 +27,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row4;
+import org.jooq.Row5;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -82,6 +82,11 @@ public class Favoriteproduct extends TableImpl<FavoriteproductRecord> {
      * The column <code>sales.favoriteproduct.productid</code>.
      */
     public final TableField<FavoriteproductRecord, Integer> PRODUCTID = createField(DSL.name("productid"), SQLDataType.INTEGER.nullable(false), this, "");
+
+    /**
+     * The column <code>sales.favoriteproduct.price</code>.
+     */
+    public final TableField<FavoriteproductRecord, Double> PRICE = createField(DSL.name("price"), SQLDataType.DOUBLE.nullable(false), this, "");
 
     private Favoriteproduct(Name alias, Table<FavoriteproductRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -308,18 +313,18 @@ public class Favoriteproduct extends TableImpl<FavoriteproductRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row4 type methods
+    // Row5 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row4<Integer, Integer, LocalDate, Integer> fieldsRow() {
-        return (Row4) super.fieldsRow();
+    public Row5<Integer, Integer, LocalDate, Integer, Double> fieldsRow() {
+        return (Row5) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function4<? super Integer, ? super Integer, ? super LocalDate, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function5<? super Integer, ? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -327,7 +332,7 @@ public class Favoriteproduct extends TableImpl<FavoriteproductRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function4<? super Integer, ? super Integer, ? super LocalDate, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function5<? super Integer, ? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

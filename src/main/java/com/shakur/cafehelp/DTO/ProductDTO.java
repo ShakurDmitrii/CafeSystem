@@ -41,11 +41,11 @@ public class ProductDTO {
         this.productPrice = productPrice;
     }
 
-    public BigDecimal getWaste() {
+    public Double getWaste() {
         return waste;
     }
 
-    public void setWaste(BigDecimal waste) {
+    public void setWaste(Double waste) {
         this.waste = waste;
     }
 }

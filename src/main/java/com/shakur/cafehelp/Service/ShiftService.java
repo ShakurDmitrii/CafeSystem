@@ -18,6 +18,7 @@ import java.util.List;
 public class ShiftService {
     private static DSLContext dsl;
     public ShiftService() {this.dsl = dsl;}
+
     public List<ShiftDTO> findAllShifts() {
         return dsl.selectFrom(Shift.SHIFT)
                 .fetch()

@@ -1,13 +1,14 @@
 package com.shakur.cafehelp.DTO;
 
+import java.time.LocalDate;
 import java.util.Date;
 
-public class FavoriteProduct {
+public class FavoriteProductDTO {
     public int id;
     public int supplierId;
-    public String name;
+    public int productId;
     public Double price;
-    public Date date;
+    public LocalDate date;
 
     public int getId() {
         return id;
@@ -25,12 +26,12 @@ public class FavoriteProduct {
         this.supplierId = supplierId;
     }
 
-    public String getName() {
-        return name;
+    public int getProductId() {
+        return productId;
     }
 
-    public void setName(String name) {
-        this.name = name;
+    public void setProductId(int productId) {
+        this.productId = productId;
     }
 
     public Double getPrice() {
@@ -41,11 +42,11 @@ public class FavoriteProduct {
         this.price = price;
     }
 
-    public Date getDate() {
+    public LocalDate getDate() {
         return date;
     }
 
-    public void setDate(Date date) {
+    public void setDate(LocalDate date) {
         this.date = date;
     }
 }
