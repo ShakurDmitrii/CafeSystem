@@ -16,6 +16,7 @@ import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Function2;
+import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -60,14 +61,14 @@ public class Client extends TableImpl<ClientRecord> {
     }
 
     /**
-     * The column <code>sales.client.clientid</code>.
-     */
-    public final TableField<ClientRecord, Integer> CLIENTID = createField(DSL.name("clientid"), SQLDataType.INTEGER.nullable(false), this, "");
-
-    /**
      * The column <code>sales.client.fullname</code>.
      */
     public final TableField<ClientRecord, String> FULLNAME = createField(DSL.name("fullname"), SQLDataType.VARCHAR, this, "");
+
+    /**
+     * The column <code>sales.client.clientid</code>.
+     */
+    public final TableField<ClientRecord, Integer> CLIENTID = createField(DSL.name("clientid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
 
     private Client(Name alias, Table<ClientRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -134,6 +135,11 @@ public class Client extends TableImpl<ClientRecord> {
     @Override
     public Schema getSchema() {
         return aliased() ? null : Sales.SALES;
+    }
+
+    @Override
+    public Identity<ClientRecord, Integer> getIdentity() {
+        return (Identity<ClientRecord, Integer>) super.getIdentity();
     }
 
     @Override
@@ -282,14 +288,14 @@ public class Client extends TableImpl<ClientRecord> {
     // -------------------------------------------------------------------------
 
     @Override
-    public Row2<Integer, String> fieldsRow() {
+    public Row2<String, Integer> fieldsRow() {
         return (Row2) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function2<? super Integer, ? super String, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function2<? super String, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -297,7 +303,7 @@ public class Client extends TableImpl<ClientRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function2<? super Integer, ? super String, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function2<? super String, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }
