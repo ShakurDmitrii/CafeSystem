@@ -6,12 +6,15 @@ package jooqdata.tables;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import java.util.function.Function;
 
 import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Consproduct.ConsproductPath;
+import jooqdata.tables.Supplier.SupplierPath;
 import jooqdata.tables.records.ConsignmentnoteRecord;
 
 import org.jooq.Condition;
@@ -151,6 +154,23 @@ public class Consignmentnote extends TableImpl<ConsignmentnoteRecord> {
     @Override
     public UniqueKey<ConsignmentnoteRecord> getPrimaryKey() {
         return Keys.CONSIGNMENTNOTE_PK;
+    }
+
+    @Override
+    public List<ForeignKey<ConsignmentnoteRecord, ?>> getReferences() {
+        return Arrays.asList(Keys.CONSIGNMENTNOTE__CONSIGNMENTNOTE_SUPPLIER_FK);
+    }
+
+    private transient SupplierPath _supplier;
+
+    /**
+     * Get the implicit join path to the <code>sales.supplier</code> table.
+     */
+    public SupplierPath supplier() {
+        if (_supplier == null)
+            _supplier = new SupplierPath(this, Keys.CONSIGNMENTNOTE__CONSIGNMENTNOTE_SUPPLIER_FK, null);
+
+        return _supplier;
     }
 
     private transient ConsproductPath _consproduct;

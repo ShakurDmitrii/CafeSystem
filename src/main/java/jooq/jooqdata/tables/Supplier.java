@@ -9,13 +9,15 @@ import java.util.function.Function;
 
 import jooqdata.Keys;
 import jooqdata.Sales;
-import jooqdata.tables.Favoriteproduct.FavoriteproductPath;
+import jooqdata.tables.Consignmentnote.ConsignmentnotePath;
+import jooqdata.tables.Product.ProductPath;
 import jooqdata.tables.records.SupplierRecord;
 
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Function3;
+import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -60,11 +62,6 @@ public class Supplier extends TableImpl<SupplierRecord> {
     }
 
     /**
-     * The column <code>sales.supplier.supplierid</code>.
-     */
-    public final TableField<SupplierRecord, Integer> SUPPLIERID = createField(DSL.name("supplierid"), SQLDataType.INTEGER.nullable(false), this, "");
-
-    /**
      * The column <code>sales.supplier.suppliername</code>.
      */
     public final TableField<SupplierRecord, String> SUPPLIERNAME = createField(DSL.name("suppliername"), SQLDataType.VARCHAR.nullable(false), this, "");
@@ -73,6 +70,11 @@ public class Supplier extends TableImpl<SupplierRecord> {
      * The column <code>sales.supplier.communication</code>.
      */
     public final TableField<SupplierRecord, String> COMMUNICATION = createField(DSL.name("communication"), SQLDataType.VARCHAR, this, "");
+
+    /**
+     * The column <code>sales.supplier.supplierid</code>.
+     */
+    public final TableField<SupplierRecord, Integer> SUPPLIERID = createField(DSL.name("supplierid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
 
     private Supplier(Name alias, Table<SupplierRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -142,21 +144,39 @@ public class Supplier extends TableImpl<SupplierRecord> {
     }
 
     @Override
+    public Identity<SupplierRecord, Integer> getIdentity() {
+        return (Identity<SupplierRecord, Integer>) super.getIdentity();
+    }
+
+    @Override
     public UniqueKey<SupplierRecord> getPrimaryKey() {
         return Keys.SUPPLIER_PK;
     }
 
-    private transient FavoriteproductPath _favoriteproduct;
+    private transient ConsignmentnotePath _consignmentnote;
 
     /**
      * Get the implicit to-many join path to the
-     * <code>sales.favoriteproduct</code> table
+     * <code>sales.consignmentnote</code> table
      */
-    public FavoriteproductPath favoriteproduct() {
-        if (_favoriteproduct == null)
-            _favoriteproduct = new FavoriteproductPath(this, null, Keys.FAVORITEPRODUCT__FAVORITEPRODUCT_SUPPLIER_FK.getInverseKey());
+    public ConsignmentnotePath consignmentnote() {
+        if (_consignmentnote == null)
+            _consignmentnote = new ConsignmentnotePath(this, null, Keys.CONSIGNMENTNOTE__CONSIGNMENTNOTE_SUPPLIER_FK.getInverseKey());
 
-        return _favoriteproduct;
+        return _consignmentnote;
+    }
+
+    private transient ProductPath _product;
+
+    /**
+     * Get the implicit to-many join path to the <code>sales.product</code>
+     * table
+     */
+    public ProductPath product() {
+        if (_product == null)
+            _product = new ProductPath(this, null, Keys.PRODUCT__PRODUCT_SUPPLIER_FK.getInverseKey());
+
+        return _product;
     }
 
     @Override
@@ -287,14 +307,14 @@ public class Supplier extends TableImpl<SupplierRecord> {
     // -------------------------------------------------------------------------
 
     @Override
-    public Row3<Integer, String, String> fieldsRow() {
+    public Row3<String, String, Integer> fieldsRow() {
         return (Row3) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function3<? super Integer, ? super String, ? super String, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function3<? super String, ? super String, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -302,7 +322,7 @@ public class Supplier extends TableImpl<SupplierRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function3<? super Integer, ? super String, ? super String, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function3<? super String, ? super String, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

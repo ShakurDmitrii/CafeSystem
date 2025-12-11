@@ -39,13 +39,55 @@ public class SupplierService {
                     return dto;
                 }).toList();
     }
-    public SupplierDTO create(SupplierDTO dto){
-        SupplierRecord record = dsl.fetchOne(Supplier.SUPPLIER);
-        assert record != null;
-        record.setSupplierid(dto.supplierID);
-        record.setSuppliername(dto.supplierName);
-        record.setCommunication(dto.communication);
+    public SupplierDTO create(SupplierDTO supplierDTO) {
+        SupplierRecord record = dsl.newRecord(Supplier.SUPPLIER);
+
+        // Устанавливаем ТОЛЬКО поля, которые вводит пользователь
+        record.setSuppliername(supplierDTO.getSupplierName());
+        record.setCommunication(supplierDTO.getCommunication());
+
+
+
+        // Сохраняем запись
         record.store();
-        return dto;
+
+        // Возвращаем DTO с сгенерированным ID
+        SupplierDTO responseDTO = new SupplierDTO();
+        responseDTO.setSupplierID(record.getSupplierid()); // Получаем сгенерированный ID
+        responseDTO.setSupplierName(record.getSuppliername());
+        responseDTO.setCommunication(record.getCommunication());
+
+        return responseDTO;
+    }
+
+    public SupplierDTO delete(int id) {
+        // Проверяем существование поставщика
+        boolean exists = dsl.fetchExists(
+                dsl.selectOne()
+                        .from(Supplier.SUPPLIER)
+                        .where(Supplier.SUPPLIER.SUPPLIERID.eq(id))
+        );
+
+        if (!exists) {
+            throw new RuntimeException("Supplier not Found");
+        }
+
+        // Получаем данные перед удалением
+        SupplierDTO deletedSupplier = dsl.selectFrom(Supplier.SUPPLIER)
+                .where(Supplier.SUPPLIER.SUPPLIERID.eq(id))
+                .fetchOne(record -> {
+                    SupplierDTO dto = new SupplierDTO();
+                    dto.supplierID = record.getSupplierid();
+                    dto.supplierName = record.getSuppliername();
+                    dto.communication = record.getCommunication();
+                    return dto;
+                });
+
+        // Выполняем удаление
+        dsl.deleteFrom(Supplier.SUPPLIER)
+                .where(Supplier.SUPPLIER.SUPPLIERID.eq(id))
+                .execute();
+
+        return deletedSupplier;
     }
 }

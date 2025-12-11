@@ -13,7 +13,6 @@ import java.util.function.Function;
 import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Product.ProductPath;
-import jooqdata.tables.Supplier.SupplierPath;
 import jooqdata.tables.records.FavoriteproductRecord;
 
 import org.jooq.Condition;
@@ -162,19 +161,7 @@ public class Favoriteproduct extends TableImpl<FavoriteproductRecord> {
 
     @Override
     public List<ForeignKey<FavoriteproductRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.FAVORITEPRODUCT__FAVORITEPRODUCT_SUPPLIER_FK, Keys.FAVORITEPRODUCT__FAVORITEPRODUCT_PRODUCT_FK);
-    }
-
-    private transient SupplierPath _supplier;
-
-    /**
-     * Get the implicit join path to the <code>sales.supplier</code> table.
-     */
-    public SupplierPath supplier() {
-        if (_supplier == null)
-            _supplier = new SupplierPath(this, Keys.FAVORITEPRODUCT__FAVORITEPRODUCT_SUPPLIER_FK, null);
-
-        return _supplier;
+        return Arrays.asList(Keys.FAVORITEPRODUCT__FAVORITEPRODUCT_PRODUCT_FK);
     }
 
     private transient ProductPath _product;

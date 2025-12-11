@@ -5,7 +5,9 @@ package jooqdata.tables;
 
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import java.util.function.Function;
 
 import jooqdata.Keys;
@@ -13,6 +15,7 @@ import jooqdata.Sales;
 import jooqdata.tables.Consproduct.ConsproductPath;
 import jooqdata.tables.Favoriteproduct.FavoriteproductPath;
 import jooqdata.tables.Productwarehouseid.ProductwarehouseidPath;
+import jooqdata.tables.Supplier.SupplierPath;
 import jooqdata.tables.Techproduct.TechproductPath;
 import jooqdata.tables.records.ProductRecord;
 
@@ -158,6 +161,23 @@ public class Product extends TableImpl<ProductRecord> {
     @Override
     public UniqueKey<ProductRecord> getPrimaryKey() {
         return Keys.PRODUCT_PK;
+    }
+
+    @Override
+    public List<ForeignKey<ProductRecord, ?>> getReferences() {
+        return Arrays.asList(Keys.PRODUCT__PRODUCT_SUPPLIER_FK);
+    }
+
+    private transient SupplierPath _supplier;
+
+    /**
+     * Get the implicit join path to the <code>sales.supplier</code> table.
+     */
+    public SupplierPath supplier() {
+        if (_supplier == null)
+            _supplier = new SupplierPath(this, Keys.PRODUCT__PRODUCT_SUPPLIER_FK, null);
+
+        return _supplier;
     }
 
     private transient ConsproductPath _consproduct;
