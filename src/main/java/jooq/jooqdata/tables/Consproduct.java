@@ -4,7 +4,6 @@
 package jooqdata.tables;
 
 
-import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -19,7 +18,8 @@ import jooqdata.tables.records.ConsproductRecord;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function3;
+import org.jooq.Function5;
+import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -27,7 +27,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row3;
+import org.jooq.Row5;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -76,7 +76,17 @@ public class Consproduct extends TableImpl<ConsproductRecord> {
     /**
      * The column <code>sales.consproduct.gross</code>.
      */
-    public final TableField<ConsproductRecord, BigDecimal> GROSS = createField(DSL.name("gross"), SQLDataType.NUMERIC.nullable(false), this, "");
+    public final TableField<ConsproductRecord, Double> GROSS = createField(DSL.name("gross"), SQLDataType.DOUBLE.nullable(false), this, "");
+
+    /**
+     * The column <code>sales.consproduct.quantity</code>.
+     */
+    public final TableField<ConsproductRecord, Double> QUANTITY = createField(DSL.name("quantity"), SQLDataType.DOUBLE, this, "");
+
+    /**
+     * The column <code>sales.consproduct.consproductid</code>.
+     */
+    public final TableField<ConsproductRecord, Integer> CONSPRODUCTID = createField(DSL.name("consproductid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
 
     private Consproduct(Name alias, Table<ConsproductRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -143,6 +153,11 @@ public class Consproduct extends TableImpl<ConsproductRecord> {
     @Override
     public Schema getSchema() {
         return aliased() ? null : Sales.SALES;
+    }
+
+    @Override
+    public Identity<ConsproductRecord, Integer> getIdentity() {
+        return (Identity<ConsproductRecord, Integer>) super.getIdentity();
     }
 
     @Override
@@ -304,18 +319,18 @@ public class Consproduct extends TableImpl<ConsproductRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row3 type methods
+    // Row5 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row3<Integer, Integer, BigDecimal> fieldsRow() {
-        return (Row3) super.fieldsRow();
+    public Row5<Integer, Integer, Double, Double, Integer> fieldsRow() {
+        return (Row5) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function3<? super Integer, ? super Integer, ? super BigDecimal, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function5<? super Integer, ? super Integer, ? super Double, ? super Double, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -323,7 +338,7 @@ public class Consproduct extends TableImpl<ConsproductRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function3<? super Integer, ? super Integer, ? super BigDecimal, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function5<? super Integer, ? super Integer, ? super Double, ? super Double, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

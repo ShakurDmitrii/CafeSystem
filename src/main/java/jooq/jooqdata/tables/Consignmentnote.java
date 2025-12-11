@@ -4,7 +4,6 @@
 package jooqdata.tables;
 
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.Collection;
@@ -21,6 +20,7 @@ import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Function4;
+import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -65,11 +65,6 @@ public class Consignmentnote extends TableImpl<ConsignmentnoteRecord> {
     }
 
     /**
-     * The column <code>sales.consignmentnote.consignmentid</code>.
-     */
-    public final TableField<ConsignmentnoteRecord, Integer> CONSIGNMENTID = createField(DSL.name("consignmentid"), SQLDataType.INTEGER.nullable(false), this, "");
-
-    /**
      * The column <code>sales.consignmentnote.supplierid</code>.
      */
     public final TableField<ConsignmentnoteRecord, Integer> SUPPLIERID = createField(DSL.name("supplierid"), SQLDataType.INTEGER.nullable(false), this, "");
@@ -77,12 +72,17 @@ public class Consignmentnote extends TableImpl<ConsignmentnoteRecord> {
     /**
      * The column <code>sales.consignmentnote.amount</code>.
      */
-    public final TableField<ConsignmentnoteRecord, BigDecimal> AMOUNT = createField(DSL.name("amount"), SQLDataType.NUMERIC.nullable(false), this, "");
+    public final TableField<ConsignmentnoteRecord, Double> AMOUNT = createField(DSL.name("amount"), SQLDataType.DOUBLE, this, "");
 
     /**
      * The column <code>sales.consignmentnote.date</code>.
      */
     public final TableField<ConsignmentnoteRecord, LocalDate> DATE = createField(DSL.name("date"), SQLDataType.LOCALDATE.nullable(false), this, "");
+
+    /**
+     * The column <code>sales.consignmentnote.consignmentid</code>.
+     */
+    public final TableField<ConsignmentnoteRecord, Integer> CONSIGNMENTID = createField(DSL.name("consignmentid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
 
     private Consignmentnote(Name alias, Table<ConsignmentnoteRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -149,6 +149,11 @@ public class Consignmentnote extends TableImpl<ConsignmentnoteRecord> {
     @Override
     public Schema getSchema() {
         return aliased() ? null : Sales.SALES;
+    }
+
+    @Override
+    public Identity<ConsignmentnoteRecord, Integer> getIdentity() {
+        return (Identity<ConsignmentnoteRecord, Integer>) super.getIdentity();
     }
 
     @Override
@@ -314,14 +319,14 @@ public class Consignmentnote extends TableImpl<ConsignmentnoteRecord> {
     // -------------------------------------------------------------------------
 
     @Override
-    public Row4<Integer, Integer, BigDecimal, LocalDate> fieldsRow() {
+    public Row4<Integer, Double, LocalDate, Integer> fieldsRow() {
         return (Row4) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function4<? super Integer, ? super Integer, ? super BigDecimal, ? super LocalDate, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function4<? super Integer, ? super Double, ? super LocalDate, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -329,7 +334,7 @@ public class Consignmentnote extends TableImpl<ConsignmentnoteRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function4<? super Integer, ? super Integer, ? super BigDecimal, ? super LocalDate, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function4<? super Integer, ? super Double, ? super LocalDate, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

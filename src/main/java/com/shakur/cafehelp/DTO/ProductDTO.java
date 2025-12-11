@@ -8,6 +8,7 @@ public class ProductDTO {
     public String productName;
     public BigDecimal productPrice;
     public Double waste;
+    public Boolean isFavorite;
 
     public int getProductId() {
         return productId;
@@ -43,6 +44,14 @@ public class ProductDTO {
 
     public Double getWaste() {
         return waste;
+    }
+
+    public Boolean getFavorite() {
+        return isFavorite;
+    }
+
+    public void setFavorite(Boolean favorite) {
+        isFavorite = favorite;
     }
 
     public void setWaste(Double waste) {

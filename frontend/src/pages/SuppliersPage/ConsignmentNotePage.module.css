@@ -1,0 +1,163 @@
+/* ------------------ КОНТЕЙНЕР ------------------ */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+/* ------------------ ФОРМА ДОБАВЛЕНИЯ ------------------ */
+.addConsignmentForm {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 30px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+    max-width: 600px;
+    margin: 0 auto 40px auto;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.addConsignmentForm:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+}
+
+.addConsignmentForm form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.inputField {
+    padding: 14px 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 16px;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.inputField:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+}
+
+.submitBtn {
+    padding: 14px 0;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 10px;
+    cursor: pointer;
+    border: none;
+    transition: all 0.3s;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.submitBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(102,126,234,0.3);
+}
+
+/* ------------------ ТАБЛИЦА ------------------ */
+.tableContainer {
+    overflow-x: auto;
+}
+
+.consignmentTable {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.consignmentTable th,
+.consignmentTable td {
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+}
+
+.consignmentTable th {
+    background-color: #f5f5f5;
+    font-weight: 600;
+}
+
+.openBtn {
+    padding: 8px 12px;
+    border: none;
+    background-color: #667eea;
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.openBtn:hover {
+    background-color: #556cd6;
+}
+
+/* ------------------ EMPTY STATE ------------------ */
+.emptyState {
+    text-align: center;
+    color: #555;
+    padding: 40px 0;
+}
+
+/* ------------------ МОДАЛКА ------------------ */
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal {
+    background: #fff;
+    padding: 30px;
+    border-radius: 12px;
+    width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 14px 40px rgba(0,0,0,0.2);
+}
+
+.closeBtn {
+    margin-top: 20px;
+    width: 100%;
+    padding: 12px 0;
+    background: #e74c3c;
+    border: none;
+    border-radius: 10px;
+    color: white;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.3s;
+}
+
+.closeBtn:hover {
+    background: #c0392b;
+}
+
+.deleteProductBtn {
+    padding: 6px 10px;
+    background: #e74c3c;
+    border: none;
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.deleteProductBtn:hover {
+    background: #c0392b;
+}

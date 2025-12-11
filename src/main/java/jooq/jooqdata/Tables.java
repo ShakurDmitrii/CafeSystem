@@ -9,7 +9,6 @@ import jooqdata.tables.Clientdish;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
-import jooqdata.tables.Favoriteproduct;
 import jooqdata.tables.Order;
 import jooqdata.tables.Person;
 import jooqdata.tables.Product;
@@ -51,11 +50,6 @@ public class Tables {
      * The table <code>sales.dish</code>.
      */
     public static final Dish DISH = Dish.DISH;
-
-    /**
-     * The table <code>sales.favoriteproduct</code>.
-     */
-    public static final Favoriteproduct FAVORITEPRODUCT = Favoriteproduct.FAVORITEPRODUCT;
 
     /**
      * The table <code>sales.order</code>.

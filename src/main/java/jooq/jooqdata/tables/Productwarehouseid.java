@@ -145,7 +145,7 @@ public class Productwarehouseid extends TableImpl<ProductwarehouseidRecord> {
 
     @Override
     public List<ForeignKey<ProductwarehouseidRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.PRODUCTWAREHOUSEID__PRODUCTWAREHOUSEID_WAREHOUSE_FK_1, Keys.PRODUCTWAREHOUSEID__PRODUCTWAREHOUSEID_PRODUCT_FK_1);
+        return Arrays.asList(Keys.PRODUCTWAREHOUSEID__PRODUCTWAREHOUSEID_WAREHOUSE_FK_1, Keys.PRODUCTWAREHOUSEID__PRODUCTWAREHOUSEID_PRODUCT_FK);
     }
 
     private transient WarehousePath _warehouse;
@@ -167,7 +167,7 @@ public class Productwarehouseid extends TableImpl<ProductwarehouseidRecord> {
      */
     public ProductPath product() {
         if (_product == null)
-            _product = new ProductPath(this, Keys.PRODUCTWAREHOUSEID__PRODUCTWAREHOUSEID_PRODUCT_FK_1, null);
+            _product = new ProductPath(this, Keys.PRODUCTWAREHOUSEID__PRODUCTWAREHOUSEID_PRODUCT_FK, null);
 
         return _product;
     }

@@ -1,0 +1,48 @@
+.container { padding: 20px; max-width: 1200px; margin: 0 auto; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.title { font-size: 2rem; font-weight: bold; }
+.stats { font-weight: 600; color: #555; }
+
+.card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+.alert { padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+.errorAlert { background: #f8d7da; color: #721c24; }
+.closeError { float: right; background: none; border: none; font-size: 16px; cursor: pointer; }
+
+.toolbar { display: flex; justify-content: space-between; margin-bottom: 20px; }
+.searchInput { padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; }
+.refreshBtn { padding: 8px 12px; border-radius: 8px; cursor: pointer; background: #667eea; color: white; border: none; }
+
+.addSupplierForm { background: #f9f9f9; padding: 20px; border-radius: 12px; margin-bottom: 30px; }
+.formGrid { display: flex; flex-wrap: wrap; gap: 15px; }
+.formGroup { flex: 1 1 200px; display: flex; flex-direction: column; }
+.formButtons { margin-top: 15px; display: flex; gap: 10px; }
+.submitBtn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; }
+.primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+.secondary { background: #e0e0e0; color: #333; }
+
+.suppliersList { display: grid; grid-template-columns: 1fr; gap: 20px; }
+@media (min-width: 768px) { .suppliersList { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1200px) { .suppliersList { grid-template-columns: repeat(3, 1fr); } }
+
+.supplierCard { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 6px 18px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; }
+.supplierCard:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(0,0,0,0.12); }
+
+.supplierHeader { display: flex; justify-content: space-between; margin-bottom: 10px; }
+.supplierID { font-weight: 600; color: #555; }
+.supplierName { font-weight: 700; font-size: 1.1rem; color: #333; cursor: pointer; }
+
+.contactInfo a { display: inline-block; padding: 4px 10px; border-radius: 6px; background: #f0f0f0; color: #667eea; text-decoration: none; margin-right: 6px; font-size: 0.9rem; }
+.contactInfo a:hover { background: #667eea; color: white; }
+
+.actionButtons { margin-top: 10px; }
+.editBtn { background: #17a2b8; color: white; padding: 6px 14px; border-radius: 6px; margin-right: 6px; cursor: pointer; }
+.editBtn:hover { background: #138496; }
+.deleteBtn { background: #dc3545; color: white; padding: 6px 14px; border-radius: 6px; cursor: pointer; }
+.deleteBtn:hover { background: #c82333; }
+
+.emptyState { text-align: center; padding: 30px; color: #555; }
+.emptyIcon { font-size: 2rem; margin-bottom: 10px; }
+
+.loadingContainer { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 50px; }
+.spinner { width: 50px; height: 50px; border: 6px solid #eee; border-top-color: #667eea; border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }

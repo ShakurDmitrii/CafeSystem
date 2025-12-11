@@ -12,7 +12,6 @@ import jooqdata.tables.Clientdish;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
-import jooqdata.tables.Favoriteproduct;
 import jooqdata.tables.Order;
 import jooqdata.tables.Person;
 import jooqdata.tables.Product;
@@ -65,11 +64,6 @@ public class Sales extends SchemaImpl {
      * The table <code>sales.dish</code>.
      */
     public final Dish DISH = Dish.DISH;
-
-    /**
-     * The table <code>sales.favoriteproduct</code>.
-     */
-    public final Favoriteproduct FAVORITEPRODUCT = Favoriteproduct.FAVORITEPRODUCT;
 
     /**
      * The table <code>sales.order</code>.
@@ -137,7 +131,6 @@ public class Sales extends SchemaImpl {
             Consignmentnote.CONSIGNMENTNOTE,
             Consproduct.CONSPRODUCT,
             Dish.DISH,
-            Favoriteproduct.FAVORITEPRODUCT,
             Order.ORDER,
             Person.PERSON,
             Product.PRODUCT,

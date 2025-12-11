@@ -13,7 +13,6 @@ import java.util.function.Function;
 import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Consproduct.ConsproductPath;
-import jooqdata.tables.Favoriteproduct.FavoriteproductPath;
 import jooqdata.tables.Productwarehouseid.ProductwarehouseidPath;
 import jooqdata.tables.Supplier.SupplierPath;
 import jooqdata.tables.Techproduct.TechproductPath;
@@ -22,7 +21,8 @@ import jooqdata.tables.records.ProductRecord;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function5;
+import org.jooq.Function6;
+import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -30,7 +30,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row5;
+import org.jooq.Row6;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -67,11 +67,6 @@ public class Product extends TableImpl<ProductRecord> {
     }
 
     /**
-     * The column <code>sales.product.productid</code>.
-     */
-    public final TableField<ProductRecord, Integer> PRODUCTID = createField(DSL.name("productid"), SQLDataType.INTEGER.nullable(false), this, "");
-
-    /**
      * The column <code>sales.product.supplierid</code>.
      */
     public final TableField<ProductRecord, Integer> SUPPLIERID = createField(DSL.name("supplierid"), SQLDataType.INTEGER, this, "");
@@ -90,6 +85,16 @@ public class Product extends TableImpl<ProductRecord> {
      * The column <code>sales.product.waste</code>.
      */
     public final TableField<ProductRecord, Double> WASTE = createField(DSL.name("waste"), SQLDataType.DOUBLE, this, "");
+
+    /**
+     * The column <code>sales.product.isfavourite</code>.
+     */
+    public final TableField<ProductRecord, Boolean> ISFAVOURITE = createField(DSL.name("isfavourite"), SQLDataType.BOOLEAN.nullable(false), this, "");
+
+    /**
+     * The column <code>sales.product.productid</code>.
+     */
+    public final TableField<ProductRecord, Integer> PRODUCTID = createField(DSL.name("productid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
 
     private Product(Name alias, Table<ProductRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -159,6 +164,11 @@ public class Product extends TableImpl<ProductRecord> {
     }
 
     @Override
+    public Identity<ProductRecord, Integer> getIdentity() {
+        return (Identity<ProductRecord, Integer>) super.getIdentity();
+    }
+
+    @Override
     public UniqueKey<ProductRecord> getPrimaryKey() {
         return Keys.PRODUCT_PK;
     }
@@ -193,19 +203,6 @@ public class Product extends TableImpl<ProductRecord> {
         return _consproduct;
     }
 
-    private transient FavoriteproductPath _favoriteproduct;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>sales.favoriteproduct</code> table
-     */
-    public FavoriteproductPath favoriteproduct() {
-        if (_favoriteproduct == null)
-            _favoriteproduct = new FavoriteproductPath(this, null, Keys.FAVORITEPRODUCT__FAVORITEPRODUCT_PRODUCT_FK.getInverseKey());
-
-        return _favoriteproduct;
-    }
-
     private transient ProductwarehouseidPath _productwarehouseid;
 
     /**
@@ -214,7 +211,7 @@ public class Product extends TableImpl<ProductRecord> {
      */
     public ProductwarehouseidPath productwarehouseid() {
         if (_productwarehouseid == null)
-            _productwarehouseid = new ProductwarehouseidPath(this, null, Keys.PRODUCTWAREHOUSEID__PRODUCTWAREHOUSEID_PRODUCT_FK_1.getInverseKey());
+            _productwarehouseid = new ProductwarehouseidPath(this, null, Keys.PRODUCTWAREHOUSEID__PRODUCTWAREHOUSEID_PRODUCT_FK.getInverseKey());
 
         return _productwarehouseid;
     }
@@ -356,18 +353,18 @@ public class Product extends TableImpl<ProductRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row5 type methods
+    // Row6 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row5<Integer, Integer, String, BigDecimal, Double> fieldsRow() {
-        return (Row5) super.fieldsRow();
+    public Row6<Integer, String, BigDecimal, Double, Boolean, Integer> fieldsRow() {
+        return (Row6) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function5<? super Integer, ? super Integer, ? super String, ? super BigDecimal, ? super Double, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function6<? super Integer, ? super String, ? super BigDecimal, ? super Double, ? super Boolean, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -375,7 +372,7 @@ public class Product extends TableImpl<ProductRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function5<? super Integer, ? super Integer, ? super String, ? super BigDecimal, ? super Double, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function6<? super Integer, ? super String, ? super BigDecimal, ? super Double, ? super Boolean, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

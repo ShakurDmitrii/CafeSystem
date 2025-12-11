@@ -2,6 +2,7 @@ package com.shakur.cafehelp.Service;
 
 import com.shakur.cafehelp.DTO.ConsignmentNoteDTO;
 import jooqdata.tables.Consignmentnote;
+import jooqdata.tables.records.ConsignmentnoteRecord;
 import org.jooq.DSLContext;
 import org.springframework.stereotype.Service;
 
@@ -13,6 +14,45 @@ import java.util.List;
 public class ConsignmentNoteService {
     private DSLContext  dsl;
     public ConsignmentNoteService(DSLContext dsl) {this.dsl = dsl;}
+
+    public ConsignmentNoteDTO createConsignmentNote(ConsignmentNoteDTO dto) {
+        ConsignmentnoteRecord record = dsl.newRecord(Consignmentnote.CONSIGNMENTNOTE);
+
+        record.setSupplierid(dto.supplierId);
+        record.setDate(dto.date);
+        record.setAmount(dto.amount);
+        record.store();
+        dto.consignmentId = record.getConsignmentid();
+
+        return dto;
+    }
+
+    public ConsignmentNoteDTO getConsignmentNoteById(int id) {
+        return dsl.selectFrom(Consignmentnote.CONSIGNMENTNOTE)
+                .where(Consignmentnote.CONSIGNMENTNOTE.CONSIGNMENTID.eq(id))
+                .fetchOptional()
+                .map(record ->{
+                    ConsignmentNoteDTO dto = new ConsignmentNoteDTO();
+                    dto.consignmentId = record.getConsignmentid();
+                    dto.supplierId = record.getSupplierid();
+                    dto.date = record.getDate();
+                    dto.amount = record.getAmount();
+                    return dto;
+                }).orElseThrow(() -> new RuntimeException("ConsignmentNote not found " + id));
+    }
+    public ConsignmentNoteDTO getConsignmentNoteBySupplierId(int id) {
+        return dsl.selectFrom(Consignmentnote.CONSIGNMENTNOTE)
+                .where(Consignmentnote.CONSIGNMENTNOTE.SUPPLIERID.eq(id))
+                .fetchOptional()
+                .map(record ->{
+                    ConsignmentNoteDTO dto = new ConsignmentNoteDTO();
+                    dto.consignmentId = record.getConsignmentid();
+                    dto.supplierId = record.getSupplierid();
+                    dto.date = record.getDate();
+                    dto.amount = record.getAmount();
+                    return dto;
+                }).orElseThrow(() -> new RuntimeException("ConsignmentNote not found " + id));
+    }
     public List<ConsignmentNoteDTO> getConsignmentNotes() {
         return dsl.selectFrom(Consignmentnote.CONSIGNMENTNOTE)
                 .fetch()
@@ -24,6 +64,20 @@ public class ConsignmentNoteService {
                     dto.supplierId = record.getSupplierid();
                     dto.amount = record.getAmount();
                     dto.date = record.getDate();
+                    return dto;
+                }).toList();
+    }
+
+    public List<ConsignmentNoteDTO> getAllConsignmentNotes() {
+        return dsl.selectFrom(Consignmentnote.CONSIGNMENTNOTE)
+                .fetch()
+                .stream()
+                .map(record ->{
+                    ConsignmentNoteDTO dto = new ConsignmentNoteDTO();
+                    dto.consignmentId = record.getConsignmentid();
+                    dto.supplierId = record.getSupplierid();
+                    dto.date = record.getDate();
+                    dto.amount = record.getAmount();
                     return dto;
                 }).toList();
     }
