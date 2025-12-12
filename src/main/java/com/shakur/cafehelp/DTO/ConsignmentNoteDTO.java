@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 public class ConsignmentNoteDTO {
     public int consignmentId;
     public int supplierId;
-    public BigDecimal amount;
+    public Double amount;
     public LocalDate date;
 
 
@@ -29,11 +29,11 @@ public class ConsignmentNoteDTO {
 
 
 
-    public BigDecimal getAmount() {
+    public Double getAmount() {
         return amount;
     }
 
-    public void setAmount(BigDecimal amount) {
+    public void setAmount(Double amount) {
         this.amount = amount;
     }
 

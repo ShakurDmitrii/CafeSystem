@@ -5,10 +5,13 @@ import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.records.ConsignmentnoteRecord;
 import org.jooq.DSLContext;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+
+import static jooqdata.tables.Consignmentnote.CONSIGNMENTNOTE;
 
 @Service
 public class ConsignmentNoteService {
@@ -16,7 +19,7 @@ public class ConsignmentNoteService {
     public ConsignmentNoteService(DSLContext dsl) {this.dsl = dsl;}
 
     public ConsignmentNoteDTO createConsignmentNote(ConsignmentNoteDTO dto) {
-        ConsignmentnoteRecord record = dsl.newRecord(Consignmentnote.CONSIGNMENTNOTE);
+        ConsignmentnoteRecord record = dsl.newRecord(CONSIGNMENTNOTE);
 
         record.setSupplierid(dto.supplierId);
         record.setDate(dto.date);
@@ -27,9 +30,18 @@ public class ConsignmentNoteService {
         return dto;
     }
 
+    @Transactional
+    public void updateAmount(Integer consignmentId, double amount) {
+        dsl.update(CONSIGNMENTNOTE)
+                .set(CONSIGNMENTNOTE.AMOUNT, amount)
+                .where(CONSIGNMENTNOTE.CONSIGNMENTID.eq(consignmentId))
+                .execute();
+    }
+
+
     public ConsignmentNoteDTO getConsignmentNoteById(int id) {
-        return dsl.selectFrom(Consignmentnote.CONSIGNMENTNOTE)
-                .where(Consignmentnote.CONSIGNMENTNOTE.CONSIGNMENTID.eq(id))
+        return dsl.selectFrom(CONSIGNMENTNOTE)
+                .where(CONSIGNMENTNOTE.CONSIGNMENTID.eq(id))
                 .fetchOptional()
                 .map(record ->{
                     ConsignmentNoteDTO dto = new ConsignmentNoteDTO();
@@ -41,8 +53,8 @@ public class ConsignmentNoteService {
                 }).orElseThrow(() -> new RuntimeException("ConsignmentNote not found " + id));
     }
     public ConsignmentNoteDTO getConsignmentNoteBySupplierId(int id) {
-        return dsl.selectFrom(Consignmentnote.CONSIGNMENTNOTE)
-                .where(Consignmentnote.CONSIGNMENTNOTE.SUPPLIERID.eq(id))
+        return dsl.selectFrom(CONSIGNMENTNOTE)
+                .where(CONSIGNMENTNOTE.SUPPLIERID.eq(id))
                 .fetchOptional()
                 .map(record ->{
                     ConsignmentNoteDTO dto = new ConsignmentNoteDTO();
@@ -54,7 +66,7 @@ public class ConsignmentNoteService {
                 }).orElseThrow(() -> new RuntimeException("ConsignmentNote not found " + id));
     }
     public List<ConsignmentNoteDTO> getConsignmentNotes() {
-        return dsl.selectFrom(Consignmentnote.CONSIGNMENTNOTE)
+        return dsl.selectFrom(CONSIGNMENTNOTE)
                 .fetch()
                 .stream()
                 .map(record->
@@ -69,7 +81,7 @@ public class ConsignmentNoteService {
     }
 
     public List<ConsignmentNoteDTO> getAllConsignmentNotes() {
-        return dsl.selectFrom(Consignmentnote.CONSIGNMENTNOTE)
+        return dsl.selectFrom(CONSIGNMENTNOTE)
                 .fetch()
                 .stream()
                 .map(record ->{

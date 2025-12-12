@@ -2,9 +2,11 @@ package com.shakur.cafehelp.Controller;
 
 import com.shakur.cafehelp.DTO.ConsignmentNoteDTO;
 import com.shakur.cafehelp.Service.ConsignmentNoteService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/consignmentNote")
@@ -15,6 +17,14 @@ public class ConsignmentNoteController {
     public ConsignmentNoteController(ConsignmentNoteService consignmentNoteService) {
         this.consignmentNoteService = consignmentNoteService;
     }
+
+    @PatchMapping("{id}")
+    public ResponseEntity<Void> updateAmount(@PathVariable Integer id, @RequestBody Map<String, Double> body) {
+        double amount = body.get("amount");
+        consignmentNoteService.updateAmount(id, amount);
+        return ResponseEntity.ok().build();
+    }
+
 
     @GetMapping
     public List<ConsignmentNoteDTO> getAllConsignmentNotes() {

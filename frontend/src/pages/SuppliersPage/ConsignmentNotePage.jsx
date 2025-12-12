@@ -13,7 +13,10 @@ export default function ConsignmentNotePage() {
 
     const [consProducts, setConsProducts] = useState([]);
     const [newProduct, setNewProduct] = useState({ consignmentId: "", productId: "", quantity: "" });
-    const [formData, setFormData] = useState({ supplierId: '', noteNumber: '', date: '' });
+    const [formData, setFormData] = useState({ supplierId: '', date: '' });
+
+    const [currentTotal, setCurrentTotal] = useState(0);
+    const [totalsByNoteId, setTotalsByNoteId] = useState({}); // Хранение итогов по каждой накладной
 
     // -------------------- ЗАГРУЗКА НАКЛАДНЫХ И ПОСТАВЩИКОВ --------------------
     useEffect(() => {
@@ -40,6 +43,10 @@ export default function ConsignmentNotePage() {
     // -------------------- СОЗДАНИЕ НАКЛАДНОЙ --------------------
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!formData.supplierId) {
+            alert("Выберите поставщика!");
+            return;
+        }
         try {
             const res = await fetch("http://localhost:8080/api/consignmentNote", {
                 method: "POST",
@@ -51,7 +58,7 @@ export default function ConsignmentNotePage() {
 
             const newNote = await res.json();
             setNotes(prev => [...prev, newNote]);
-            setFormData({ supplierId: "", noteNumber: "", date: "" });
+            setFormData({ supplierId: "", date: "" });
         } catch (err) {
             console.error(err);
             setError(err.message);
@@ -86,6 +93,7 @@ export default function ConsignmentNotePage() {
             });
 
             setConsProducts(consProductsWithNames);
+            setCurrentTotal(totalsByNoteId[noteId] ?? 0); // Если ранее считали, ставим старый total
 
             // Инициализация формы добавления
             setNewProduct({ consignmentId: noteId, productId: "", quantity: "" });
@@ -97,11 +105,15 @@ export default function ConsignmentNotePage() {
 
     function closeModal() {
         setSelectedNoteId(null);
+        setCurrentTotal(0);
     }
 
     // -------------------- ДОБАВЛЕНИЕ ПРОДУКТА --------------------
     async function addProduct() {
-        if (!newProduct.productId || !newProduct.quantity) return;
+        if (!newProduct.productId || !newProduct.quantity) {
+            alert("Выберите продукт и укажите количество!");
+            return;
+        }
 
         try {
             const selectedProduct = products.find(p => p.productId === parseInt(newProduct.productId));
@@ -111,7 +123,7 @@ export default function ConsignmentNotePage() {
                 consignmentId: newProduct.consignmentId,
                 productId: selectedProduct.productId,
                 quantity: parseFloat(newProduct.quantity),
-                GROSS: selectedProduct.waste,
+                GROSS: selectedProduct.waste ?? 0,
             };
 
             const res = await fetch("http://localhost:8080/api/consProduct", {
@@ -123,8 +135,6 @@ export default function ConsignmentNotePage() {
             if (!res.ok) throw new Error("Ошибка добавления товара");
 
             const created = await res.json();
-            if (!created.consProductId) throw new Error("Сервер не вернул consProductId");
-
             setConsProducts(prev => [
                 ...prev,
                 {
@@ -158,6 +168,35 @@ export default function ConsignmentNotePage() {
         }
     }
 
+    // -------------------- РАСЧЕТ ИТОГО --------------------
+    async function calculateTotal() {
+        console.log("Начинаем расчёт итого. consProducts:", consProducts);
+
+        const total = consProducts.reduce((sum, cp) => {
+            const product = products.find(p => p.productId === cp.productId);
+            const price = product?.productPrice ?? 0;
+            const quantity = cp?.quantity ?? 0;
+            console.log(`Товар: ${product?.productName}, цена: ${price}, количество: ${quantity}`);
+            return sum + price * quantity;
+        }, 0);
+
+        console.log("Итого:", total);
+
+        setCurrentTotal(total);
+        setTotalsByNoteId(prev => ({ ...prev, [selectedNoteId]: total }));
+
+        try {
+            await fetch(`http://localhost:8080/api/consignmentNote/${selectedNoteId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: total })
+            });
+            console.log("Amount успешно обновлен на сервере");
+        } catch (err) {
+            console.error("Ошибка при обновлении amount:", err);
+        }
+    }
+
     if (loading) return <div className={styles.emptyState}>Загрузка...</div>;
     if (error) return <div className={styles.emptyState}>{error}</div>;
 
@@ -165,7 +204,6 @@ export default function ConsignmentNotePage() {
         <div className={styles.container}>
             <h1 className={styles.title}>Накладные</h1>
 
-            {/* Форма создания накладной */}
             <section className={styles.addConsignmentForm}>
                 <h2>Добавить новую накладную</h2>
                 <form onSubmit={handleSubmit}>
@@ -183,15 +221,6 @@ export default function ConsignmentNotePage() {
                             ))}
                         </select>
                     </label>
-
-                    <input
-                        type="text"
-                        placeholder="Номер накладной"
-                        className={styles.inputField}
-                        value={formData.noteNumber}
-                        onChange={e => setFormData({ ...formData, noteNumber: e.target.value })}
-                        required
-                    />
 
                     <input
                         type="date"
@@ -214,35 +243,25 @@ export default function ConsignmentNotePage() {
                         <th>Поставщик</th>
                         <th>Номер</th>
                         <th>Дата</th>
-                        <th>Итог</th>
+                        <th>Итого</th>
                         <th></th>
                     </tr>
                     </thead>
                     <tbody>
-                    {notes.map(note => {
-                        // Рассчитываем итог только для открытой накладной
-                        const total = consProducts
-                            .filter(p => p.consignmentId === note.consignmentId)
-                            .reduce((sum, cp) => {
-                                const product = products.find(pr => pr.productId === cp.productId);
-                                return sum + (product ? product.price * cp.quantity : 0);
-                            }, 0);
-
-                        return (
-                            <tr key={note.consignmentId}>
-                                <td>{note.consignmentId}</td>
-                                <td>{suppliers.find(s => s.supplierID === note.supplierId)?.supplierName || ''}</td>
-                                <td>{note.noteNumber ?? ''}</td>
-                                <td>{note.date}</td>
-                                <td>{total.toFixed(2)}</td>
-                                <td>
-                                    <button className={styles.openBtn} onClick={() => openProducts(note.consignmentId)}>
-                                        Товары
-                                    </button>
-                                </td>
-                            </tr>
-                        );
-                    })}
+                    {notes.map(note => (
+                        <tr key={note.consignmentId}>
+                            <td>{note.consignmentId}</td>
+                            <td>{suppliers.find(s => s.supplierID === note.supplierId)?.supplierName || ''}</td>
+                            <td>{note.consignmentId}</td>
+                            <td>{note.date}</td>
+                            <td>{totalsByNoteId[note.consignmentId] ?? "–"}</td>
+                            <td>
+                                <button className={styles.openBtn} onClick={() => openProducts(note.consignmentId)}>
+                                    Товары
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
                     </tbody>
                 </table>
             </div>
@@ -259,40 +278,23 @@ export default function ConsignmentNotePage() {
                                 <th>Продукт</th>
                                 <th>Кол-во</th>
                                 <th>Цена</th>
-                                <th>Сумма</th>
                                 <th></th>
                             </tr>
                             </thead>
                             <tbody>
-                            {consProducts.map(p => {
-                                const product = products.find(pr => pr.productId === p.productId);
-                                const price = product ? product.price : 0;
-                                const sum = price * p.quantity;
-
-                                return (
-                                    <tr key={p.consProductId}>
-                                        <td>{p.productName}</td>
-                                        <td>{p.quantity}</td>
-                                        <td>{price.toFixed(2)}</td>
-                                        <td>{sum.toFixed(2)}</td>
-                                        <td>
-                                            <button onClick={() => deleteProduct(p.consProductId)}>✖</button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
+                            {consProducts.map(p => (
+                                <tr key={p.consProductId || `${p.productId}-${Math.random()}`}>
+                                    <td>{p.productName}</td>
+                                    <td>{p.quantity}</td>
+                                    <td>{products.find(prod => prod.productId === p.productId)?.productPrice ?? 0}</td>
+                                    <td>
+                                        <button onClick={() => deleteProduct(p.consProductId)}>✖</button>
+                                    </td>
+                                </tr>
+                            ))}
                             </tbody>
                         </table>
 
-                        {/* Итог по накладной */}
-                        <h3>
-                            Итого: {consProducts.reduce((sum, cp) => {
-                            const product = products.find(pr => pr.productId === cp.productId);
-                            return sum + (product ? product.price * cp.quantity : 0);
-                        }, 0).toFixed(2)}
-                        </h3>
-
-                        {/* Форма добавления товара */}
                         <h3>Добавить товар</h3>
                         <select
                             value={newProduct.productId}
@@ -301,7 +303,9 @@ export default function ConsignmentNotePage() {
                         >
                             <option value="">Выберите товар</option>
                             {products.map(p => (
-                                <option key={p.productId} value={p.productId}>{p.productName}</option>
+                                <option key={p.productId} value={p.productId}>
+                                    {p.productName} — Цена: {p.productPrice} — Остаток: {p.waste}
+                                </option>
                             ))}
                         </select>
 
@@ -314,6 +318,14 @@ export default function ConsignmentNotePage() {
                         />
 
                         <button className={styles.submitBtn} onClick={addProduct}>Добавить</button>
+
+                        <hr />
+
+                        <div>
+                            <strong>Итого: {currentTotal.toFixed(2)}</strong>
+                            <button className={styles.calculateBtn} onClick={calculateTotal}>Рассчитать Итого</button>
+                        </div>
+
                         <button className={styles.closeBtn} onClick={closeModal}>Закрыть</button>
                     </div>
                 </div>

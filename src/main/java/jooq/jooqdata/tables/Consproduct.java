@@ -76,7 +76,7 @@ public class Consproduct extends TableImpl<ConsproductRecord> {
     /**
      * The column <code>sales.consproduct.gross</code>.
      */
-    public final TableField<ConsproductRecord, Double> GROSS = createField(DSL.name("gross"), SQLDataType.DOUBLE.nullable(false), this, "");
+    public final TableField<ConsproductRecord, Double> GROSS = createField(DSL.name("gross"), SQLDataType.DOUBLE, this, "");
 
     /**
      * The column <code>sales.consproduct.quantity</code>.

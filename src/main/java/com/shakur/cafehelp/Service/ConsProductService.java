@@ -46,9 +46,6 @@ public class ConsProductService {
             throw new RuntimeException("Не удалось вставить ConsProduct");
         }
 
-        // После store() автоинкрементное поле должно быть заполнено
-        System.out.println("New consProductId = " + record.getConsproductid());
-
         ConsProductDTO responseDTO = new ConsProductDTO();
         responseDTO.consProductId = record.getConsproductid();
         responseDTO.consignmentId = record.getConsignmentid();
