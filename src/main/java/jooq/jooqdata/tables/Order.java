@@ -14,12 +14,13 @@ import jooqdata.tables.records.OrderRecord;
 
 import org.jooq.Condition;
 import org.jooq.Field;
-import org.jooq.Function5;
+import org.jooq.Function6;
+import org.jooq.Identity;
 import org.jooq.Name;
 import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Records;
-import org.jooq.Row5;
+import org.jooq.Row6;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -56,11 +57,6 @@ public class Order extends TableImpl<OrderRecord> {
     }
 
     /**
-     * The column <code>sales.order.orderid</code>.
-     */
-    public final TableField<OrderRecord, Integer> ORDERID = createField(DSL.name("orderid"), SQLDataType.INTEGER.nullable(false), this, "");
-
-    /**
      * The column <code>sales.order.shiftid</code>.
      */
     public final TableField<OrderRecord, Integer> SHIFTID = createField(DSL.name("shiftid"), SQLDataType.INTEGER.nullable(false), this, "");
@@ -79,6 +75,16 @@ public class Order extends TableImpl<OrderRecord> {
      * The column <code>sales.order.amount</code>.
      */
     public final TableField<OrderRecord, Double> AMOUNT = createField(DSL.name("amount"), SQLDataType.DOUBLE.nullable(false), this, "");
+
+    /**
+     * The column <code>sales.order.status</code>.
+     */
+    public final TableField<OrderRecord, Boolean> STATUS = createField(DSL.name("status"), SQLDataType.BOOLEAN.nullable(false), this, "");
+
+    /**
+     * The column <code>sales.order.orderid</code>.
+     */
+    public final TableField<OrderRecord, Integer> ORDERID = createField(DSL.name("orderid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
 
     private Order(Name alias, Table<OrderRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -112,6 +118,11 @@ public class Order extends TableImpl<OrderRecord> {
     @Override
     public Schema getSchema() {
         return aliased() ? null : Sales.SALES;
+    }
+
+    @Override
+    public Identity<OrderRecord, Integer> getIdentity() {
+        return (Identity<OrderRecord, Integer>) super.getIdentity();
     }
 
     @Override
@@ -243,18 +254,18 @@ public class Order extends TableImpl<OrderRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row5 type methods
+    // Row6 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row5<Integer, Integer, LocalDate, Integer, Double> fieldsRow() {
-        return (Row5) super.fieldsRow();
+    public Row6<Integer, LocalDate, Integer, Double, Boolean, Integer> fieldsRow() {
+        return (Row6) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function5<? super Integer, ? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function6<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -262,7 +273,7 @@ public class Order extends TableImpl<OrderRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function5<? super Integer, ? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function6<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

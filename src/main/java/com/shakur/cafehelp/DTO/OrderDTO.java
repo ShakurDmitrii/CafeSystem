@@ -3,11 +3,21 @@ package com.shakur.cafehelp.DTO;
 import java.time.LocalDate;
 
 public class OrderDTO {
-    int orderId;
-    int shiftId;
-    LocalDate date;
-    int clientId;
-    Double amount;
+    public int orderId;
+    public int shiftId;
+    public LocalDate date;
+    public int clientId;
+    public Double amount;
+    public Boolean status;
+
+
+    public Boolean getStatus() {
+        return status;
+    }
+
+    public void setStatus(Boolean status) {
+        this.status = status;
+    }
 
     public int getOrderId() {
         return orderId;
