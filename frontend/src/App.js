@@ -7,6 +7,7 @@ import './App.css';
 import SuppliersPage from './pages/SuppliersPage/SuppliersPage';
 import SupplierProductPage from "./pages/SuppliersPage/SupplierProductPage";
 import ConsignmentNotePage from "./pages/SuppliersPage/ConsignmentNotePage";
+import PrintConsignmentNotePage from "./pages/SuppliersPage/PrintConsignmentNotePage";
 
 
 function App() {
@@ -19,11 +20,13 @@ function App() {
                     <Link to="/suppliers" className="App-link">Поставщики</Link>
                     <Link to="/about" className="App-link">About</Link>
                     <Link to="/consigment" className="App-link">Создать накладную</Link>
+
                 </nav>
 
                 {/* Контент страницы */}
                 <div className="App-content">
                     <Routes>
+                        <Route path="/consignment-notes/print/:id" element={<PrintConsignmentNotePage />} />
                         <Route path="/suppliers" element={<SuppliersPage/>}/>
                         <Route path="/about" element={<AboutPage/>}/>
                         <Route path="/suppliers/:id" element={<SupplierProductPage/>}/>

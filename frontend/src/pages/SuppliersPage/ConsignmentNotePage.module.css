@@ -1,163 +1,337 @@
-/* ------------------ КОНТЕЙНЕР ------------------ */
 .container {
+    padding: 20px;
     max-width: 1200px;
     margin: 0 auto;
-    padding: 20px;
 }
 
 .title {
     font-size: 2rem;
-    font-weight: 700;
+    font-weight: bold;
+    margin-bottom: 30px;
     color: #333;
-    margin-bottom: 20px;
 }
 
-/* ------------------ ФОРМА ДОБАВЛЕНИЯ ------------------ */
 .addConsignmentForm {
-    background: #ffffff;
+    background: #f8f9fa;
+    padding: 25px;
     border-radius: 12px;
-    padding: 30px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.1);
-    max-width: 600px;
-    margin: 0 auto 40px auto;
-    transition: transform 0.3s, box-shadow 0.3s;
+    margin-bottom: 30px;
+    border: 1px solid #e9ecef;
 }
 
-.addConsignmentForm:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 32px rgba(0,0,0,0.15);
-}
-
-.addConsignmentForm form {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
+.addConsignmentForm h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: #333;
 }
 
 .inputField {
-    padding: 14px 16px;
-    border: 2px solid #e0e0e0;
-    border-radius: 10px;
-    font-size: 16px;
-    transition: border-color 0.3s, box-shadow 0.3s;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    margin-right: 10px;
+    margin-bottom: 15px;
 }
 
 .inputField:focus {
     outline: none;
     border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
 }
 
 .submitBtn {
-    padding: 14px 0;
-    font-size: 16px;
-    font-weight: 600;
-    border-radius: 10px;
-    cursor: pointer;
-    border: none;
-    transition: all 0.3s;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 10px 20px;
+    background: #28a745;
     color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
 }
 
 .submitBtn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(102,126,234,0.3);
+    background: #218838;
+    transform: translateY(-1px);
 }
 
-/* ------------------ ТАБЛИЦА ------------------ */
 .tableContainer {
     overflow-x: auto;
+    margin-top: 30px;
 }
 
 .consignmentTable {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 20px;
-}
-
-.consignmentTable th,
-.consignmentTable td {
-    padding: 12px 15px;
-    border: 1px solid #ddd;
+    margin-bottom: 20px;
 }
 
 .consignmentTable th {
-    background-color: #f5f5f5;
+    background: #f8f9fa;
+    padding: 15px;
+    text-align: left;
     font-weight: 600;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.consignmentTable td {
+    padding: 15px;
+    border-bottom: 1px solid #e9ecef;
+    color: #555;
+}
+
+.consignmentTable tr:hover {
+    background: #f8f9fa;
+}
+
+.actionButtons {
+    display: flex;
+    gap: 10px;
 }
 
 .openBtn {
-    padding: 8px 12px;
-    border: none;
-    background-color: #667eea;
+    padding: 8px 16px;
+    background: #17a2b8;
     color: white;
+    border: none;
     border-radius: 6px;
     cursor: pointer;
-    transition: background 0.3s;
+    font-size: 14px;
+    transition: all 0.2s;
 }
 
 .openBtn:hover {
-    background-color: #556cd6;
+    background: #138496;
 }
 
-/* ------------------ EMPTY STATE ------------------ */
-.emptyState {
-    text-align: center;
-    color: #555;
-    padding: 40px 0;
+.printBtn {
+    padding: 8px 16px;
+    background: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
 }
 
-/* ------------------ МОДАЛКА ------------------ */
+.printBtn:hover {
+    background: #5a6268;
+}
+
+/* Модальное окно */
 .modalOverlay {
     position: fixed;
     top: 0;
     left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0,0,0,0.45);
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 1000;
+    padding: 20px;
 }
 
 .modal {
-    background: #fff;
-    padding: 30px;
+    background: white;
     border-radius: 12px;
-    width: 600px;
+    width: 100%;
+    max-width: 800px;
     max-height: 90vh;
     overflow-y: auto;
-    box-shadow: 0 14px 40px rgba(0,0,0,0.2);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    animation: modalFadeIn 0.3s ease;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modalHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 30px;
+    border-bottom: 1px solid #e9ecef;
+    background: #f8f9fa;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.modalHeader h2 {
+    margin: 0;
+    color: #333;
+}
+
+.closeModalBtn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #6c757d;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+.closeModalBtn:hover {
+    background: #e9ecef;
+}
+
+.modalContent {
+    padding: 30px;
+}
+
+.addProductSection {
+    margin-top: 30px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.addProductSection h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.addProductForm {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.addBtn {
+    padding: 10px 20px;
+    background: #28a745;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.addBtn:hover {
+    background: #218838;
+}
+
+.deleteSmallBtn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.deleteSmallBtn:hover {
+    background: #c82333;
+}
+
+.totalSection {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px solid #e9ecef;
+}
+
+.totalInfo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.totalInfo strong {
+    font-size: 1.2rem;
+    color: #28a745;
+}
+
+.calculateBtn {
+    padding: 10px 20px;
+    background: #ffc107;
+    color: #212529;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.calculateBtn:hover {
+    background: #e0a800;
+}
+
+.modalActions {
+    display: flex;
+    gap: 15px;
+    justify-content: flex-end;
 }
 
 .closeBtn {
-    margin-top: 20px;
-    width: 100%;
-    padding: 12px 0;
-    background: #e74c3c;
-    border: none;
-    border-radius: 10px;
+    padding: 10px 20px;
+    background: #6c757d;
     color: white;
+    border: none;
+    border-radius: 6px;
     cursor: pointer;
-    font-weight: 600;
-    transition: background 0.3s;
+    font-weight: 500;
+    transition: all 0.2s;
 }
 
 .closeBtn:hover {
-    background: #c0392b;
+    background: #5a6268;
 }
 
-.deleteProductBtn {
-    padding: 6px 10px;
-    background: #e74c3c;
-    border: none;
-    color: white;
-    border-radius: 6px;
-    cursor: pointer;
+.emptyState {
+    text-align: center;
+    padding: 50px;
+    font-size: 1.2rem;
+    color: #6c757d;
 }
 
-.deleteProductBtn:hover {
-    background: #c0392b;
+/* Адаптивность */
+@media (max-width: 768px) {
+    .modal {
+        margin: 10px;
+        max-width: calc(100% - 20px);
+    }
+
+    .modalContent {
+        padding: 20px;
+    }
+
+    .actionButtons {
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .addProductForm {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .addProductForm .inputField {
+        margin-right: 0;
+        margin-bottom: 10px;
+    }
 }

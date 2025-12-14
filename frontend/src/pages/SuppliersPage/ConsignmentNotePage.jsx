@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import styles from './ConsignmentNotePage.module.css';
+import { useNavigate } from "react-router-dom"; // Добавляем
 
 export default function ConsignmentNotePage() {
     const [notes, setNotes] = useState([]);
@@ -16,7 +17,9 @@ export default function ConsignmentNotePage() {
     const [formData, setFormData] = useState({ supplierId: '', date: '' });
 
     const [currentTotal, setCurrentTotal] = useState(0);
-    const [totalsByNoteId, setTotalsByNoteId] = useState({}); // Хранение итогов по каждой накладной
+    const [totalsByNoteId, setTotalsByNoteId] = useState({});
+
+    const navigate = useNavigate(); // Добавляем useNavigate
 
     // -------------------- ЗАГРУЗКА НАКЛАДНЫХ И ПОСТАВЩИКОВ --------------------
     useEffect(() => {
@@ -93,7 +96,7 @@ export default function ConsignmentNotePage() {
             });
 
             setConsProducts(consProductsWithNames);
-            setCurrentTotal(totalsByNoteId[noteId] ?? 0); // Если ранее считали, ставим старый total
+            setCurrentTotal(totalsByNoteId[noteId] ?? 0);
 
             // Инициализация формы добавления
             setNewProduct({ consignmentId: noteId, productId: "", quantity: "" });
@@ -197,6 +200,11 @@ export default function ConsignmentNotePage() {
         }
     }
 
+    // -------------------- ПЕЧАТНАЯ ФОРМА --------------------
+    const handlePrintForm = (noteId) => {
+        navigate(`/consignment-notes/print/${noteId}`);
+    };
+
     if (loading) return <div className={styles.emptyState}>Загрузка...</div>;
     if (error) return <div className={styles.emptyState}>{error}</div>;
 
@@ -244,7 +252,7 @@ export default function ConsignmentNotePage() {
                         <th>Номер</th>
                         <th>Дата</th>
                         <th>Итого</th>
-                        <th></th>
+                        <th>Действия</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -256,9 +264,17 @@ export default function ConsignmentNotePage() {
                             <td>{note.date}</td>
                             <td>{totalsByNoteId[note.consignmentId] ?? "–"}</td>
                             <td>
-                                <button className={styles.openBtn} onClick={() => openProducts(note.consignmentId)}>
-                                    Товары
-                                </button>
+                                <div className={styles.actionButtons}>
+                                    <button className={styles.openBtn} onClick={() => openProducts(note.consignmentId)}>
+                                        Товары
+                                    </button>
+                                    <button
+                                        className={styles.printBtn}
+                                        onClick={() => handlePrintForm(note.consignmentId)}
+                                    >
+                                        Печатная форма
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     ))}
@@ -270,63 +286,99 @@ export default function ConsignmentNotePage() {
             {selectedNoteId && (
                 <div className={styles.modalOverlay}>
                     <div className={styles.modal}>
-                        <h2>Товары накладной #{selectedNoteId}</h2>
-
-                        <table className={styles.consignmentTable}>
-                            <thead>
-                            <tr>
-                                <th>Продукт</th>
-                                <th>Кол-во</th>
-                                <th>Цена</th>
-                                <th></th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {consProducts.map(p => (
-                                <tr key={p.consProductId || `${p.productId}-${Math.random()}`}>
-                                    <td>{p.productName}</td>
-                                    <td>{p.quantity}</td>
-                                    <td>{products.find(prod => prod.productId === p.productId)?.productPrice ?? 0}</td>
-                                    <td>
-                                        <button onClick={() => deleteProduct(p.consProductId)}>✖</button>
-                                    </td>
-                                </tr>
-                            ))}
-                            </tbody>
-                        </table>
-
-                        <h3>Добавить товар</h3>
-                        <select
-                            value={newProduct.productId}
-                            onChange={e => setNewProduct({ ...newProduct, productId: e.target.value })}
-                            className={styles.inputField}
-                        >
-                            <option value="">Выберите товар</option>
-                            {products.map(p => (
-                                <option key={p.productId} value={p.productId}>
-                                    {p.productName} — Цена: {p.productPrice} — Остаток: {p.waste}
-                                </option>
-                            ))}
-                        </select>
-
-                        <input
-                            type="number"
-                            placeholder="Количество"
-                            className={styles.inputField}
-                            value={newProduct.quantity}
-                            onChange={e => setNewProduct({ ...newProduct, quantity: e.target.value })}
-                        />
-
-                        <button className={styles.submitBtn} onClick={addProduct}>Добавить</button>
-
-                        <hr />
-
-                        <div>
-                            <strong>Итого: {currentTotal.toFixed(2)}</strong>
-                            <button className={styles.calculateBtn} onClick={calculateTotal}>Рассчитать Итого</button>
+                        <div className={styles.modalHeader}>
+                            <h2>Товары накладной #{selectedNoteId}</h2>
+                            <button className={styles.closeModalBtn} onClick={closeModal}>×</button>
                         </div>
 
-                        <button className={styles.closeBtn} onClick={closeModal}>Закрыть</button>
+                        <div className={styles.modalContent}>
+                            <table className={styles.consignmentTable}>
+                                <thead>
+                                <tr>
+                                    <th>Продукт</th>
+                                    <th>Кол-во</th>
+                                    <th>Цена</th>
+                                    <th>Сумма</th>
+                                    <th></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {consProducts.map(p => {
+                                    const product = products.find(prod => prod.productId === p.productId);
+                                    const price = product?.productPrice ?? 0;
+                                    const sum = p.quantity * price;
+
+                                    return (
+                                        <tr key={p.consProductId || `${p.productId}-${Math.random()}`}>
+                                            <td>{p.productName}</td>
+                                            <td>{p.quantity}</td>
+                                            <td>{price.toFixed(2)}</td>
+                                            <td>{sum.toFixed(2)}</td>
+                                            <td>
+                                                <button
+                                                    className={styles.deleteSmallBtn}
+                                                    onClick={() => deleteProduct(p.consProductId)}
+                                                >
+                                                    ✖
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                </tbody>
+                            </table>
+
+                            <div className={styles.addProductSection}>
+                                <h3>Добавить товар</h3>
+                                <div className={styles.addProductForm}>
+                                    <select
+                                        value={newProduct.productId}
+                                        onChange={e => setNewProduct({ ...newProduct, productId: e.target.value })}
+                                        className={styles.inputField}
+                                    >
+                                        <option value="">Выберите товар</option>
+                                        {products.map(p => (
+                                            <option key={p.productId} value={p.productId}>
+                                                {p.productName} — Цена: {p.productPrice} — Остаток: {p.waste}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    <input
+                                        type="number"
+                                        placeholder="Количество"
+                                        className={styles.inputField}
+                                        value={newProduct.quantity}
+                                        onChange={e => setNewProduct({ ...newProduct, quantity: e.target.value })}
+                                        step="0.01"
+                                        min="0"
+                                    />
+
+                                    <button className={styles.addBtn} onClick={addProduct}>Добавить</button>
+                                </div>
+                            </div>
+
+                            <div className={styles.totalSection}>
+                                <div className={styles.totalInfo}>
+                                    <strong>Итого: {currentTotal.toFixed(2)}</strong>
+                                    <button className={styles.calculateBtn} onClick={calculateTotal}>
+                                        Рассчитать Итого
+                                    </button>
+                                </div>
+
+                                <div className={styles.modalActions}>
+                                    <button
+                                        className={styles.printBtn}
+                                        onClick={() => handlePrintForm(selectedNoteId)}
+                                    >
+                                        📄 Печатная форма
+                                    </button>
+                                    <button className={styles.closeBtn} onClick={closeModal}>
+                                        Закрыть
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

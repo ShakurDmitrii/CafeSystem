@@ -1,0 +1,255 @@
+/* src/pages/PrintConsignmentNotePage/PrintConsignmentNotePage.module.css */
+.container {
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.title {
+    font-size: 2rem;
+    color: #333;
+    margin: 0;
+}
+
+.headerActions {
+    display: flex;
+    gap: 15px;
+}
+
+.backBtn {
+    padding: 10px 20px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.backBtn:hover {
+    background: #5a6fd8;
+    transform: translateY(-1px);
+}
+
+.deleteBtn {
+    padding: 10px 20px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.deleteBtn:hover {
+    background: #c82333;
+    transform: translateY(-1px);
+}
+
+.noteInfo {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    margin-bottom: 40px;
+}
+
+@media (max-width: 768px) {
+    .noteInfo {
+        grid-template-columns: 1fr;
+    }
+}
+
+.infoCard, .supplierInfo {
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.infoCard h3, .supplierInfo h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.infoCard p, .supplierInfo p {
+    margin: 10px 0;
+    color: #555;
+}
+
+.totalAmount {
+    font-size: 1.5rem;
+    color: #28a745;
+    font-weight: bold;
+}
+
+.productsSection {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.productsSection h2 {
+    margin-top: 0;
+    margin-bottom: 25px;
+    color: #333;
+}
+
+.productsTableContainer {
+    overflow-x: auto;
+    margin-bottom: 40px;
+}
+
+.productsTable {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+}
+
+.productsTable th {
+    background: #f8f9fa;
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.productsTable td {
+    padding: 15px;
+    border-bottom: 1px solid #e9ecef;
+    color: #555;
+}
+
+.productsTable tr:hover {
+    background: #f8f9fa;
+}
+
+.deleteProductBtn {
+    padding: 6px 12px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.deleteProductBtn:hover {
+    background: #c82333;
+}
+
+.emptyProducts {
+    text-align: center;
+    padding: 40px;
+    color: #6c757d;
+    font-style: italic;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+}
+
+.addProductForm {
+    background: #f8f9fa;
+    padding: 25px;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+}
+
+.addProductForm h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.formRow {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+.selectField {
+    flex: 2;
+    min-width: 200px;
+    padding: 12px;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    font-size: 14px;
+    background: white;
+}
+
+.selectField:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.numberField {
+    flex: 1;
+    min-width: 150px;
+    padding: 12px;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.numberField:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.addBtn {
+    flex: 0 0 auto;
+    padding: 12px 24px;
+    background: #28a745;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.addBtn:hover {
+    background: #218838;
+    transform: translateY(-1px);
+}
+
+.loading, .error {
+    text-align: center;
+    padding: 100px;
+    font-size: 1.2rem;
+    color: #555;
+}
+
+.error {
+    color: #dc3545;
+}
+
+.printBtn {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    margin-left: 8px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.printBtn:hover {
+    background-color: #45a049;
+}

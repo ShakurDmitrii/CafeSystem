@@ -13,6 +13,14 @@ const SuppliersPage = () => {
         communication: ''
     });
 
+    // Состояния для модалки редактирования
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [editingSupplier, setEditingSupplier] = useState(null);
+    const [editFormData, setEditFormData] = useState({
+        name: '',
+        communication: ''
+    });
+
     const navigate = useNavigate();
 
     // Получить всех поставщиков
@@ -64,6 +72,40 @@ const SuppliersPage = () => {
         }
     };
 
+    // Обновить поставщика
+    const updateSupplier = async (id, supplierData) => {
+        try {
+            const requestData = {
+                supplierName: supplierData.name,
+                communication: supplierData.communication
+            };
+
+            const response = await fetch(`http://localhost:8080/api/supplier/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestData)
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Backend error: ${response.status} - ${text}`);
+            }
+
+            const data = await response.json();
+
+            // Обновляем поставщика в списке
+            setSuppliers(prev => prev.map(s =>
+                (s.supplierID === id || s.id === id) ? data : s
+            ));
+
+            return true;
+        } catch (err) {
+            console.error(err);
+            setError('Failed to update supplier: ' + err.message);
+            return false;
+        }
+    };
+
     // Удалить поставщика
     const deleteSupplier = async (id) => {
         if (!window.confirm('Are you sure you want to delete this supplier?')) return;
@@ -86,12 +128,56 @@ const SuppliersPage = () => {
         setFormData({ ...formData, [name]: value });
     };
 
+    // Обработчик изменения полей формы редактирования
+    const handleEditInputChange = (e) => {
+        const { name, value } = e.target;
+        setEditFormData({ ...editFormData, [name]: value });
+    };
+
+    // Открыть модалку редактирования
+    const openEditModal = (supplier) => {
+        setEditingSupplier(supplier);
+        setEditFormData({
+            name: supplier.name || supplier.supplierName || '',
+            communication: supplier.communication || ''
+        });
+        setEditModalOpen(true);
+    };
+
+    // Закрыть модалку редактирования
+    const closeEditModal = () => {
+        setEditModalOpen(false);
+        setEditingSupplier(null);
+        setEditFormData({ name: '', communication: '' });
+    };
+
+    // Сохранить изменения
+    const handleEditSubmit = async (e) => {
+        e.preventDefault();
+        if (!editFormData.name.trim()) {
+            alert('Please fill supplier name');
+            return;
+        }
+
+        const supplierId = editingSupplier?.supplierID || editingSupplier?.id;
+        if (!supplierId) {
+            alert('Cannot update: Supplier ID not found');
+            return;
+        }
+
+        const success = await updateSupplier(supplierId, editFormData);
+        if (success) {
+            alert('Supplier updated successfully!');
+            closeEditModal();
+        }
+    };
+
     // Загрузить данные при монтировании
     useEffect(() => {
         fetchSuppliers();
     }, []);
 
-    // Обработчик формы
+    // Обработчик формы добавления
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!formData.name.trim()) {
@@ -106,7 +192,7 @@ const SuppliersPage = () => {
         }
     };
 
-    // Очистить форму
+    // Очистить форму добавления
     const clearForm = () => setFormData({ name: '', communication: '' });
 
     // Фильтрация
@@ -114,8 +200,10 @@ const SuppliersPage = () => {
         ? suppliers.filter(supplier => {
             if (!supplier) return false;
             const searchLower = search.toLowerCase();
-            const nameMatch = supplier.name?.toLowerCase().includes(searchLower);
-            const idMatch = supplier.supplierID?.toString().includes(search);
+            const nameMatch = supplier.name?.toLowerCase().includes(searchLower) ||
+                supplier.supplierName?.toLowerCase().includes(searchLower);
+            const idMatch = supplier.supplierID?.toString().includes(search) ||
+                supplier.id?.toString().includes(search);
             const communicationMatch = supplier.communication?.toLowerCase().includes(searchLower);
             return nameMatch || communicationMatch || idMatch;
         })
@@ -134,6 +222,72 @@ const SuppliersPage = () => {
 
     return (
         <div className={styles.container}>
+            {/* Модальное окно редактирования */}
+            {editModalOpen && (
+                <div className={styles.modalOverlay} onClick={closeEditModal}>
+                    <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+                        <div className={styles.modalHeader}>
+                            <h3>✏️ Edit Supplier #{editingSupplier?.supplierID || editingSupplier?.id}</h3>
+                            <button onClick={closeEditModal} className={styles.closeModal} aria-label="Close">
+                                ×
+                            </button>
+                        </div>
+
+                        <div className={styles.modalContent}>
+                            <form onSubmit={handleEditSubmit}>
+                                <div className={styles.formGroup}>
+                                    <label htmlFor="edit-name">
+                                        Supplier Name *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="edit-name"
+                                        name="name"
+                                        placeholder="Enter company name"
+                                        value={editFormData.name}
+                                        onChange={handleEditInputChange}
+                                        required
+                                        className={styles.modalInput}
+                                        autoFocus
+                                    />
+                                </div>
+
+                                <div className={styles.formGroup}>
+                                    <label htmlFor="edit-communication">
+                                        Contact Information
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="edit-communication"
+                                        name="communication"
+                                        placeholder="Email or phone number"
+                                        value={editFormData.communication}
+                                        onChange={handleEditInputChange}
+                                        className={styles.modalInput}
+                                    />
+                                </div>
+
+                                <div className={styles.modalButtons}>
+                                    <button
+                                        type="button"
+                                        onClick={closeEditModal}
+                                        className={`${styles.submitBtn} ${styles.secondary}`}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className={`${styles.submitBtn} ${styles.primary}`}
+                                    >
+                                        Save Changes
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className={styles.header}>
                 <h1 className={styles.title}>📦 Supplier Management</h1>
                 <div className={styles.stats}>Total: {totalSuppliers}</div>
@@ -226,8 +380,18 @@ const SuppliersPage = () => {
                                     </div>
 
                                     <div className={styles.actionButtons}>
-                                        <button className={styles.editBtn} onClick={() => alert(`Edit ${displayName}`)}>Edit</button>
-                                        <button className={styles.deleteBtn} onClick={() => deleteSupplier(deleteId)}>Delete</button>
+                                        <button
+                                            className={styles.editBtn}
+                                            onClick={() => openEditModal(supplier)}
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            className={styles.deleteBtn}
+                                            onClick={() => deleteSupplier(deleteId)}
+                                        >
+                                            Delete
+                                        </button>
                                     </div>
                                 </div>
                             );
