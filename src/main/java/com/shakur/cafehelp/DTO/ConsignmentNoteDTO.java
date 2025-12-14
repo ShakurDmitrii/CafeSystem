@@ -3,13 +3,14 @@ package com.shakur.cafehelp.DTO;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class ConsignmentNoteDTO {
     public int consignmentId;
     public int supplierId;
     public Double amount;
     public LocalDate date;
-
+    public List<ConsProductDTO> items;
 
     public int getConsignmentId() {
         return consignmentId;

@@ -1,16 +1,28 @@
 package com.shakur.cafehelp.DTO;
 
+import java.util.List;
+
 public class ConsProductDTO {
     public int consignmentId;
     public int productId;
     public int consProductId;
     public Double GROSS;
     public Double quantity;
+    public String productName;
+
 
 
 
     public int getConsignmentId() {
         return consignmentId;
+    }
+
+    public String getProductName() {
+        return productName;
+    }
+
+    public void setProductName(String productName) {
+        this.productName = productName;
     }
 
     public int getConsProductId() {
