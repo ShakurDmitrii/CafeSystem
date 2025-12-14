@@ -1,0 +1,138 @@
+.page {
+    height: 100vh;
+    background: #f3f4f6;
+    font-family: "Segoe UI", sans-serif;
+}
+
+/* HEADER */
+.header {
+    height: 60px;
+    background: #111827;
+    color: #fff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+}
+
+.brand {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.shift {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.shiftOpen {
+    color: #4ade80;
+    font-weight: 600;
+}
+
+/* BODY */
+.body {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    height: calc(100vh - 60px);
+}
+
+/* ORDER PANEL */
+.orderPanel {
+    background: #fff;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.items {
+    flex: 1;
+    margin-top: 10px;
+}
+
+.item {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    padding: 10px 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.name {
+    font-weight: 600;
+}
+
+.sum {
+    text-align: right;
+}
+
+.total {
+    display: flex;
+    justify-content: space-between;
+    font-size: 22px;
+    font-weight: 700;
+    margin: 20px 0;
+}
+
+.actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr 2fr;
+    gap: 10px;
+}
+
+/* ORDERS */
+.ordersPanel {
+    background: #f9fafb;
+    padding: 20px;
+    border-left: 1px solid #e5e7eb;
+}
+
+.orderCard {
+    background: #fff;
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.status {
+    font-weight: 700;
+}
+
+.ready {
+    border-left: 5px solid #16a34a;
+}
+
+.cooking {
+    border-left: 5px solid #eab308;
+}
+
+/* BUTTONS */
+.btn {
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.primary {
+    background: #16a34a;
+    color: #fff;
+}
+
+.secondary {
+    background: #0284c7;
+    color: #fff;
+}
+
+.danger {
+    background: #dc2626;
+    color: #fff;
+}
+
+.edit {
+    background: #e5e7eb;
+}
