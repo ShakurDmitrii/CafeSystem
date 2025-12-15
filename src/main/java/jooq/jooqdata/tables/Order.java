@@ -14,13 +14,13 @@ import jooqdata.tables.records.OrderRecord;
 
 import org.jooq.Condition;
 import org.jooq.Field;
-import org.jooq.Function6;
+import org.jooq.Function7;
 import org.jooq.Identity;
 import org.jooq.Name;
 import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Records;
-import org.jooq.Row6;
+import org.jooq.Row7;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -85,6 +85,11 @@ public class Order extends TableImpl<OrderRecord> {
      * The column <code>sales.order.orderid</code>.
      */
     public final TableField<OrderRecord, Integer> ORDERID = createField(DSL.name("orderid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
+
+    /**
+     * The column <code>sales.order.type</code>.
+     */
+    public final TableField<OrderRecord, Boolean> TYPE = createField(DSL.name("type"), SQLDataType.BOOLEAN.nullable(false), this, "");
 
     private Order(Name alias, Table<OrderRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -254,18 +259,18 @@ public class Order extends TableImpl<OrderRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row6 type methods
+    // Row7 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row6<Integer, LocalDate, Integer, Double, Boolean, Integer> fieldsRow() {
-        return (Row6) super.fieldsRow();
+    public Row7<Integer, LocalDate, Integer, Double, Boolean, Integer, Boolean> fieldsRow() {
+        return (Row7) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function6<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function7<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? super Boolean, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -273,7 +278,7 @@ public class Order extends TableImpl<OrderRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function6<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function7<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? super Boolean, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

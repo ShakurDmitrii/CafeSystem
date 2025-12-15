@@ -9,7 +9,16 @@ public class OrderDTO {
     public int clientId;
     public Double amount;
     public Boolean status;
+    public Boolean type;
 
+
+    public Boolean getType() {
+        return type;
+    }
+
+    public void setType(Boolean type) {
+        this.type = type;
+    }
 
     public Boolean getStatus() {
         return status;

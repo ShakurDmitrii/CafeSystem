@@ -27,6 +27,7 @@ public class OrderService {
         record.setShiftid(order.getShiftId());
         record.setAmount(order.getAmount());
         record.setStatus(order.getStatus()); // если есть
+        record.setType(order.getType());
 
         // Сохраняем
         record.store();
@@ -49,6 +50,7 @@ public class OrderService {
                     order.status = record.get(ORDER.STATUS);
                     order.amount = record.get(ORDER.AMOUNT);
                     order.shiftId = record.get(ORDER.SHIFTID);
+                    order.type = record.get(ORDER.TYPE);
                     return order;
                 });
     }
@@ -65,6 +67,7 @@ public class OrderService {
                     order.setStatus(record.get(ORDER.STATUS));
                     order.setAmount(record.get(ORDER.AMOUNT));
                     order.setShiftId(record.get(ORDER.SHIFTID));
+                    order.setType(record.get(ORDER.TYPE));
                     return order;
                 });
     }
@@ -79,6 +82,7 @@ public class OrderService {
                     order.setStatus(record.get(ORDER.STATUS));
                     order.setAmount(record.get(ORDER.AMOUNT));
                     order.setShiftId(record.get(ORDER.SHIFTID));
+                    order.setType(record.get(ORDER.TYPE));
                     return order;
                 });
     }
