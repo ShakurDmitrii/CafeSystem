@@ -10,15 +10,20 @@ import java.util.function.Function;
 
 import jooqdata.Keys;
 import jooqdata.Sales;
+import jooqdata.tables.Orderdish.OrderdishPath;
 import jooqdata.tables.records.OrderRecord;
 
 import org.jooq.Condition;
 import org.jooq.Field;
+import org.jooq.ForeignKey;
 import org.jooq.Function7;
 import org.jooq.Identity;
+import org.jooq.InverseForeignKey;
 import org.jooq.Name;
+import org.jooq.Path;
 import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
+import org.jooq.Record;
 import org.jooq.Records;
 import org.jooq.Row7;
 import org.jooq.SQL;
@@ -120,6 +125,39 @@ public class Order extends TableImpl<OrderRecord> {
         this(DSL.name("order"), null);
     }
 
+    public <O extends Record> Order(Table<O> path, ForeignKey<O, OrderRecord> childPath, InverseForeignKey<O, OrderRecord> parentPath) {
+        super(path, childPath, parentPath, ORDER);
+    }
+
+    /**
+     * A subtype implementing {@link Path} for simplified path-based joins.
+     */
+    public static class OrderPath extends Order implements Path<OrderRecord> {
+
+        private static final long serialVersionUID = 1L;
+        public <O extends Record> OrderPath(Table<O> path, ForeignKey<O, OrderRecord> childPath, InverseForeignKey<O, OrderRecord> parentPath) {
+            super(path, childPath, parentPath);
+        }
+        private OrderPath(Name alias, Table<OrderRecord> aliased) {
+            super(alias, aliased);
+        }
+
+        @Override
+        public OrderPath as(String alias) {
+            return new OrderPath(DSL.name(alias), this);
+        }
+
+        @Override
+        public OrderPath as(Name alias) {
+            return new OrderPath(alias, this);
+        }
+
+        @Override
+        public OrderPath as(Table<?> alias) {
+            return new OrderPath(alias.getQualifiedName(), this);
+        }
+    }
+
     @Override
     public Schema getSchema() {
         return aliased() ? null : Sales.SALES;
@@ -133,6 +171,19 @@ public class Order extends TableImpl<OrderRecord> {
     @Override
     public UniqueKey<OrderRecord> getPrimaryKey() {
         return Keys.ORDER_PK;
+    }
+
+    private transient OrderdishPath _orderdish;
+
+    /**
+     * Get the implicit to-many join path to the <code>sales.orderdish</code>
+     * table
+     */
+    public OrderdishPath orderdish() {
+        if (_orderdish == null)
+            _orderdish = new OrderdishPath(this, null, Keys.ORDERDISH__ORDERDISH_ORDER_FK.getInverseKey());
+
+        return _orderdish;
     }
 
     @Override

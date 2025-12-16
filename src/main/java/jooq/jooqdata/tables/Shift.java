@@ -7,18 +7,21 @@ package jooqdata.tables;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import java.util.function.Function;
 
 import jooqdata.Keys;
 import jooqdata.Sales;
-import jooqdata.tables.Shiftperson.ShiftpersonPath;
+import jooqdata.tables.Person.PersonPath;
 import jooqdata.tables.records.ShiftRecord;
 
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function6;
+import org.jooq.Function8;
+import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -26,7 +29,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row6;
+import org.jooq.Row8;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -63,11 +66,6 @@ public class Shift extends TableImpl<ShiftRecord> {
     }
 
     /**
-     * The column <code>sales.shift.shiftid</code>.
-     */
-    public final TableField<ShiftRecord, Integer> SHIFTID = createField(DSL.name("shiftid"), SQLDataType.INTEGER.nullable(false), this, "");
-
-    /**
      * The column <code>sales.shift.data</code>.
      */
     public final TableField<ShiftRecord, LocalDate> DATA = createField(DSL.name("data"), SQLDataType.LOCALDATE.nullable(false), this, "");
@@ -91,6 +89,21 @@ public class Shift extends TableImpl<ShiftRecord> {
      * The column <code>sales.shift.expenses</code>.
      */
     public final TableField<ShiftRecord, BigDecimal> EXPENSES = createField(DSL.name("expenses"), SQLDataType.NUMERIC, this, "");
+
+    /**
+     * The column <code>sales.shift.income</code>.
+     */
+    public final TableField<ShiftRecord, Double> INCOME = createField(DSL.name("income"), SQLDataType.DOUBLE, this, "");
+
+    /**
+     * The column <code>sales.shift.personcode</code>.
+     */
+    public final TableField<ShiftRecord, Integer> PERSONCODE = createField(DSL.name("personcode"), SQLDataType.INTEGER, this, "");
+
+    /**
+     * The column <code>sales.shift.id</code>.
+     */
+    public final TableField<ShiftRecord, Integer> ID = createField(DSL.name("id"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
 
     private Shift(Name alias, Table<ShiftRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -160,21 +173,35 @@ public class Shift extends TableImpl<ShiftRecord> {
     }
 
     @Override
+    public Identity<ShiftRecord, Integer> getIdentity() {
+        return (Identity<ShiftRecord, Integer>) super.getIdentity();
+    }
+
+    @Override
     public UniqueKey<ShiftRecord> getPrimaryKey() {
         return Keys.SHIFT_PK;
     }
 
-    private transient ShiftpersonPath _shiftperson;
+    @Override
+    public List<UniqueKey<ShiftRecord>> getUniqueKeys() {
+        return Arrays.asList(Keys.SHIFT_UNIQUE);
+    }
+
+    @Override
+    public List<ForeignKey<ShiftRecord, ?>> getReferences() {
+        return Arrays.asList(Keys.SHIFT__SHIFT_PERSON_FK);
+    }
+
+    private transient PersonPath _person;
 
     /**
-     * Get the implicit to-many join path to the <code>sales.shiftperson</code>
-     * table
+     * Get the implicit join path to the <code>sales.person</code> table.
      */
-    public ShiftpersonPath shiftperson() {
-        if (_shiftperson == null)
-            _shiftperson = new ShiftpersonPath(this, null, Keys.SHIFTPERSON__SHIFTPERSON_SHIFT_FK.getInverseKey());
+    public PersonPath person() {
+        if (_person == null)
+            _person = new PersonPath(this, Keys.SHIFT__SHIFT_PERSON_FK, null);
 
-        return _shiftperson;
+        return _person;
     }
 
     @Override
@@ -301,18 +328,18 @@ public class Shift extends TableImpl<ShiftRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row6 type methods
+    // Row8 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row6<Integer, LocalDate, LocalTime, LocalTime, BigDecimal, BigDecimal> fieldsRow() {
-        return (Row6) super.fieldsRow();
+    public Row8<LocalDate, LocalTime, LocalTime, BigDecimal, BigDecimal, Double, Integer, Integer> fieldsRow() {
+        return (Row8) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function6<? super Integer, ? super LocalDate, ? super LocalTime, ? super LocalTime, ? super BigDecimal, ? super BigDecimal, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function8<? super LocalDate, ? super LocalTime, ? super LocalTime, ? super BigDecimal, ? super BigDecimal, ? super Double, ? super Integer, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -320,7 +347,7 @@ public class Shift extends TableImpl<ShiftRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function6<? super Integer, ? super LocalDate, ? super LocalTime, ? super LocalTime, ? super BigDecimal, ? super BigDecimal, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function8<? super LocalDate, ? super LocalTime, ? super LocalTime, ? super BigDecimal, ? super BigDecimal, ? super Double, ? super Integer, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

@@ -10,6 +10,7 @@ import java.util.function.Function;
 
 import jooqdata.Keys;
 import jooqdata.Sales;
+import jooqdata.tables.Shift.ShiftPath;
 import jooqdata.tables.Shiftperson.ShiftpersonPath;
 import jooqdata.tables.records.PersonRecord;
 
@@ -155,6 +156,18 @@ public class Person extends TableImpl<PersonRecord> {
     @Override
     public UniqueKey<PersonRecord> getPrimaryKey() {
         return Keys.PERSON_PK;
+    }
+
+    private transient ShiftPath _shift;
+
+    /**
+     * Get the implicit to-many join path to the <code>sales.shift</code> table
+     */
+    public ShiftPath shift() {
+        if (_shift == null)
+            _shift = new ShiftPath(this, null, Keys.SHIFT__SHIFT_PERSON_FK.getInverseKey());
+
+        return _shift;
     }
 
     private transient ShiftpersonPath _shiftperson;

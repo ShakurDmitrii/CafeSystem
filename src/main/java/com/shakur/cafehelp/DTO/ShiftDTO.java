@@ -10,10 +10,27 @@ public class ShiftDTO {
     public LocalTime startTime;
     public LocalTime endTime;
     public BigDecimal profit;
+    public Double income;
     public BigDecimal expenses;
     public int personCode;
 
-   public int getId(){
+    public int getShiftId() {
+        return shiftId;
+    }
+
+    public void setShiftId(int shiftId) {
+        this.shiftId = shiftId;
+    }
+
+    public Double getIncome() {
+        return income;
+    }
+
+    public void setIncome(Double income) {
+        this.income = income;
+    }
+
+    public int getId(){
        return shiftId;
    }
    public void setId(int id){

@@ -7,6 +7,7 @@ public class DishDTO {
     public Double firstCost;
     public Double price;
     public int techProduct;
+    public int qty;
 
     public int getTechProduct() {
         return techProduct;

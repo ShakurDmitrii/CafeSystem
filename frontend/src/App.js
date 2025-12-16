@@ -9,6 +9,8 @@ import SupplierProductPage from "./pages/SuppliersPage/SupplierProductPage";
 import ConsignmentNotePage from "./pages/SuppliersPage/ConsignmentNotePage";
 import PrintConsignmentNotePage from "./pages/SuppliersPage/PrintConsignmentNotePage";
 import CashierPage from "./pages/SuppliersPage/CashierPage";
+import PersonPage from "./pages/SuppliersPage/PersonPage";
+import DishPage from "./pages/SuppliersPage/DishPage";
 
 
 function App() {
@@ -22,6 +24,8 @@ function App() {
                     <Link to="/about" className="App-link">About</Link>
                     <Link to="/consigment" className="App-link">Создать накладную</Link>
                     <Link to="/cashier" className="App-link">Касса</Link>
+                    <Link to="/person" className="App-link">Персонал</Link>
+                    <Link to="/dish" className="App-link">Меню</Link>
 
                 </nav>
 
@@ -34,6 +38,8 @@ function App() {
                         <Route path="/suppliers/:id" element={<SupplierProductPage/>}/>
                         <Route path="/consigment" element={<ConsignmentNotePage/>}/>
                         <Route path="/cashier" element={<CashierPage />} />
+                        <Route path="/person" element={<PersonPage/>}/>
+                        <Route path="/dish" element={<DishPage/>}/>
                     </Routes>
                 </div>
             </div>

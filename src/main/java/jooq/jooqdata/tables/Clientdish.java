@@ -12,7 +12,6 @@ import java.util.function.Function;
 import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Client.ClientPath;
-import jooqdata.tables.Dish.DishPath;
 import jooqdata.tables.records.ClientdishRecord;
 
 import org.jooq.Condition;
@@ -151,19 +150,7 @@ public class Clientdish extends TableImpl<ClientdishRecord> {
 
     @Override
     public List<ForeignKey<ClientdishRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.CLIENTDISH__CLIENTDISH_DISH_FK, Keys.CLIENTDISH__CLIENTDISH_CLIENT_FK);
-    }
-
-    private transient DishPath _dish;
-
-    /**
-     * Get the implicit join path to the <code>sales.dish</code> table.
-     */
-    public DishPath dish() {
-        if (_dish == null)
-            _dish = new DishPath(this, Keys.CLIENTDISH__CLIENTDISH_DISH_FK, null);
-
-        return _dish;
+        return Arrays.asList(Keys.CLIENTDISH__CLIENTDISH_CLIENT_FK);
     }
 
     private transient ClientPath _client;

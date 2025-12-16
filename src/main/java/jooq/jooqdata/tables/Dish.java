@@ -11,13 +11,14 @@ import java.util.function.Function;
 
 import jooqdata.Keys;
 import jooqdata.Sales;
-import jooqdata.tables.Clientdish.ClientdishPath;
+import jooqdata.tables.Orderdish.OrderdishPath;
 import jooqdata.tables.records.DishRecord;
 
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Function6;
+import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -62,11 +63,6 @@ public class Dish extends TableImpl<DishRecord> {
     }
 
     /**
-     * The column <code>sales.dish.dishid</code>.
-     */
-    public final TableField<DishRecord, Integer> DISHID = createField(DSL.name("dishid"), SQLDataType.INTEGER.nullable(false), this, "");
-
-    /**
      * The column <code>sales.dish.dishname</code>.
      */
     public final TableField<DishRecord, String> DISHNAME = createField(DSL.name("dishname"), SQLDataType.VARCHAR.nullable(false), this, "");
@@ -74,22 +70,27 @@ public class Dish extends TableImpl<DishRecord> {
     /**
      * The column <code>sales.dish.weight</code>.
      */
-    public final TableField<DishRecord, Integer> WEIGHT = createField(DSL.name("weight"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<DishRecord, Double> WEIGHT = createField(DSL.name("weight"), SQLDataType.DOUBLE.nullable(false), this, "");
 
     /**
      * The column <code>sales.dish.firstcost</code>.
      */
-    public final TableField<DishRecord, Integer> FIRSTCOST = createField(DSL.name("firstcost"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<DishRecord, Double> FIRSTCOST = createField(DSL.name("firstcost"), SQLDataType.DOUBLE.nullable(false), this, "");
 
     /**
      * The column <code>sales.dish.price</code>.
      */
-    public final TableField<DishRecord, Integer> PRICE = createField(DSL.name("price"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<DishRecord, Double> PRICE = createField(DSL.name("price"), SQLDataType.DOUBLE.nullable(false), this, "");
 
     /**
      * The column <code>sales.dish.techproductid</code>.
      */
     public final TableField<DishRecord, Integer> TECHPRODUCTID = createField(DSL.name("techproductid"), SQLDataType.INTEGER.nullable(false), this, "");
+
+    /**
+     * The column <code>sales.dish.dishid</code>.
+     */
+    public final TableField<DishRecord, Integer> DISHID = createField(DSL.name("dishid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
 
     private Dish(Name alias, Table<DishRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -159,6 +160,11 @@ public class Dish extends TableImpl<DishRecord> {
     }
 
     @Override
+    public Identity<DishRecord, Integer> getIdentity() {
+        return (Identity<DishRecord, Integer>) super.getIdentity();
+    }
+
+    @Override
     public UniqueKey<DishRecord> getPrimaryKey() {
         return Keys.DISH_PK;
     }
@@ -168,17 +174,17 @@ public class Dish extends TableImpl<DishRecord> {
         return Arrays.asList(Keys.DISH_UNIQUE);
     }
 
-    private transient ClientdishPath _clientdish;
+    private transient OrderdishPath _orderdish;
 
     /**
-     * Get the implicit to-many join path to the <code>sales.clientdish</code>
+     * Get the implicit to-many join path to the <code>sales.orderdish</code>
      * table
      */
-    public ClientdishPath clientdish() {
-        if (_clientdish == null)
-            _clientdish = new ClientdishPath(this, null, Keys.CLIENTDISH__CLIENTDISH_DISH_FK.getInverseKey());
+    public OrderdishPath orderdish() {
+        if (_orderdish == null)
+            _orderdish = new OrderdishPath(this, null, Keys.ORDERDISH__ORDERDISH_DISH_FK.getInverseKey());
 
-        return _clientdish;
+        return _orderdish;
     }
 
     @Override
@@ -309,14 +315,14 @@ public class Dish extends TableImpl<DishRecord> {
     // -------------------------------------------------------------------------
 
     @Override
-    public Row6<Integer, String, Integer, Integer, Integer, Integer> fieldsRow() {
+    public Row6<String, Double, Double, Double, Integer, Integer> fieldsRow() {
         return (Row6) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function6<? super Integer, ? super String, ? super Integer, ? super Integer, ? super Integer, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function6<? super String, ? super Double, ? super Double, ? super Double, ? super Integer, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -324,7 +330,7 @@ public class Dish extends TableImpl<DishRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function6<? super Integer, ? super String, ? super Integer, ? super Integer, ? super Integer, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function6<? super String, ? super Double, ? super Double, ? super Double, ? super Integer, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

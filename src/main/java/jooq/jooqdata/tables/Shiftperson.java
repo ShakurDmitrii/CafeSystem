@@ -12,7 +12,6 @@ import java.util.function.Function;
 import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Person.PersonPath;
-import jooqdata.tables.Shift.ShiftPath;
 import jooqdata.tables.records.ShiftpersonRecord;
 
 import org.jooq.Condition;
@@ -151,19 +150,7 @@ public class Shiftperson extends TableImpl<ShiftpersonRecord> {
 
     @Override
     public List<ForeignKey<ShiftpersonRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.SHIFTPERSON__SHIFTPERSON_SHIFT_FK, Keys.SHIFTPERSON__SHIFTPERSON_PERSON_FK);
-    }
-
-    private transient ShiftPath _shift;
-
-    /**
-     * Get the implicit join path to the <code>sales.shift</code> table.
-     */
-    public ShiftPath shift() {
-        if (_shift == null)
-            _shift = new ShiftPath(this, Keys.SHIFTPERSON__SHIFTPERSON_SHIFT_FK, null);
-
-        return _shift;
+        return Arrays.asList(Keys.SHIFTPERSON__SHIFTPERSON_PERSON_FK);
     }
 
     private transient PersonPath _person;

@@ -1,13 +1,15 @@
 package com.shakur.cafehelp.Controller;
 
 import com.shakur.cafehelp.DTO.OrderDTO;
+import com.shakur.cafehelp.DTO.OrderDishDTO;
 import com.shakur.cafehelp.Service.OrderService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -15,7 +17,6 @@ public class OrderController {
 
     private final OrderService orderService;
 
-    @Autowired
     public OrderController(OrderService orderService) {
         this.orderService = orderService;
     }
@@ -26,35 +27,74 @@ public class OrderController {
         return orderService.createOrder(order);
     }
 
-    // Получение заказа по ID
+    // Обновление статуса заказа
+    @PutMapping("/{orderId}/status")
+    public ResponseEntity<Boolean> updateStatus(
+            @PathVariable int orderId,
+            @RequestBody StatusUpdateRequest request
+    ) {
+        Boolean updatedStatus = orderService.updateOrderStatus(orderId, request.getStatus());
+        return ResponseEntity.ok(updatedStatus);
+    }
+
+    public static class StatusUpdateRequest {
+        private Boolean status;
+        public Boolean getStatus() { return status; }
+        public void setStatus(Boolean status) { this.status = status; }
+    }
+
+    // 🔥 ВСЕ ЗАКАЗЫ
+    @GetMapping
+    public List<OrderDTO> getAllOrders() {
+        return orderService.getOrders();
+    }
+
+    // Заказ по ID
     @GetMapping("/{id}")
     public OrderDTO getOrderById(@PathVariable int id) {
         return orderService.getOrderById(id);
     }
 
-    // Получение заказов по ClientId
+    // Заказы клиента
     @GetMapping("/client/{clientId}")
     public List<OrderDTO> getOrdersByClientId(@PathVariable int clientId) {
         return orderService.getOrdersByClientId(clientId);
     }
 
-    // Получение заказов по дате
+    // Заказы по дате
     @GetMapping("/date/{date}")
-    public List<OrderDTO> getOrdersByDate(@PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+    public List<OrderDTO> getOrdersByDate(
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+    ) {
         return orderService.getOrdersByDate(date);
     }
 
-    // Получение заказов по дате и ClientId
+    // Заказы по клиенту и дате
     @GetMapping("/client/{clientId}/date/{date}")
     public List<OrderDTO> getOrdersByDateAndClientId(
             @PathVariable int clientId,
-            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+    ) {
         return orderService.getOrdersByDateAndClientId(date, clientId);
     }
 
-    // Получение заказов по статусу
+    // Заказы по статусу
     @GetMapping("/status/{status}")
     public List<OrderDTO> getOrdersByStatus(@PathVariable Boolean status) {
         return orderService.getOrdersByStatus(status);
     }
+    @GetMapping("/shift/{shiftId}")
+    public List<OrderDTO> getOrdersByShiftId(@PathVariable int shiftId) {
+        return orderService.getOrdersByShift(shiftId);
+    }
+
+    @PostMapping("/orderToDish")
+    public Map<String, String> addDishesToOrder(@RequestBody List<OrderDishDTO> items, @RequestParam int orderId) {
+        for (OrderDishDTO d : items) {
+            orderService.addDishToOrder(orderId, d.getDishID(), d.getQty());
+        }
+        return Map.of("status", "ok");
+    }
+
+
 }

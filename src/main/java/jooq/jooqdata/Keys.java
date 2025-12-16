@@ -10,6 +10,7 @@ import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
 import jooqdata.tables.Order;
+import jooqdata.tables.Orderdish;
 import jooqdata.tables.Person;
 import jooqdata.tables.Product;
 import jooqdata.tables.Productwarehouseid;
@@ -24,6 +25,7 @@ import jooqdata.tables.records.ConsignmentnoteRecord;
 import jooqdata.tables.records.ConsproductRecord;
 import jooqdata.tables.records.DishRecord;
 import jooqdata.tables.records.OrderRecord;
+import jooqdata.tables.records.OrderdishRecord;
 import jooqdata.tables.records.PersonRecord;
 import jooqdata.tables.records.ProductRecord;
 import jooqdata.tables.records.ProductwarehouseidRecord;
@@ -58,9 +60,11 @@ public class Keys {
     public static final UniqueKey<DishRecord> DISH_PK = Internal.createUniqueKey(Dish.DISH, DSL.name("dish_pk"), new TableField[] { Dish.DISH.DISHID }, true);
     public static final UniqueKey<DishRecord> DISH_UNIQUE = Internal.createUniqueKey(Dish.DISH, DSL.name("dish_unique"), new TableField[] { Dish.DISH.TECHPRODUCTID }, true);
     public static final UniqueKey<OrderRecord> ORDER_PK = Internal.createUniqueKey(Order.ORDER, DSL.name("order_pk"), new TableField[] { Order.ORDER.ORDERID }, true);
+    public static final UniqueKey<OrderdishRecord> NEWTABLE_PK = Internal.createUniqueKey(Orderdish.ORDERDISH, DSL.name("newtable_pk"), new TableField[] { Orderdish.ORDERDISH.ID }, true);
     public static final UniqueKey<PersonRecord> PERSON_PK = Internal.createUniqueKey(Person.PERSON, DSL.name("person_pk"), new TableField[] { Person.PERSON.PERSONID }, true);
     public static final UniqueKey<ProductRecord> PRODUCT_PK = Internal.createUniqueKey(Product.PRODUCT, DSL.name("product_pk"), new TableField[] { Product.PRODUCT.PRODUCTID }, true);
-    public static final UniqueKey<ShiftRecord> SHIFT_PK = Internal.createUniqueKey(Shift.SHIFT, DSL.name("shift_pk"), new TableField[] { Shift.SHIFT.SHIFTID }, true);
+    public static final UniqueKey<ShiftRecord> SHIFT_PK = Internal.createUniqueKey(Shift.SHIFT, DSL.name("shift_pk"), new TableField[] { Shift.SHIFT.ID }, true);
+    public static final UniqueKey<ShiftRecord> SHIFT_UNIQUE = Internal.createUniqueKey(Shift.SHIFT, DSL.name("shift_unique"), new TableField[] { Shift.SHIFT.PERSONCODE }, true);
     public static final UniqueKey<ShiftpersonRecord> SHIFTPERSON_PK = Internal.createUniqueKey(Shiftperson.SHIFTPERSON, DSL.name("shiftperson_pk"), new TableField[] { Shiftperson.SHIFTPERSON.SHIFTPERSONID }, true);
     public static final UniqueKey<SupplierRecord> SUPPLIER_PK = Internal.createUniqueKey(Supplier.SUPPLIER, DSL.name("supplier_pk"), new TableField[] { Supplier.SUPPLIER.SUPPLIERID }, true);
     public static final UniqueKey<TechproductRecord> TECHPRODUCT_PK = Internal.createUniqueKey(Techproduct.TECHPRODUCT, DSL.name("techproduct_pk"), new TableField[] { Techproduct.TECHPRODUCT.TECHPRODUCTID }, true);
@@ -73,14 +77,15 @@ public class Keys {
     // -------------------------------------------------------------------------
 
     public static final ForeignKey<ClientdishRecord, ClientRecord> CLIENTDISH__CLIENTDISH_CLIENT_FK = Internal.createForeignKey(Clientdish.CLIENTDISH, DSL.name("clientdish_client_fk"), new TableField[] { Clientdish.CLIENTDISH.CLIENTID }, Keys.CLIENT_PK, new TableField[] { Client.CLIENT.CLIENTID }, true);
-    public static final ForeignKey<ClientdishRecord, DishRecord> CLIENTDISH__CLIENTDISH_DISH_FK = Internal.createForeignKey(Clientdish.CLIENTDISH, DSL.name("clientdish_dish_fk"), new TableField[] { Clientdish.CLIENTDISH.DISHID }, Keys.DISH_PK, new TableField[] { Dish.DISH.DISHID }, true);
     public static final ForeignKey<ConsignmentnoteRecord, SupplierRecord> CONSIGNMENTNOTE__CONSIGNMENTNOTE_SUPPLIER_FK = Internal.createForeignKey(Consignmentnote.CONSIGNMENTNOTE, DSL.name("consignmentnote_supplier_fk"), new TableField[] { Consignmentnote.CONSIGNMENTNOTE.SUPPLIERID }, Keys.SUPPLIER_PK, new TableField[] { Supplier.SUPPLIER.SUPPLIERID }, true);
     public static final ForeignKey<ConsproductRecord, ConsignmentnoteRecord> CONSPRODUCT__CONSPRODUCT_CONSIGNMENTNOTE_FK = Internal.createForeignKey(Consproduct.CONSPRODUCT, DSL.name("consproduct_consignmentnote_fk"), new TableField[] { Consproduct.CONSPRODUCT.CONSIGNMENTID }, Keys.CONSIGNMENTNOTE_PK, new TableField[] { Consignmentnote.CONSIGNMENTNOTE.CONSIGNMENTID }, true);
     public static final ForeignKey<ConsproductRecord, ProductRecord> CONSPRODUCT__CONSPRODUCT_PRODUCT_FK = Internal.createForeignKey(Consproduct.CONSPRODUCT, DSL.name("consproduct_product_fk"), new TableField[] { Consproduct.CONSPRODUCT.PRODUCTID }, Keys.PRODUCT_PK, new TableField[] { Product.PRODUCT.PRODUCTID }, true);
+    public static final ForeignKey<OrderdishRecord, DishRecord> ORDERDISH__ORDERDISH_DISH_FK = Internal.createForeignKey(Orderdish.ORDERDISH, DSL.name("orderdish_dish_fk"), new TableField[] { Orderdish.ORDERDISH.DISHID }, Keys.DISH_PK, new TableField[] { Dish.DISH.DISHID }, true);
+    public static final ForeignKey<OrderdishRecord, OrderRecord> ORDERDISH__ORDERDISH_ORDER_FK = Internal.createForeignKey(Orderdish.ORDERDISH, DSL.name("orderdish_order_fk"), new TableField[] { Orderdish.ORDERDISH.ORDERID }, Keys.ORDER_PK, new TableField[] { Order.ORDER.ORDERID }, true);
     public static final ForeignKey<ProductRecord, SupplierRecord> PRODUCT__PRODUCT_SUPPLIER_FK = Internal.createForeignKey(Product.PRODUCT, DSL.name("product_supplier_fk"), new TableField[] { Product.PRODUCT.SUPPLIERID }, Keys.SUPPLIER_PK, new TableField[] { Supplier.SUPPLIER.SUPPLIERID }, true);
     public static final ForeignKey<ProductwarehouseidRecord, ProductRecord> PRODUCTWAREHOUSEID__PRODUCTWAREHOUSEID_PRODUCT_FK = Internal.createForeignKey(Productwarehouseid.PRODUCTWAREHOUSEID, DSL.name("productwarehouseid_product_fk"), new TableField[] { Productwarehouseid.PRODUCTWAREHOUSEID.PRODUCTID }, Keys.PRODUCT_PK, new TableField[] { Product.PRODUCT.PRODUCTID }, true);
     public static final ForeignKey<ProductwarehouseidRecord, WarehouseRecord> PRODUCTWAREHOUSEID__PRODUCTWAREHOUSEID_WAREHOUSE_FK_1 = Internal.createForeignKey(Productwarehouseid.PRODUCTWAREHOUSEID, DSL.name("productwarehouseid_warehouse_fk_1"), new TableField[] { Productwarehouseid.PRODUCTWAREHOUSEID.WAREHOUSEID }, Keys.WAREHOUSE_PK, new TableField[] { Warehouse.WAREHOUSE.WAREHOUSEID }, true);
+    public static final ForeignKey<ShiftRecord, PersonRecord> SHIFT__SHIFT_PERSON_FK = Internal.createForeignKey(Shift.SHIFT, DSL.name("shift_person_fk"), new TableField[] { Shift.SHIFT.PERSONCODE }, Keys.PERSON_PK, new TableField[] { Person.PERSON.PERSONID }, true);
     public static final ForeignKey<ShiftpersonRecord, PersonRecord> SHIFTPERSON__SHIFTPERSON_PERSON_FK = Internal.createForeignKey(Shiftperson.SHIFTPERSON, DSL.name("shiftperson_person_fk"), new TableField[] { Shiftperson.SHIFTPERSON.PERSONID }, Keys.PERSON_PK, new TableField[] { Person.PERSON.PERSONID }, true);
-    public static final ForeignKey<ShiftpersonRecord, ShiftRecord> SHIFTPERSON__SHIFTPERSON_SHIFT_FK = Internal.createForeignKey(Shiftperson.SHIFTPERSON, DSL.name("shiftperson_shift_fk"), new TableField[] { Shiftperson.SHIFTPERSON.SHIFTID }, Keys.SHIFT_PK, new TableField[] { Shift.SHIFT.SHIFTID }, true);
     public static final ForeignKey<TechproductRecord, ProductRecord> TECHPRODUCT__TECHPRODUCT_PRODUCT_FK = Internal.createForeignKey(Techproduct.TECHPRODUCT, DSL.name("techproduct_product_fk"), new TableField[] { Techproduct.TECHPRODUCT.PRODUCTID }, Keys.PRODUCT_PK, new TableField[] { Product.PRODUCT.PRODUCTID }, true);
 }

@@ -33,6 +33,21 @@ public class PersonService {
                 })
                 .toList();
     }
+
+    public PersonDTO getPersonById(int id) {
+        return dsl.selectFrom(Person.PERSON)
+                .where(Person.PERSON.PERSONID.eq(id))
+                .fetchOne(record -> {
+                    PersonDTO dto = new PersonDTO();
+                    dto.setPersonID(record.getPersonid());
+                    dto.setName(record.getName());
+                    dto.setSalary(record.getSalary());
+                    dto.setNumDays(record.getNumdays());
+                    dto.setSalaryPerDay(record.getSalaryperday());
+                    return dto;
+                });
+    }
+
     public List<PersonDTO> findByName(String name) {
         return dsl.selectFrom(Person.PERSON)
                 .where(Person.PERSON.NAME.eq(name))
@@ -72,5 +87,13 @@ public class PersonService {
     record.setSalaryperday(dto.salaryPerDay);
     record.store();
     return dto;
+    }
+
+
+    // Удаление сотрудника
+    public boolean deletePerson(int id) {
+        return dsl.deleteFrom(Person.PERSON)
+                .where(Person.PERSON.PERSONID.eq(id))
+                .execute() > 0;
     }
 }

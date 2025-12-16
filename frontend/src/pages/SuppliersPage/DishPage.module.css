@@ -1,0 +1,46 @@
+.page {
+    padding: 20px;
+    font-family: "Segoe UI", sans-serif;
+}
+
+.createDish {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.createDish input {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+}
+
+.btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    background-color: #16a34a;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.dishList {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.dishItem {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px;
+    background: #f3f4f6;
+    border-radius: 8px;
+}
