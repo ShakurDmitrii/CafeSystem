@@ -64,6 +64,21 @@ public class ProductService {
                     return dto;
                 }).toList();
     }
+    public ProductDTO getProductById(int id) {
+        return dsl.selectFrom(Product.PRODUCT)
+                .where(Product.PRODUCT.PRODUCTID.eq(id))
+                .fetchOptional()
+                .map(record ->{
+                    ProductDTO dto = new ProductDTO();
+                    dto.productId = record.getProductid();
+                    dto.productName = record.getProductname();
+                    dto.productPrice = record.getProductprice();
+                    dto.supplierId = record.getSupplierid();
+                    dto.waste = record.getWaste();
+                    dto.isFavorite = record.getIsfavourite();
+                    return dto;
+                }).orElseThrow();
+    }
     public ProductDTO createProduct(ProductDTO dto) {
         // создаём новый record
         ProductRecord record = dsl.newRecord(Product.PRODUCT);

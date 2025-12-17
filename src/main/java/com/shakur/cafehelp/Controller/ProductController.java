@@ -24,7 +24,10 @@ public class ProductController {
     public List<ProductDTO> getProducts(@PathVariable int supplierId) {
         return productService.getAllSupplierProducts(supplierId);
     }
-
+@GetMapping("/{id}")
+public ProductDTO getProduct(@PathVariable int id) {
+        return productService.getProductById(id);
+}
     @GetMapping("/favorite/{supplierId}")
     public List<ProductDTO> getFavoriteProducts(@PathVariable int supplierId) {
         return productService.getAllFavoriteSupplierProduct(supplierId);
