@@ -1,9 +1,9 @@
 package com.shakur.cafehelp.DTO;
 
-public class TechProduct {
+public class TechProductDTO {
     public int techProductId;
-    public String techProductName;
-    public ProductDTO Product;
+    public int DishId;
+    public int ProductId;
     public Double waste;
     public Double weight;
 
@@ -15,20 +15,32 @@ public class TechProduct {
         techProductId = techProductId;
     }
 
-    public String getTechProductName() {
-        return techProductName;
+    public int getDishId() {
+        return DishId;
+    }
+
+    public void setDishId(int dishId) {
+        DishId = dishId;
+    }
+
+    public int getProductId() {
+        return ProductId;
+    }
+
+    public void setProductId(int productId) {
+        ProductId = productId;
     }
 
     public void setTechProductName(String techProductName) {
         techProductName = techProductName;
     }
 
-    public ProductDTO getProduct() {
-        return Product;
+    public int getProduct() {
+        return ProductId;
     }
 
-    public void setProduct(ProductDTO product) {
-        Product = product;
+    public void setProduct(int product) {
+        ProductId = product;
     }
 
     public Double getWaste() {

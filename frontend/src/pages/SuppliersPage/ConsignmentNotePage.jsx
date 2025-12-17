@@ -19,7 +19,24 @@ export default function ConsignmentNotePage() {
     const [currentTotal, setCurrentTotal] = useState(0);
     const [totalsByNoteId, setTotalsByNoteId] = useState({});
 
+    const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
+    const [warehouses, setWarehouses] = useState([]);
+
     const navigate = useNavigate(); // Добавляем useNavigate
+
+    // --------------------Склады-------------------------------
+    useEffect(() => {
+        async function fetchWarehouses() {
+            try {
+                const res = await fetch("http://localhost:8080/warehouses");
+                const data = await res.json();
+                setWarehouses(data);
+            } catch (err) {
+                console.error(err);
+            }
+        }
+        fetchWarehouses();
+    }, []);
 
     // -------------------- ЗАГРУЗКА НАКЛАДНЫХ И ПОСТАВЩИКОВ --------------------
     useEffect(() => {
@@ -147,6 +164,19 @@ export default function ConsignmentNotePage() {
             ]);
 
             setNewProduct({ consignmentId: newProduct.consignmentId, productId: "", quantity: "" });
+            // Добавляем товар на склад
+            await fetch(`http://localhost:8080/warehouses/${selectedWarehouseId}/products`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify([{ productId: selectedProduct.productId }])
+            });
+
+            setConsProducts(prev => [
+                ...prev,
+                { ...created, productName: selectedProduct.productName }
+            ]);
+
+            setNewProduct({ consignmentId: newProduct.consignmentId, productId: "", quantity: "" });
         } catch (err) {
             console.error(err);
             setError(err.message);
@@ -228,6 +258,9 @@ export default function ConsignmentNotePage() {
                                 <option key={s.supplierID} value={s.supplierID}>{s.supplierName}</option>
                             ))}
                         </select>
+
+
+
                     </label>
 
                     <input
@@ -293,7 +326,9 @@ export default function ConsignmentNotePage() {
 
                         <div className={styles.modalContent}>
                             <table className={styles.consignmentTable}>
+
                                 <thead>
+
                                 <tr>
                                     <th>Продукт</th>
                                     <th>Кол-во</th>
@@ -331,6 +366,17 @@ export default function ConsignmentNotePage() {
                             <div className={styles.addProductSection}>
                                 <h3>Добавить товар</h3>
                                 <div className={styles.addProductForm}>
+                                    <select
+                                        value={selectedWarehouseId}
+                                        onChange={e => setSelectedWarehouseId(e.target.value)}
+                                        className={styles.inputField}
+                                    >
+                                        <option value="">Выберите склад</option>
+                                        {warehouses.map(w => (
+                                            <option key={w.warehouseId} value={w.warehouseId}>{w.warehouseName}</option>
+                                        ))}
+                                    </select>
+
                                     <select
                                         value={newProduct.productId}
                                         onChange={e => setNewProduct({ ...newProduct, productId: e.target.value })}

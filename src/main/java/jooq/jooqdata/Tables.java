@@ -13,7 +13,7 @@ import jooqdata.tables.Order;
 import jooqdata.tables.Orderdish;
 import jooqdata.tables.Person;
 import jooqdata.tables.Product;
-import jooqdata.tables.Productwarehouseid;
+import jooqdata.tables.Productwarehouse;
 import jooqdata.tables.Shift;
 import jooqdata.tables.Shiftperson;
 import jooqdata.tables.Supplier;
@@ -73,9 +73,9 @@ public class Tables {
     public static final Product PRODUCT = Product.PRODUCT;
 
     /**
-     * The table <code>sales.productwarehouseid</code>.
+     * The table <code>sales.productwarehouse</code>.
      */
-    public static final Productwarehouseid PRODUCTWAREHOUSEID = Productwarehouseid.PRODUCTWAREHOUSEID;
+    public static final Productwarehouse PRODUCTWAREHOUSE = Productwarehouse.PRODUCTWAREHOUSE;
 
     /**
      * The table <code>sales.shift</code>.

@@ -13,7 +13,7 @@ import java.util.function.Function;
 import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Consproduct.ConsproductPath;
-import jooqdata.tables.Productwarehouseid.ProductwarehouseidPath;
+import jooqdata.tables.Productwarehouse.ProductwarehousePath;
 import jooqdata.tables.Supplier.SupplierPath;
 import jooqdata.tables.Techproduct.TechproductPath;
 import jooqdata.tables.records.ProductRecord;
@@ -203,17 +203,17 @@ public class Product extends TableImpl<ProductRecord> {
         return _consproduct;
     }
 
-    private transient ProductwarehouseidPath _productwarehouseid;
+    private transient ProductwarehousePath _productwarehouse;
 
     /**
      * Get the implicit to-many join path to the
-     * <code>sales.productwarehouseid</code> table
+     * <code>sales.productwarehouse</code> table
      */
-    public ProductwarehouseidPath productwarehouseid() {
-        if (_productwarehouseid == null)
-            _productwarehouseid = new ProductwarehouseidPath(this, null, Keys.PRODUCTWAREHOUSEID__PRODUCTWAREHOUSEID_PRODUCT_FK.getInverseKey());
+    public ProductwarehousePath productwarehouse() {
+        if (_productwarehouse == null)
+            _productwarehouse = new ProductwarehousePath(this, null, Keys.PRODUCTWAREHOUSE__PRODUCTWAREHOUSEID_PRODUCT_FK.getInverseKey());
 
-        return _productwarehouseid;
+        return _productwarehouse;
     }
 
     private transient TechproductPath _techproduct;

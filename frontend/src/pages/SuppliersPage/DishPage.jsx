@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import styles from "./DishPage.module.css";
 
 const API_DISHES = "http://localhost:8080/api/dishes";
@@ -9,8 +10,9 @@ export default function DishPage() {
     const [price, setPrice] = useState("");
     const [weight, setWeight] = useState("");
     const [firstCost, setFirstCost] = useState("");
-    const [techProduct, setTechProduct] = useState(1);
     const [loading, setLoading] = useState(false);
+
+    const navigate = useNavigate();
 
     // Загрузка всех блюд
     useEffect(() => {
@@ -27,13 +29,11 @@ export default function DishPage() {
     const createDish = () => {
         if (!name || !price) return;
 
-        // Подготовка объекта под DishDTO
         const newDish = {
             dishName: name,
             weight: weight ? parseFloat(weight) : 0.0,
             firstCost: firstCost ? parseFloat(firstCost) : 0.0,
-            price: parseFloat(price),
-            techProduct: techProduct
+            price: parseFloat(price)
         };
 
         setLoading(true);
@@ -54,10 +54,16 @@ export default function DishPage() {
             .finally(() => setLoading(false));
     };
 
+    // Переход на страницу техкарты блюда
+    const openTechCard = (dishId) => {
+        navigate(`/tech-card/${dishId}`);
+    };
+
     return (
         <div className={styles.page}>
             <h1>Блюда</h1>
 
+            {/* Форма создания блюда */}
             <section className={styles.createDish}>
                 <input
                     type="text"
@@ -65,6 +71,7 @@ export default function DishPage() {
                     value={name}
                     onChange={e => setName(e.target.value)}
                 />
+
                 <input
                     type="number"
                     placeholder="Цена"
@@ -72,6 +79,7 @@ export default function DishPage() {
                     value={price}
                     onChange={e => setPrice(e.target.value)}
                 />
+
                 <input
                     type="number"
                     placeholder="Вес (г)"
@@ -79,6 +87,7 @@ export default function DishPage() {
                     value={weight}
                     onChange={e => setWeight(e.target.value)}
                 />
+
                 <input
                     type="number"
                     placeholder="Себестоимость"
@@ -86,23 +95,34 @@ export default function DishPage() {
                     value={firstCost}
                     onChange={e => setFirstCost(e.target.value)}
                 />
+
                 <button
                     className={styles.btn}
                     onClick={createDish}
                     disabled={loading || !name || !price}
                 >
-                    Добавить блюдо
+                    {loading ? "Сохранение..." : "Добавить блюдо"}
                 </button>
             </section>
 
+            {/* Список блюд */}
             <section className={styles.dishList}>
                 {dishes.length > 0 ? (
                     dishes.map(d => (
                         <div key={d.dishId} className={styles.dishItem}>
-                            <span>{d.dishName}</span>
-                            <span>{d.price} ₽</span>
-                            <span>Вес: {d.weight} г</span>
-                            <span>Себестоимость: {d.firstCost} ₽</span>
+                            <div className={styles.dishInfo}>
+                                <span className={styles.dishName}>{d.dishName}</span>
+                                <span>{d.price} ₽</span>
+                                <span>Вес: {d.weight} г</span>
+                                <span>Себестоимость: {d.firstCost} ₽</span>
+                            </div>
+
+                            <button
+                                className={styles.techBtn}
+                                onClick={() => openTechCard(d.dishId)}
+                            >
+                                Техкарта
+                            </button>
                         </div>
                     ))
                 ) : (

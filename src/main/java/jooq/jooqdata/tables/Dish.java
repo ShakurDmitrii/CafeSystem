@@ -12,6 +12,7 @@ import java.util.function.Function;
 import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Orderdish.OrderdishPath;
+import jooqdata.tables.Techproduct.TechproductPath;
 import jooqdata.tables.records.DishRecord;
 
 import org.jooq.Condition;
@@ -185,6 +186,19 @@ public class Dish extends TableImpl<DishRecord> {
             _orderdish = new OrderdishPath(this, null, Keys.ORDERDISH__ORDERDISH_DISH_FK.getInverseKey());
 
         return _orderdish;
+    }
+
+    private transient TechproductPath _techproduct;
+
+    /**
+     * Get the implicit to-many join path to the <code>sales.techproduct</code>
+     * table
+     */
+    public TechproductPath techproduct() {
+        if (_techproduct == null)
+            _techproduct = new TechproductPath(this, null, Keys.TECHPRODUCT__TECHPRODUCT_DISH_FK.getInverseKey());
+
+        return _techproduct;
     }
 
     @Override

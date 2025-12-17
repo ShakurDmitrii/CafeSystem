@@ -44,3 +44,29 @@
     background: #f3f4f6;
     border-radius: 8px;
 }
+.dishInfo {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.dishName {
+    font-weight: 600;
+    color: #111827;
+}
+
+.techBtn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: none;
+    background-color: #2563eb; /* синий, чтобы отличался от "Добавить блюдо" */
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.techBtn:hover {
+    background-color: #1d4ed8;
+}

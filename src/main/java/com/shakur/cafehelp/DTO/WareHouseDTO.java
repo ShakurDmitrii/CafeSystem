@@ -1,9 +1,9 @@
 package com.shakur.cafehelp.DTO;
 
-public class WareHouse {
+public class WareHouseDTO {
     public int warehouseId;
     public String warehouseName;
-    public int productWarehouse;
+
 
     public int getWarehouseId() {
         return warehouseId;
@@ -21,11 +21,5 @@ public class WareHouse {
         this.warehouseName = warehouseName;
     }
 
-    public int getWarehouseProduct() {
-        return productWarehouse;
-    }
 
-    public void setWarehouseProduct(int productWarehouse) {
-        this.productWarehouse = productWarehouse;
-    }
 }

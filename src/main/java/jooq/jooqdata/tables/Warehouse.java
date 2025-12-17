@@ -11,13 +11,14 @@ import java.util.function.Function;
 
 import jooqdata.Keys;
 import jooqdata.Sales;
-import jooqdata.tables.Productwarehouseid.ProductwarehouseidPath;
+import jooqdata.tables.Productwarehouse.ProductwarehousePath;
 import jooqdata.tables.records.WarehouseRecord;
 
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Function2;
+import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -62,14 +63,14 @@ public class Warehouse extends TableImpl<WarehouseRecord> {
     }
 
     /**
-     * The column <code>sales.warehouse.warehouseid</code>.
-     */
-    public final TableField<WarehouseRecord, Integer> WAREHOUSEID = createField(DSL.name("warehouseid"), SQLDataType.INTEGER.nullable(false), this, "");
-
-    /**
      * The column <code>sales.warehouse.warehousename</code>.
      */
     public final TableField<WarehouseRecord, String> WAREHOUSENAME = createField(DSL.name("warehousename"), SQLDataType.VARCHAR.nullable(false), this, "");
+
+    /**
+     * The column <code>sales.warehouse.warehouseid</code>.
+     */
+    public final TableField<WarehouseRecord, Integer> WAREHOUSEID = createField(DSL.name("warehouseid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
 
     private Warehouse(Name alias, Table<WarehouseRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -139,6 +140,11 @@ public class Warehouse extends TableImpl<WarehouseRecord> {
     }
 
     @Override
+    public Identity<WarehouseRecord, Integer> getIdentity() {
+        return (Identity<WarehouseRecord, Integer>) super.getIdentity();
+    }
+
+    @Override
     public UniqueKey<WarehouseRecord> getPrimaryKey() {
         return Keys.WAREHOUSE_PK;
     }
@@ -148,17 +154,17 @@ public class Warehouse extends TableImpl<WarehouseRecord> {
         return Arrays.asList(Keys.WAREHOUSE_UNIQUE);
     }
 
-    private transient ProductwarehouseidPath _productwarehouseid;
+    private transient ProductwarehousePath _productwarehouse;
 
     /**
      * Get the implicit to-many join path to the
-     * <code>sales.productwarehouseid</code> table
+     * <code>sales.productwarehouse</code> table
      */
-    public ProductwarehouseidPath productwarehouseid() {
-        if (_productwarehouseid == null)
-            _productwarehouseid = new ProductwarehouseidPath(this, null, Keys.PRODUCTWAREHOUSEID__PRODUCTWAREHOUSEID_WAREHOUSE_FK_1.getInverseKey());
+    public ProductwarehousePath productwarehouse() {
+        if (_productwarehouse == null)
+            _productwarehouse = new ProductwarehousePath(this, null, Keys.PRODUCTWAREHOUSE__PRODUCTWAREHOUSEID_WAREHOUSE_FK.getInverseKey());
 
-        return _productwarehouseid;
+        return _productwarehouse;
     }
 
     @Override
@@ -289,14 +295,14 @@ public class Warehouse extends TableImpl<WarehouseRecord> {
     // -------------------------------------------------------------------------
 
     @Override
-    public Row2<Integer, String> fieldsRow() {
+    public Row2<String, Integer> fieldsRow() {
         return (Row2) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function2<? super Integer, ? super String, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function2<? super String, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -304,7 +310,7 @@ public class Warehouse extends TableImpl<WarehouseRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function2<? super Integer, ? super String, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function2<? super String, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }
