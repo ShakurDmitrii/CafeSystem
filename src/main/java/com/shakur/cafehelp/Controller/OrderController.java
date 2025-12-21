@@ -2,8 +2,10 @@ package com.shakur.cafehelp.Controller;
 
 import com.shakur.cafehelp.DTO.OrderDTO;
 import com.shakur.cafehelp.DTO.OrderDishDTO;
+import com.shakur.cafehelp.DTO.TimeDelayRequest;
 import com.shakur.cafehelp.Service.OrderService;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,10 +25,22 @@ public class OrderController {
 
     // Создание нового заказа
     @PostMapping
-    public OrderDTO createOrder(@RequestBody OrderDTO order) {
-        return orderService.createOrder(order);
+    public ResponseEntity<?> createOrder(@RequestBody OrderDTO order) {
+        try {
+            OrderDTO createdOrder = orderService.createOrder(order);
+            return ResponseEntity.ok(createdOrder);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
-
+    // Добавление задержки заказа
+    @PatchMapping("/{orderId}/timeDelay")
+    public OrderDTO addTimeDelay(
+            @PathVariable("orderId") int orderId,
+            @RequestBody TimeDelayRequest request) {
+        return orderService.addTimeDelay(orderId, request.getDelayMinutes());
+    }
     // Обновление статуса заказа
     @PutMapping("/{orderId}/status")
     public ResponseEntity<Boolean> updateStatus(

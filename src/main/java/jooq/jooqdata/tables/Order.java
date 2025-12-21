@@ -5,6 +5,7 @@ package jooqdata.tables;
 
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.function.Function;
 
@@ -16,7 +17,7 @@ import jooqdata.tables.records.OrderRecord;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function7;
+import org.jooq.Function10;
 import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
@@ -25,7 +26,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row7;
+import org.jooq.Row10;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -95,6 +96,21 @@ public class Order extends TableImpl<OrderRecord> {
      * The column <code>sales.order.type</code>.
      */
     public final TableField<OrderRecord, Boolean> TYPE = createField(DSL.name("type"), SQLDataType.BOOLEAN.nullable(false), this, "");
+
+    /**
+     * The column <code>sales.order.time</code>.
+     */
+    public final TableField<OrderRecord, Double> TIME = createField(DSL.name("time"), SQLDataType.DOUBLE.nullable(false), this, "");
+
+    /**
+     * The column <code>sales.order.timedelay</code>.
+     */
+    public final TableField<OrderRecord, Double> TIMEDELAY = createField(DSL.name("timedelay"), SQLDataType.DOUBLE, this, "");
+
+    /**
+     * The column <code>sales.order.created_at</code>.
+     */
+    public final TableField<OrderRecord, LocalDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.LOCALDATETIME(6).nullable(false), this, "");
 
     private Order(Name alias, Table<OrderRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -310,18 +326,18 @@ public class Order extends TableImpl<OrderRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row7 type methods
+    // Row10 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row7<Integer, LocalDate, Integer, Double, Boolean, Integer, Boolean> fieldsRow() {
-        return (Row7) super.fieldsRow();
+    public Row10<Integer, LocalDate, Integer, Double, Boolean, Integer, Boolean, Double, Double, LocalDateTime> fieldsRow() {
+        return (Row10) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function7<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? super Boolean, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function10<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? super Boolean, ? super Double, ? super Double, ? super LocalDateTime, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -329,7 +345,7 @@ public class Order extends TableImpl<OrderRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function7<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? super Boolean, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function10<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? super Boolean, ? super Double, ? super Double, ? super LocalDateTime, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

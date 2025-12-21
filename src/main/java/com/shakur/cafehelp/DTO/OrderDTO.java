@@ -2,7 +2,9 @@ package com.shakur.cafehelp.DTO;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 
+import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public class OrderDTO {
@@ -16,9 +18,35 @@ public class OrderDTO {
     public Double amount;
     public Boolean status;
     public Boolean type;
+    public Double time;
+    public Double timeDelay;
+    public LocalDateTime created_at;
+
 
     // Добавляем список блюд
+    public Double getTimeDelay() {
+        return timeDelay;
+    }
 
+    public LocalDateTime getCreated_at() {
+        return created_at;
+    }
+
+    public void setCreated_at(LocalDateTime created_at) {
+        this.created_at = created_at;
+    }
+
+    public void setTimeDelay(Double timeDelay) {
+        this.timeDelay = timeDelay;
+    }
+
+    public Double getTime() {
+        return time;
+    }
+
+    public void setTime(Double time) {
+        this.time = time;
+    }
 
     public Boolean getType() { return type; }
     public void setType(Boolean type) { this.type = type; }

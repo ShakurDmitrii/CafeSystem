@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static jooqdata.tables.Order.ORDER;
@@ -21,24 +22,49 @@ public class OrderService {
         this.dsl = dsl;
     }
 
-    public OrderDTO createOrder(OrderDTO order) {
-        OrderRecord record = dsl.newRecord(ORDER);
+    public OrderDTO createOrder(OrderDTO orderDTO) {
+        LocalDateTime now = LocalDateTime.now();
+        try {
+            // Проверяем обязательные поля
+            if (orderDTO.getClientId() == 0) {
+                throw new IllegalArgumentException("Client ID is required");
+            }
+            if (orderDTO.getShiftId() == 0) {
+                throw new IllegalArgumentException("Shift ID is required");
+            }
 
-        // Устанавливаем поля от пользователя
-        record.setClientid(order.getClientId());
-        record.setDate(order.getDate());
-        record.setShiftid(order.getShiftId());
-        record.setAmount(order.getAmount());
-        record.setStatus(order.getStatus()); // если есть
-        record.setType(order.getType());
+            // Создаем запись заказа
+            var result = dsl.insertInto(ORDER)
+                    .set(ORDER.CLIENTID, orderDTO.getClientId())
+                    .set(ORDER.SHIFTID, orderDTO.getShiftId())
+                    .set(ORDER.DATE, orderDTO.getDate() != null ? orderDTO.getDate() : LocalDate.now())
+                    .set(ORDER.CREATED_AT, now)
+                    .set(ORDER.AMOUNT, orderDTO.getAmount() != null ? orderDTO.getAmount() : 0.0)
+                    .set(ORDER.STATUS, orderDTO.getStatus() != null ? orderDTO.getStatus() : false)
+                    .set(ORDER.TYPE, orderDTO.getType() != null ? orderDTO.getType() : false)
+                    .set(ORDER.TIME, orderDTO.getTime() != null ? orderDTO.getTime() : 30.0) // время по умолчанию 30 мин
+                    .set(ORDER.TIMEDELAY, orderDTO.getTimeDelay()) // может быть null
+                    .returningResult(ORDER.ORDERID)
+                    .fetchOne();
 
-        // Сохраняем
-        record.store();
+            if (result == null) {
+                throw new RuntimeException("Failed to create order - no ID returned");
+            }
 
-        // Возвращаем DTO с сгенерированным ID
-        order.setOrderId(record.getOrderid());
+            Integer orderId = result.get(ORDER.ORDERID);
+            System.out.println("Created order with ID: " + orderId);
 
-        return order;
+            // Получаем полный объект заказа
+            OrderDTO createdOrder = getOrderById(orderId);
+
+
+            return createdOrder;
+
+        } catch (Exception e) {
+            System.err.println("Error creating order: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Failed to create order: " + e.getMessage(), e);
+        }
     }
     @Transactional
     public Boolean updateOrderStatus(int orderId, Boolean status) {
@@ -68,6 +94,8 @@ public class OrderService {
                     order.amount = record.get(ORDER.AMOUNT);
                     order.shiftId = record.get(ORDER.SHIFTID);
                     order.type = record.get(ORDER.TYPE);
+                    order.time = record.get(ORDER.TIME);
+                    order.timeDelay = record.get(ORDER.TIMEDELAY);
                     return order;
                 });
     }
@@ -85,6 +113,8 @@ public class OrderService {
                     order.setAmount(record.get(ORDER.AMOUNT));
                     order.setShiftId(record.get(ORDER.SHIFTID));
                     order.setType(record.get(ORDER.TYPE));
+                    order.setTime(record.get(ORDER.TIME));
+                    order.timeDelay = record.get(ORDER.TIMEDELAY);
                     return order;
                 });
     }
@@ -100,6 +130,8 @@ public class OrderService {
                     order.setAmount(record.get(ORDER.AMOUNT));
                     order.setShiftId(record.get(ORDER.SHIFTID));
                     order.setType(record.get(ORDER.TYPE));
+                    order.setTime(record.get(ORDER.TIME));
+                    order.timeDelay = record.get(ORDER.TIMEDELAY);
                     return order;
                 });
     }
@@ -116,6 +148,8 @@ public class OrderService {
                     order.setStatus(record.get(ORDER.STATUS));
                     order.setAmount(record.get(ORDER.AMOUNT));
                     order.setShiftId(record.get(ORDER.SHIFTID));
+                    order.setTime(record.get(ORDER.TIME));
+                    order.timeDelay = record.get(ORDER.TIMEDELAY);
                     return order;
                 });
     }
@@ -131,6 +165,8 @@ public class OrderService {
                     order.setStatus(record.get(ORDER.STATUS));
                     order.setAmount(record.get(ORDER.AMOUNT));
                     order.setShiftId(record.get(ORDER.SHIFTID));
+                    order.setTime(record.get(ORDER.TIME));
+                    order.timeDelay = record.get(ORDER.TIMEDELAY);
                     return order;
                 });
     }
@@ -145,6 +181,8 @@ public class OrderService {
                     order.setStatus(record.get(ORDER.STATUS));
                     order.setAmount(record.get(ORDER.AMOUNT));
                     order.setShiftId(record.get(ORDER.SHIFTID));
+                    order.setTime(record.get(ORDER.TIME));
+                    order.timeDelay = record.get(ORDER.TIMEDELAY);
                     return order;
                 });
     }
@@ -160,9 +198,38 @@ public List<OrderDTO> getOrders() {
                     order.setStatus(record.get(ORDER.STATUS));
                     order.setAmount(record.get(ORDER.AMOUNT));
                     order.setShiftId(record.get(ORDER.SHIFTID));
+                    order.setTime(record.get(ORDER.TIME));
+                    order.timeDelay = record.get(ORDER.TIMEDELAY);
                     return order;
                 }).toList();
 }
+    private OrderDTO mapToDTO(OrderRecord record) {
+        OrderDTO order = new OrderDTO();
+        order.setClientId(record.get(ORDER.CLIENTID));
+        order.setOrderId(record.get(ORDER.ORDERID));
+        order.setDate(record.get(ORDER.DATE));
+        order.setStatus(record.get(ORDER.STATUS));
+        order.setAmount(record.get(ORDER.AMOUNT));
+        order.setShiftId(record.get(ORDER.SHIFTID));
+        order.setTime(record.get(ORDER.TIME));
+        order.setTimeDelay(record.get(ORDER.TIMEDELAY));
+        return order;
+    }
+    public OrderDTO addTimeDelay(int orderId, Double delayMinutes) {
+        // Обновляем время задержки
+        dsl.update(ORDER)
+                .set(ORDER.TIMEDELAY, delayMinutes)
+                .where(ORDER.ORDERID.eq(orderId))
+                .execute();
+
+        // Получаем обновленную запись
+        OrderRecord updatedRecord = dsl.selectFrom(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .fetchOne();
+
+        return mapToDTO(updatedRecord);
+    }
+
     public void addDishToOrder(int orderId, int dishId, int qty) {
         System.out.println("addDishToOrder вызван с параметрами: orderId=" + orderId + ", dishId=" + dishId + ", qty=" + qty);
 

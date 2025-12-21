@@ -21,6 +21,7 @@ export default function CashierPage() {
     const [modalOpen, setModalOpen] = useState(false);
     const [orderType, setOrderType] = useState(false);
     const [allShifts, setAllShifts] = useState([]);
+    const [preparationTime, setPreparationTime] = useState(30); // время приготовления в минутах
 
     useEffect(() => {
         fetch(API_PERSONS)
@@ -141,6 +142,7 @@ export default function CashierPage() {
                 date: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
                 amount: total,
                 status: false,
+                time: preparationTime,
                 type: orderType,
                 items: currentOrderItems.map(i => ({
                     dishID: i.dishId,
@@ -164,6 +166,7 @@ export default function CashierPage() {
             setOrders(prev => [order, ...prev]);
             setCurrentOrderItems([]);
             setOrderType(false);
+            setPreparationTime(30);
 
             const dishPayload = currentOrderItems.map(i => ({
                 dishID: i.dishId,
@@ -303,6 +306,17 @@ export default function CashierPage() {
                                 <span className={styles.slider}></span>
                             </label>
                             <span>{orderType ? "Доставка" : "По месту"}</span>
+                        </div>
+
+                        <div className={styles.timeInput}>
+                            <label>Время приготовления (минут):</label>
+                            <input
+                                type="number"
+                                min="0"
+                                max="600"
+                                value={preparationTime}
+                                onChange={(e) => setPreparationTime(Math.max(1, parseInt(e.target.value) || 30))}
+                            />
                         </div>
 
                         <div className={styles.total}>
