@@ -18,6 +18,7 @@ public class OrderDTO {
     public Double amount;
     public Boolean status;
     public Boolean type;
+    public Boolean duty;
     public Double time;
     public Double timeDelay;
     public LocalDateTime created_at;
@@ -26,6 +27,14 @@ public class OrderDTO {
     // Добавляем список блюд
     public Double getTimeDelay() {
         return timeDelay;
+    }
+
+    public Boolean getDuty() {
+        return duty;
+    }
+
+    public void setDuty(Boolean duty) {
+        this.duty = duty;
     }
 
     public LocalDateTime getCreated_at() {

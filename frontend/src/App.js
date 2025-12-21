@@ -13,6 +13,7 @@ import PersonPage from "./pages/SuppliersPage/PersonPage";
 import DishPage from "./pages/SuppliersPage/DishPage";
 import TechCardPage from "./pages/TechCard/TechCardPage";
 import WarehousesPage from "./pages/Warehouse/WarehousesPage";
+import ClientsPage from "./pages/SuppliersPage/ClientPages/ClientsPage";
 
 
 function App() {
@@ -27,7 +28,7 @@ function App() {
                     <Link to="/person" className="App-link">Персонал</Link>
                     <Link to="/dish" className="App-link">Меню</Link>
                     <Link to="/warehouse" className="App-link">Управление Складами</Link>
-                    <Link to="/about" className="App-link">О программе</Link>
+                    <Link to="/clients" className="App-link">Наши Клиенты</Link>
                     <Link to="/" className="App-link">Домашняя Страница</Link>
 
                 </nav>
@@ -38,7 +39,7 @@ function App() {
                         <Route path="/consignment-notes/print/:id" element={<PrintConsignmentNotePage />} />
                         <Route path="/tech-card/:dishId" element={<TechCardPage />} />
                         <Route path="/suppliers" element={<SuppliersPage/>}/>
-                        <Route path="/about" element={<AboutPage/>}/>
+                        <Route path="/clients" element={<ClientsPage/>}/>
                         <Route path="/suppliers/:id" element={<SupplierProductPage/>}/>
                         <Route path="/consigment" element={<ConsignmentNotePage/>}/>
                         <Route path="/cashier" element={<CashierPage />} />

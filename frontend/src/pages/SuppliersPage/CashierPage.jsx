@@ -16,7 +16,7 @@ export default function CashierPage() {
 
     const [persons, setPersons] = useState([]);
     const [selectedPerson, setSelectedPerson] = useState(null);
-
+    const [isDebt, setIsDebt] = useState(false);
     const [allDishes, setAllDishes] = useState([]);
     const [modalOpen, setModalOpen] = useState(false);
     const [orderType, setOrderType] = useState(false);
@@ -143,6 +143,7 @@ export default function CashierPage() {
                 amount: total,
                 status: false,
                 time: preparationTime,
+                duty: isDebt,
                 type: orderType,
                 items: currentOrderItems.map(i => ({
                     dishID: i.dishId,
@@ -167,6 +168,7 @@ export default function CashierPage() {
             setCurrentOrderItems([]);
             setOrderType(false);
             setPreparationTime(30);
+            setIsDebt(false);
 
             const dishPayload = currentOrderItems.map(i => ({
                 dishID: i.dishId,
@@ -307,6 +309,21 @@ export default function CashierPage() {
                             </label>
                             <span>{orderType ? "Доставка" : "По месту"}</span>
                         </div>
+
+
+                        <div className={styles.debtCheckbox}>
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    checked={isDebt}
+                                    onChange={(e) => setIsDebt(e.target.checked)}
+                                />
+                                <span>Долг</span>
+                            </label>
+                        </div>
+
+
+
 
                         <div className={styles.timeInput}>
                             <label>Время приготовления (минут):</label>

@@ -9,6 +9,7 @@ import java.util.List;
 
 import jooqdata.tables.Client;
 import jooqdata.tables.Clientdish;
+import jooqdata.tables.Clientduty;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
@@ -50,6 +51,11 @@ public class Sales extends SchemaImpl {
      * The table <code>sales.clientdish</code>.
      */
     public final Clientdish CLIENTDISH = Clientdish.CLIENTDISH;
+
+    /**
+     * The table <code>sales.clientduty</code>.
+     */
+    public final Clientduty CLIENTDUTY = Clientduty.CLIENTDUTY;
 
     /**
      * The table <code>sales.consignmentnote</code>.
@@ -134,6 +140,7 @@ public class Sales extends SchemaImpl {
         return Arrays.asList(
             Client.CLIENT,
             Clientdish.CLIENTDISH,
+            Clientduty.CLIENTDUTY,
             Consignmentnote.CONSIGNMENTNOTE,
             Consproduct.CONSPRODUCT,
             Dish.DISH,

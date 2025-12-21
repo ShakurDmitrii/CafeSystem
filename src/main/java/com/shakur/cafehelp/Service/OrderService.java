@@ -44,6 +44,7 @@ public class OrderService {
                     .set(ORDER.TYPE, orderDTO.getType() != null ? orderDTO.getType() : false)
                     .set(ORDER.TIME, orderDTO.getTime() != null ? orderDTO.getTime() : 30.0) // время по умолчанию 30 мин
                     .set(ORDER.TIMEDELAY, orderDTO.getTimeDelay()) // может быть null
+                    .set(ORDER.DUTY, orderDTO.getDuty())
                     .returningResult(ORDER.ORDERID)
                     .fetchOne();
 

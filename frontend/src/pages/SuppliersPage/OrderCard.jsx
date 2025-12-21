@@ -189,7 +189,7 @@ export default function OrderCard({ order, markOrderReady }) {
                     {items.length > 0
                         ? items.map((i, idx) => (
                             <div key={idx} style={{ fontSize: "0.9em", marginBottom: "3px" }}>
-                                {i.dishName || "Без названия"} × {i.qty || 1} = {(i.price || 0) * (i.qty || 1)} ₽
+                                {i.dishName || "Без названия"} × {i.qty} = {(i.price || 0) * (i.qty || 1)} ₽
                             </div>
                         ))
                         : "Загрузка блюд..."}

@@ -154,7 +154,7 @@ public class ShiftService {
     }
 
     public List<DishDTO> getDishesByOrderId(int orderId) {
-        return dsl.select(Dish.DISH.DISHID, Dish.DISH.DISHNAME, Dish.DISH.PRICE)
+        return dsl.select(Dish.DISH.DISHID, Dish.DISH.DISHNAME, Dish.DISH.PRICE, Orderdish.ORDERDISH.QTY )
                 .from(Orderdish.ORDERDISH)
                 .join(Dish.DISH)
                 .on(Orderdish.ORDERDISH.DISHID.eq(Dish.DISH.DISHID))
@@ -166,6 +166,7 @@ public class ShiftService {
                     dto.dishId = record.get(Dish.DISH.DISHID);
                     dto.dishName = record.get(Dish.DISH.DISHNAME);
                     dto.price = record.get(Dish.DISH.PRICE);
+                    dto.qty = record.get(Orderdish.ORDERDISH.QTY);
                     return dto;
                 })
                 .toList();

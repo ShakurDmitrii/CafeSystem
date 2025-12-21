@@ -6,6 +6,7 @@ package jooqdata;
 
 import jooqdata.tables.Client;
 import jooqdata.tables.Clientdish;
+import jooqdata.tables.Clientduty;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
@@ -21,6 +22,7 @@ import jooqdata.tables.Techproduct;
 import jooqdata.tables.Warehouse;
 import jooqdata.tables.records.ClientRecord;
 import jooqdata.tables.records.ClientdishRecord;
+import jooqdata.tables.records.ClientdutyRecord;
 import jooqdata.tables.records.ConsignmentnoteRecord;
 import jooqdata.tables.records.ConsproductRecord;
 import jooqdata.tables.records.DishRecord;
@@ -77,6 +79,7 @@ public class Keys {
     // -------------------------------------------------------------------------
 
     public static final ForeignKey<ClientdishRecord, ClientRecord> CLIENTDISH__CLIENTDISH_CLIENT_FK = Internal.createForeignKey(Clientdish.CLIENTDISH, DSL.name("clientdish_client_fk"), new TableField[] { Clientdish.CLIENTDISH.CLIENTID }, Keys.CLIENT_PK, new TableField[] { Client.CLIENT.CLIENTID }, true);
+    public static final ForeignKey<ClientdutyRecord, ClientRecord> CLIENTDUTY__CLIENTDUTY_CLIENT_FK = Internal.createForeignKey(Clientduty.CLIENTDUTY, DSL.name("clientduty_client_fk"), new TableField[] { Clientduty.CLIENTDUTY.CLIENTID }, Keys.CLIENT_PK, new TableField[] { Client.CLIENT.CLIENTID }, true);
     public static final ForeignKey<ConsignmentnoteRecord, SupplierRecord> CONSIGNMENTNOTE__CONSIGNMENTNOTE_SUPPLIER_FK = Internal.createForeignKey(Consignmentnote.CONSIGNMENTNOTE, DSL.name("consignmentnote_supplier_fk"), new TableField[] { Consignmentnote.CONSIGNMENTNOTE.SUPPLIERID }, Keys.SUPPLIER_PK, new TableField[] { Supplier.SUPPLIER.SUPPLIERID }, true);
     public static final ForeignKey<ConsproductRecord, ConsignmentnoteRecord> CONSPRODUCT__CONSPRODUCT_CONSIGNMENTNOTE_FK = Internal.createForeignKey(Consproduct.CONSPRODUCT, DSL.name("consproduct_consignmentnote_fk"), new TableField[] { Consproduct.CONSPRODUCT.CONSIGNMENTID }, Keys.CONSIGNMENTNOTE_PK, new TableField[] { Consignmentnote.CONSIGNMENTNOTE.CONSIGNMENTID }, true);
     public static final ForeignKey<ConsproductRecord, ProductRecord> CONSPRODUCT__CONSPRODUCT_PRODUCT_FK = Internal.createForeignKey(Consproduct.CONSPRODUCT, DSL.name("consproduct_product_fk"), new TableField[] { Consproduct.CONSPRODUCT.PRODUCTID }, Keys.PRODUCT_PK, new TableField[] { Product.PRODUCT.PRODUCTID }, true);

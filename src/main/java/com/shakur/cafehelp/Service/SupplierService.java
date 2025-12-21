@@ -39,13 +39,13 @@ public class SupplierService {
                     return dto;
                 }).toList();
     }
+
     public SupplierDTO create(SupplierDTO supplierDTO) {
         SupplierRecord record = dsl.newRecord(Supplier.SUPPLIER);
 
         // Устанавливаем ТОЛЬКО поля, которые вводит пользователь
         record.setSuppliername(supplierDTO.getSupplierName());
         record.setCommunication(supplierDTO.getCommunication());
-
 
 
         // Сохраняем запись

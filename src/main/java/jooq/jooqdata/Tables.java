@@ -6,6 +6,7 @@ package jooqdata;
 
 import jooqdata.tables.Client;
 import jooqdata.tables.Clientdish;
+import jooqdata.tables.Clientduty;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
@@ -36,6 +37,11 @@ public class Tables {
      * The table <code>sales.clientdish</code>.
      */
     public static final Clientdish CLIENTDISH = Clientdish.CLIENTDISH;
+
+    /**
+     * The table <code>sales.clientduty</code>.
+     */
+    public static final Clientduty CLIENTDUTY = Clientduty.CLIENTDUTY;
 
     /**
      * The table <code>sales.consignmentnote</code>.

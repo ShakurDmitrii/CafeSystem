@@ -20,7 +20,7 @@ public class ProductController {
         return productService.getProducts();
     }
 
-    @GetMapping("/{supplierId}")
+    @GetMapping("/supplier/{supplierId}")
     public List<ProductDTO> getProducts(@PathVariable int supplierId) {
         return productService.getAllSupplierProducts(supplierId);
     }

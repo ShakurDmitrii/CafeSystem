@@ -10,12 +10,13 @@ import java.util.function.Function;
 import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Clientdish.ClientdishPath;
+import jooqdata.tables.Clientduty.ClientdutyPath;
 import jooqdata.tables.records.ClientRecord;
 
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function2;
+import org.jooq.Function3;
 import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
@@ -24,7 +25,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row2;
+import org.jooq.Row3;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -69,6 +70,11 @@ public class Client extends TableImpl<ClientRecord> {
      * The column <code>sales.client.clientid</code>.
      */
     public final TableField<ClientRecord, Integer> CLIENTID = createField(DSL.name("clientid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
+
+    /**
+     * The column <code>sales.client.number</code>.
+     */
+    public final TableField<ClientRecord, String> NUMBER = createField(DSL.name("number"), SQLDataType.VARCHAR, this, "");
 
     private Client(Name alias, Table<ClientRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -158,6 +164,19 @@ public class Client extends TableImpl<ClientRecord> {
             _clientdish = new ClientdishPath(this, null, Keys.CLIENTDISH__CLIENTDISH_CLIENT_FK.getInverseKey());
 
         return _clientdish;
+    }
+
+    private transient ClientdutyPath _clientduty;
+
+    /**
+     * Get the implicit to-many join path to the <code>sales.clientduty</code>
+     * table
+     */
+    public ClientdutyPath clientduty() {
+        if (_clientduty == null)
+            _clientduty = new ClientdutyPath(this, null, Keys.CLIENTDUTY__CLIENTDUTY_CLIENT_FK.getInverseKey());
+
+        return _clientduty;
     }
 
     @Override
@@ -284,18 +303,18 @@ public class Client extends TableImpl<ClientRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row2 type methods
+    // Row3 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row2<String, Integer> fieldsRow() {
-        return (Row2) super.fieldsRow();
+    public Row3<String, Integer, String> fieldsRow() {
+        return (Row3) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function2<? super String, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function3<? super String, ? super Integer, ? super String, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -303,7 +322,7 @@ public class Client extends TableImpl<ClientRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function2<? super String, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function3<? super String, ? super Integer, ? super String, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }
