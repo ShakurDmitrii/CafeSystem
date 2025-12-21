@@ -22,9 +22,25 @@ public class OrderDTO {
     public Double time;
     public Double timeDelay;
     public LocalDateTime created_at;
+    public LocalDate debt_payment_date;
+    public LocalDateTime date_issue;
 
+    public LocalDate getDebt_payment_date() {
+        return debt_payment_date;
+    }
 
-    // Добавляем список блюд
+    public void setDebt_payment_date(LocalDate debt_payment_date) {
+        this.debt_payment_date = debt_payment_date;
+    }
+
+    public LocalDateTime getDate_issue() {
+        return date_issue;
+    }
+
+    public void setDate_issue(LocalDateTime date_issue) {
+        this.date_issue = date_issue;
+    }
+
     public Double getTimeDelay() {
         return timeDelay;
     }
@@ -57,25 +73,60 @@ public class OrderDTO {
         this.time = time;
     }
 
-    public Boolean getType() { return type; }
-    public void setType(Boolean type) { this.type = type; }
+    public Boolean getType() {
+        return type;
+    }
 
-    public Boolean getStatus() { return status; }
-    public void setStatus(Boolean status) { this.status = status; }
+    public void setType(Boolean type) {
+        this.type = type;
+    }
 
-    public int getOrderId() { return orderId; }
-    public void setOrderId(int orderId) { this.orderId = orderId; }
+    public Boolean getStatus() {
+        return status;
+    }
 
-    public int getShiftId() { return shiftId; }
-    public void setShiftId(int shiftId) { this.shiftId = shiftId; }
+    public void setStatus(Boolean status) {
+        this.status = status;
+    }
 
-    public LocalDate getDate() { return date; }
-    public void setDate(LocalDate date) { this.date = date; }
+    public int getOrderId() {
+        return orderId;
+    }
 
-    public int getClientId() { return clientId; }
-    public void setClientId(int clientId) { this.clientId = clientId; }
+    public void setOrderId(int orderId) {
+        this.orderId = orderId;
+    }
 
-    public Double getAmount() { return amount; }
-    public void setAmount(Double amount) { this.amount = amount; }
+    public int getShiftId() {
+        return shiftId;
+    }
+
+    public void setShiftId(int shiftId) {
+        this.shiftId = shiftId;
+    }
+
+    public LocalDate getDate() {
+        return date;
+    }
+
+    public void setDate(LocalDate date) {
+        this.date = date;
+    }
+
+    public int getClientId() {
+        return clientId;
+    }
+
+    public void setClientId(int clientId) {
+        this.clientId = clientId;
+    }
+
+    public Double getAmount() {
+        return amount;
+    }
+
+    public void setAmount(Double amount) {
+        this.amount = amount;
+    }
 
 }

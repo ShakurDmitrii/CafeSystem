@@ -26,6 +26,13 @@ public class OrderController {
     // Создание нового заказа
     @PostMapping
     public ResponseEntity<?> createOrder(@RequestBody OrderDTO order) {
+        System.out.println("=== СОЗДАНИЕ ЗАКАЗА ===");
+        System.out.println("Получен DTO: " + order);
+        System.out.println("duty: " + order.getDuty());
+        System.out.println("debt_payment_date: " + order.getDebt_payment_date());
+        System.out.println("Тип debt_payment_date: " +
+                (order.getDebt_payment_date() != null ?
+                        order.getDebt_payment_date().getClass().getName() : "null"));
         try {
             OrderDTO createdOrder = orderService.createOrder(order);
             return ResponseEntity.ok(createdOrder);

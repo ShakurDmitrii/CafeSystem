@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -101,15 +102,39 @@ public class ClientController {
     }
 
     // 6. Обновить долг клиента (пометить все заказы как оплаченные)
-    @PatchMapping("/{clientId}/pay-duties")
-    public ResponseEntity<String> payClientDuties(@PathVariable int clientId) {
+    @DeleteMapping("/{clientId}/duty")
+    public ResponseEntity<?> deleteClientDuty(@PathVariable int clientId) {
         try {
-            // Здесь нужно добавить метод в ClientService для обновления долгов
-            // clientService.payClientDuties(clientId);
-            return ResponseEntity.ok("Долги клиента #" + clientId + " отмечены как оплаченные");
+            // Вариант 1: Удалить все долги
+            Map<String, Object> result = clientService.deleteAllDutyByClientId(clientId);
+
+            if (Boolean.TRUE.equals(result.get("success"))) {
+                return ResponseEntity.ok(result);
+            } else {
+                return ResponseEntity.badRequest().body(result);
+            }
+
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Ошибка при обновлении долгов: " + e.getMessage());
+                    .body(Map.of(
+                            "error", "Failed to delete duty",
+                            "message", e.getMessage()
+                    ));
+        }
+    }
+    @DeleteMapping("/{orderId}/One-duty")
+    public ResponseEntity<?> deleteDutyByOrderId(@PathVariable int orderId) {
+        try {
+            Map<String, Object> result = clientService.deleteDutyByOrderId(orderId);
+
+            if (Boolean.TRUE.equals(result.get("success"))) {
+                return ResponseEntity.ok(result);
+            } else {
+                return ResponseEntity.badRequest().body(result);
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 
@@ -129,4 +154,19 @@ public class ClientController {
                     .body(null);
         }
     }
+
+    @PostMapping("/{orderId}/debt-date")
+    public ResponseEntity<?> setDebtPaymentDate(
+            @PathVariable Integer orderId,
+            @RequestBody LocalDate paymentDate) {
+
+        try {
+            // Просто вызываем сервис
+            clientService.addDutyData(orderId, paymentDate);
+            return ResponseEntity.ok("Дата погашения долга установлена");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Ошибка: " + e.getMessage());
+        }
+    }
+
 }

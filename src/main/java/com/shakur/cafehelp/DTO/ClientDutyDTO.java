@@ -1,13 +1,25 @@
 package com.shakur.cafehelp.DTO;
 
+import javax.xml.crypto.Data;
+import java.time.LocalDate;
+
 public class ClientDutyDTO {
     public int clientId;
     public String clientName;
     public String number;
     public double duty;
+    public LocalDate date;
 
     public int getClientId() {
         return clientId;
+    }
+
+    public LocalDate getDate() {
+        return date;
+    }
+
+    public void setDate(LocalDate date) {
+        this.date = date;
     }
 
     public void setClientId(int clientId) {

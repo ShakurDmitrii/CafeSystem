@@ -17,7 +17,7 @@ import jooqdata.tables.records.OrderRecord;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function11;
+import org.jooq.Function13;
 import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
@@ -26,7 +26,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row11;
+import org.jooq.Row13;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -116,6 +116,16 @@ public class Order extends TableImpl<OrderRecord> {
      * The column <code>sales.order.duty</code>.
      */
     public final TableField<OrderRecord, Boolean> DUTY = createField(DSL.name("duty"), SQLDataType.BOOLEAN.nullable(false), this, "");
+
+    /**
+     * The column <code>sales.order.date_issue</code>.
+     */
+    public final TableField<OrderRecord, LocalDate> DATE_ISSUE = createField(DSL.name("date_issue"), SQLDataType.LOCALDATE, this, "");
+
+    /**
+     * The column <code>sales.order.debt_payment_date</code>.
+     */
+    public final TableField<OrderRecord, LocalDate> DEBT_PAYMENT_DATE = createField(DSL.name("debt_payment_date"), SQLDataType.LOCALDATE, this, "");
 
     private Order(Name alias, Table<OrderRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -331,18 +341,18 @@ public class Order extends TableImpl<OrderRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row11 type methods
+    // Row13 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row11<Integer, LocalDate, Integer, Double, Boolean, Integer, Boolean, Double, Double, LocalDateTime, Boolean> fieldsRow() {
-        return (Row11) super.fieldsRow();
+    public Row13<Integer, LocalDate, Integer, Double, Boolean, Integer, Boolean, Double, Double, LocalDateTime, Boolean, LocalDate, LocalDate> fieldsRow() {
+        return (Row13) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function11<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? super Boolean, ? super Double, ? super Double, ? super LocalDateTime, ? super Boolean, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function13<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? super Boolean, ? super Double, ? super Double, ? super LocalDateTime, ? super Boolean, ? super LocalDate, ? super LocalDate, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -350,7 +360,7 @@ public class Order extends TableImpl<OrderRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function11<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? super Boolean, ? super Double, ? super Double, ? super LocalDateTime, ? super Boolean, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function13<? super Integer, ? super LocalDate, ? super Integer, ? super Double, ? super Boolean, ? super Integer, ? super Boolean, ? super Double, ? super Double, ? super LocalDateTime, ? super Boolean, ? super LocalDate, ? super LocalDate, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

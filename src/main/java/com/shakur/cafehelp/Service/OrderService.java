@@ -45,6 +45,7 @@ public class OrderService {
                     .set(ORDER.TIME, orderDTO.getTime() != null ? orderDTO.getTime() : 30.0) // время по умолчанию 30 мин
                     .set(ORDER.TIMEDELAY, orderDTO.getTimeDelay()) // может быть null
                     .set(ORDER.DUTY, orderDTO.getDuty())
+                    .set(ORDER.DEBT_PAYMENT_DATE, orderDTO.getDebt_payment_date())
                     .returningResult(ORDER.ORDERID)
                     .fetchOne();
 

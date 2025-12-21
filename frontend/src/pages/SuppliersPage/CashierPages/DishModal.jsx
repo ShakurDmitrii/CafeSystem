@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import styles from "./DishModal.module.css";
+import styles from "../DishModal.module.css";
 
 export default function DishModal({ isOpen, onClose, onAddDish, dishes }) {
     const [search, setSearch] = useState("");

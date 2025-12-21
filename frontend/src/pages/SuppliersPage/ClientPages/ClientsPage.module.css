@@ -435,3 +435,55 @@
     padding: 2px 6px;
     border-radius: 10px;
 }
+
+/* Добавьте в ClientsPage.module.css */
+
+.orderMainInfo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.payAllBtn {
+    padding: 8px 12px;
+    background: #4caf50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-left: 10px;
+}
+
+.paySingleBtn {
+    padding: 6px 10px;
+    background: #2196f3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-left: 15px;
+    white-space: nowrap;
+}
+
+.dutyOrder {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    margin: 8px 0;
+    background: white;
+    border-radius: 4px;
+    border: 1px solid #eee;
+    gap: 10px;
+}
+
+.payAllBtn:hover {
+    background: #388e3c;
+}
+
+.paySingleBtn:hover {
+    background: #1976d2;
+}

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import styles from "./ClientsPage.module.css";
 
 const API_CLIENTS = "http://localhost:8080/api/clients";
-const API_ORDERS = "http://localhost:8080/api/orders";
+
 
 export default function ClientsPage() {
     const [clients, setClients] = useState([]);
@@ -135,25 +135,55 @@ export default function ClientsPage() {
         loadClientDishes(client.clientId);
     };
 
-    const markDutyAsPaid = (clientId) => {
-        if (!window.confirm("Отметить все долги как оплаченные?")) return;
+    // Списание всего долга клиента
+    const markAllDutyAsPaid = (clientId) => {
+        if (!window.confirm("Списать ВСЕ долги клиента как оплаченные?")) return;
 
-        fetch(`${API_CLIENTS}/${clientId}/pay-duties`, {
-            method: "PATCH"
+        fetch(`${API_CLIENTS}/${clientId}/duty`, {
+            method: "DELETE"
         })
             .then(r => {
                 if (!r.ok) {
                     throw new Error(`HTTP ${r.status}`);
                 }
-                return r.text();
+                return r.json();
             })
-            .then(() => {
-                alert("✅ Долги отмечены как оплаченные!");
+            .then(data => {
+                alert(data.message || "✅ Все долги списаны как оплаченные!");
                 loadDutyClients();
                 loadClients();
             })
             .catch(e => {
-                console.error("Ошибка обновления долга:", e);
+                console.error("Ошибка списания долгов:", e);
+                alert("❌ Ошибка: " + e.message);
+            });
+    };
+
+    // Списание одного конкретного заказа
+    const markSingleOrderAsPaid = (orderId, clientId, orderAmount) => {
+        if (!window.confirm(`Списать долг по заказу #${orderId} на сумму ${orderAmount} ₽?`)) return;
+
+        fetch(`${API_CLIENTS}/${orderId}/One-duty`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" }
+        })
+            .then(r => {
+                if (!r.ok) {
+                    throw new Error(`HTTP ${r.status}`);
+                }
+                return r.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    alert(data.message || `✅ Заказ #${orderId} отмечен как оплаченный`);
+                    loadDutyClients();
+                    loadClients();
+                } else {
+                    alert("❌ Ошибка: " + data.error);
+                }
+            })
+            .catch(e => {
+                console.error("Ошибка списания заказа:", e);
                 alert("❌ Ошибка: " + e.message);
             });
     };
@@ -189,15 +219,10 @@ export default function ClientsPage() {
 
     // Расчет общей суммы долгов
     const totalDutyAmount = dutyClients.reduce((total, clientWithDuty) => {
-        // Проверяем разные форматы данных
         if (clientWithDuty.totalDuty !== undefined) {
             return total + (clientWithDuty.totalDuty || 0);
         } else if (clientWithDuty.dutyOrders && Array.isArray(clientWithDuty.dutyOrders)) {
             const clientTotal = clientWithDuty.dutyOrders.reduce((sum, order) =>
-                sum + (order.amount || 0), 0);
-            return total + clientTotal;
-        } else if (clientWithDuty.orders && Array.isArray(clientWithDuty.orders)) {
-            const clientTotal = clientWithDuty.orders.reduce((sum, order) =>
                 sum + (order.amount || 0), 0);
             return total + clientTotal;
         }
@@ -324,9 +349,8 @@ export default function ClientsPage() {
                         <div className={styles.empty}>Нет клиентов с долгами</div>
                     ) : (
                         dutyClients.map((clientWithDuty, index) => {
-                            // Адаптивная обработка данных
                             const client = clientWithDuty.client || clientWithDuty;
-                            const dutyOrders = clientWithDuty.dutyOrders || clientWithDuty.orders || [];
+                            const dutyOrders = clientWithDuty.dutyOrders || [];
                             const totalDuty = clientWithDuty.totalDuty !== undefined
                                 ? clientWithDuty.totalDuty
                                 : dutyOrders.reduce((sum, order) => sum + (order.amount || 0), 0);
@@ -343,13 +367,13 @@ export default function ClientsPage() {
                                         </div>
                                         <div className={styles.dutyClientTotal}>
                                             <strong className={styles.dutyAmount}>
-                                                Долг: {totalDuty.toFixed(2)} ₽
+                                                Общий долг: {totalDuty.toFixed(2)} ₽
                                             </strong>
                                             <button
-                                                className={styles.payBtn}
-                                                onClick={() => markDutyAsPaid(client.clientId)}
+                                                className={styles.payAllBtn}
+                                                onClick={() => markAllDutyAsPaid(client.clientId)}
                                             >
-                                                ✅ Отметить оплаченным
+                                                💰 Списать весь долг
                                             </button>
                                         </div>
                                     </div>
@@ -359,24 +383,36 @@ export default function ClientsPage() {
                                             <h5>Заказы с долгами ({dutyOrders.length}):</h5>
                                             {dutyOrders.map(order => (
                                                 <div key={order.orderId} className={styles.dutyOrder}>
-                                                    <div className={styles.orderInfo}>
-                                                        <span className={styles.orderId}>
-                                                            Заказ #{order.orderId}
-                                                        </span>
-                                                        <span className={styles.orderDate}>
-                                                            📅 {order.date || "Дата не указана"}
-                                                        </span>
-                                                    </div>
-                                                    <div className={styles.orderDetails}>
-                                                        <span className={styles.orderAmount}>
-                                                            💰 {order.amount || 0} ₽
-                                                        </span>
-                                                        {order.timeDelay > 0 && (
-                                                            <span className={styles.delayBadge}>
-                                                                ⏰ Задержка: {order.timeDelay} мин
+                                                    <div className={styles.orderMainInfo}>
+                                                        <div className={styles.orderInfo}>
+                                                            <span className={styles.orderId}>
+                                                                Заказ #{order.orderId}
                                                             </span>
-                                                        )}
+                                                            <span className={styles.orderDate}>
+                                                                📅 {order.date || "Дата не указана"}
+                                                            </span>
+                                                        </div>
+                                                        <div className={styles.orderDetails}>
+                                                            <span className={styles.orderAmount}>
+                                                                💰 {order.amount || 0} ₽
+                                                            </span>
+                                                            {order.timeDelay > 0 && (
+                                                                <span className={styles.delayBadge}>
+                                                                    ⏰ Задержка: {order.timeDelay} мин
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
+                                                    <button
+                                                        className={styles.paySingleBtn}
+                                                        onClick={() => markSingleOrderAsPaid(
+                                                            order.orderId,
+                                                            client.clientId,
+                                                            order.amount || 0
+                                                        )}
+                                                    >
+                                                        ✅ Долг оплачен
+                                                    </button>
                                                 </div>
                                             ))}
                                         </div>

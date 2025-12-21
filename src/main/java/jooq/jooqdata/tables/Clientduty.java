@@ -4,6 +4,7 @@
 package jooqdata.tables;
 
 
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -17,7 +18,7 @@ import jooqdata.tables.records.ClientdutyRecord;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function4;
+import org.jooq.Function5;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -25,7 +26,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row4;
+import org.jooq.Row5;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -79,6 +80,11 @@ public class Clientduty extends TableImpl<ClientdutyRecord> {
      * The column <code>sales.clientduty.duty</code>.
      */
     public final TableField<ClientdutyRecord, Double> DUTY = createField(DSL.name("duty"), SQLDataType.DOUBLE, this, "");
+
+    /**
+     * The column <code>sales.clientduty.data</code>.
+     */
+    public final TableField<ClientdutyRecord, LocalDate> DATA = createField(DSL.name("data"), SQLDataType.LOCALDATE, this, "");
 
     private Clientduty(Name alias, Table<ClientdutyRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -288,18 +294,18 @@ public class Clientduty extends TableImpl<ClientdutyRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row4 type methods
+    // Row5 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row4<Long, String, String, Double> fieldsRow() {
-        return (Row4) super.fieldsRow();
+    public Row5<Long, String, String, Double, LocalDate> fieldsRow() {
+        return (Row5) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function4<? super Long, ? super String, ? super String, ? super Double, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function5<? super Long, ? super String, ? super String, ? super Double, ? super LocalDate, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -307,7 +313,7 @@ public class Clientduty extends TableImpl<ClientdutyRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function4<? super Long, ? super String, ? super String, ? super Double, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function5<? super Long, ? super String, ? super String, ? super Double, ? super LocalDate, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }
