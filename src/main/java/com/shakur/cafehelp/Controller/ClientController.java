@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -168,5 +169,44 @@ public class ClientController {
             return ResponseEntity.badRequest().body("Ошибка: " + e.getMessage());
         }
     }
+// Долги
+// 1. Получить долги, которые должны быть погашены сегодня
+@GetMapping("/today-debts")
+public ResponseEntity<List<OrderDTO>> getDebtsDueToday() {
+    try {
+        List<OrderDTO> todayDebts = clientService.getDebtsDueToday();
+        return ResponseEntity.ok(todayDebts);
+    } catch (Exception e) {
+        return ResponseEntity.badRequest().body(null);
+    }
+}
 
+    // 2. Получить просроченные долги
+    @GetMapping("/overdue-debts")
+    public ResponseEntity<List<OrderDTO>> getOverdueDebts() {
+        try {
+            List<OrderDTO> overdueDebts = clientService.getOverdueDebts();
+            return ResponseEntity.ok(overdueDebts);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(null);
+        }
+    }
+
+    // 3. Получить все долги (сегодняшние + просроченные)
+    @GetMapping("/all-debts")
+    public ResponseEntity<Map<String, Object>> getAllDebts() {
+        try {
+            List<OrderDTO> todayDebts = clientService.getDebtsDueToday();
+            List<OrderDTO> overdueDebts = clientService.getOverdueDebts();
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("todayDebts", todayDebts);
+            result.put("overdueDebts", overdueDebts);
+            result.put("totalCount", todayDebts.size() + overdueDebts.size());
+
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(null);
+        }
+    }
 }

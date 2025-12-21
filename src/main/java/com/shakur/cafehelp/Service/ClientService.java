@@ -7,21 +7,23 @@ import jooqdata.tables.Dish;
 import jooqdata.tables.Order;
 import jooqdata.tables.records.ClientRecord;
 import org.jooq.DSLContext;
+import org.jooq.Record;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static java.lang.Long.sum;
 import static jooqdata.tables.Client.CLIENT;
 import static jooqdata.tables.Order.ORDER;
+import static org.jooq.impl.DSL.condition;
 
 @Service
 public class ClientService {
@@ -299,4 +301,235 @@ public class ClientService {
     }
 
 
+
+    public List<OrderDTO> getDebtsDueToday() {
+        LocalDate today = LocalDate.now();
+        System.out.println("=== getDebtsDueToday() ===");
+        System.out.println("Сегодня: " + today);
+
+        try {
+            // Сначала выведем информацию о структуре таблицы
+            System.out.println("Проверяем структуру поля DEBT_PAYMENT_DATE...");
+            System.out.println("ORDER.DEBT_PAYMENT_DATE тип в jOOQ: " + ORDER.DEBT_PAYMENT_DATE.getType());
+            System.out.println("ORDER.DEBT_PAYMENT_DATE тип данных SQL: " + ORDER.DEBT_PAYMENT_DATE.getDataType());
+
+            // Выведем несколько примеров из базы
+            System.out.println("\nПримеры значений DEBT_PAYMENT_DATE из базы:");
+            dsl.select(ORDER.ORDERID, ORDER.DEBT_PAYMENT_DATE)
+                    .from(ORDER)
+                    .where(ORDER.DEBT_PAYMENT_DATE.isNotNull())
+                    .limit(5)
+                    .fetch()
+                    .forEach(record -> {
+                        Object debtDate = record.get(ORDER.DEBT_PAYMENT_DATE);
+                        System.out.println("orderId=" + record.get(ORDER.ORDERID) +
+                                ", debtDate=" + debtDate +
+                                ", тип=" + (debtDate != null ? debtDate.getClass().getName() : "null") +
+                                ", is LocalDate=" + (debtDate instanceof LocalDate) +
+                                ", is LocalDateTime=" + (debtDate instanceof LocalDateTime) +
+                                ", is java.sql.Date=" + (debtDate instanceof java.sql.Date) +
+                                ", is java.sql.Timestamp=" + (debtDate instanceof java.sql.Timestamp));
+                    });
+
+            // Пробуем оба варианта - и DATE и TIMESTAMP сравнение
+            List<OrderDTO> result = dsl.select()
+                    .from(ORDER)
+                    .join(CLIENT).on(ORDER.CLIENTID.eq(CLIENT.CLIENTID))
+                    .where(ORDER.DUTY.eq(true)
+                            .and(ORDER.DEBT_PAYMENT_DATE.eq(today)) // пробуем как LocalDate
+                            .and(ORDER.STATUS.eq(true)))
+                    .fetch(record -> {
+                        OrderDTO dto = new OrderDTO();
+                        dto.setOrderId(record.get(ORDER.ORDERID));
+                        dto.setAmount(record.get(ORDER.AMOUNT));
+                        dto.setDate(record.get(ORDER.DATE));
+
+                        // Пробуем получить как LocalDate, если не получится - как LocalDateTime
+                        Object debtDateObj = record.get(ORDER.DEBT_PAYMENT_DATE);
+                        System.out.println("\n=== Обработка записи ===");
+                        System.out.println("orderId: " + dto.getOrderId());
+                        System.out.println("debtDateObj: " + debtDateObj);
+
+                        if (debtDateObj != null) {
+                            System.out.println("Тип debtDateObj: " + debtDateObj.getClass().getName());
+                            System.out.println("toString: " + debtDateObj.toString());
+
+                            // Проверяем все возможные типы
+                            System.out.println("Проверка типов:");
+                            System.out.println("  - LocalDate: " + (debtDateObj instanceof LocalDate));
+                            System.out.println("  - LocalDateTime: " + (debtDateObj instanceof LocalDateTime));
+                            System.out.println("  - java.sql.Date: " + (debtDateObj instanceof java.sql.Date));
+                            System.out.println("  - java.sql.Timestamp: " + (debtDateObj instanceof java.sql.Timestamp));
+                            System.out.println("  - java.util.Date: " + (debtDateObj instanceof java.util.Date));
+                            System.out.println("  - String: " + (debtDateObj instanceof String));
+
+                            // Преобразуем в LocalDate
+                            if (debtDateObj instanceof LocalDate) {
+                                dto.setDebt_payment_date((LocalDate) debtDateObj);
+                            } else if (debtDateObj instanceof LocalDateTime) {
+                                dto.setDebt_payment_date(((LocalDateTime) debtDateObj).toLocalDate());
+                            } else if (debtDateObj instanceof java.sql.Date) {
+                                dto.setDebt_payment_date(((java.sql.Date) debtDateObj).toLocalDate());
+                            } else if (debtDateObj instanceof java.sql.Timestamp) {
+                                dto.setDebt_payment_date(((java.sql.Timestamp) debtDateObj).toLocalDateTime().toLocalDate());
+                            } else if (debtDateObj instanceof java.util.Date) {
+                                dto.setDebt_payment_date(((java.util.Date) debtDateObj).toInstant()
+                                        .atZone(ZoneId.systemDefault()).toLocalDate());
+                            } else if (debtDateObj instanceof String) {
+                                // Если это строка, пробуем распарсить
+                                try {
+                                    dto.setDebt_payment_date(LocalDate.parse((String) debtDateObj));
+                                } catch (Exception e) {
+                                    System.err.println("Не удалось распарсить строку: " + debtDateObj);
+                                }
+                            } else {
+                                System.out.println("⚠️ Неизвестный тип: " + debtDateObj.getClass());
+                            }
+                        } else {
+                            System.out.println("debtDateObj is NULL");
+                        }
+
+                        dto.setDuty(record.get(ORDER.DUTY));
+                        dto.setStatus(record.get(ORDER.STATUS));
+                        dto.setClientId(record.get(CLIENT.CLIENTID));
+
+                        System.out.println("Итоговый debt_payment_date в DTO: " + dto.getDebt_payment_date());
+                        return dto;
+                    });
+
+            System.out.println("\n✅ Результат прямого сравнения с today: " + result.size());
+
+            // Если ничего не найдено, пробуем через SQL функцию DATE()
+            if (result.isEmpty()) {
+                System.out.println("\nПробуем через DATE() функцию...");
+
+                // Сначала выведем SQL запрос для отладки
+                String sql = dsl.select()
+                        .from(ORDER)
+                        .join(CLIENT).on(ORDER.CLIENTID.eq(CLIENT.CLIENTID))
+                        .where(ORDER.DUTY.eq(true)
+                                .and(condition("DATE({0}) = DATE(?)", ORDER.DEBT_PAYMENT_DATE, today))
+                                .and(ORDER.STATUS.eq(false)))
+                        .getSQL();
+                System.out.println("SQL запрос: " + sql);
+
+                result = dsl.select()
+                        .from(ORDER)
+                        .join(CLIENT).on(ORDER.CLIENTID.eq(CLIENT.CLIENTID))
+                        .where(ORDER.DUTY.eq(true)
+                                .and(condition("DATE({0}) = DATE(?)", ORDER.DEBT_PAYMENT_DATE, today))
+                                .and(ORDER.STATUS.eq(false)))
+                        .fetch(record -> {
+                            OrderDTO dto = new OrderDTO();
+                            dto.setOrderId(record.get(ORDER.ORDERID));
+                            dto.setAmount(record.get(ORDER.AMOUNT));
+                            dto.setDate(record.get(ORDER.DATE));
+
+                            Object debtDateObj = record.get(ORDER.DEBT_PAYMENT_DATE);
+                            System.out.println("Через DATE(): orderId=" + dto.getOrderId() +
+                                    ", debtDateObj=" + debtDateObj +
+                                    ", тип=" + (debtDateObj != null ? debtDateObj.getClass().getName() : "null"));
+
+                            // обработка как выше
+                            if (debtDateObj instanceof LocalDate) {
+                                dto.setDebt_payment_date((LocalDate) debtDateObj);
+                            } else if (debtDateObj instanceof LocalDateTime) {
+                                dto.setDebt_payment_date(((LocalDateTime) debtDateObj).toLocalDate());
+                            } else if (debtDateObj instanceof java.sql.Date) {
+                                dto.setDebt_payment_date(((java.sql.Date) debtDateObj).toLocalDate());
+                            } else if (debtDateObj instanceof java.sql.Timestamp) {
+                                dto.setDebt_payment_date(((java.sql.Timestamp) debtDateObj).toLocalDateTime().toLocalDate());
+                            }
+
+                            dto.setDuty(record.get(ORDER.DUTY));
+                            dto.setStatus(record.get(ORDER.STATUS));
+                            dto.setClientId(record.get(CLIENT.CLIENTID));
+                            return dto;
+                        });
+
+                System.out.println("Через DATE() найдено: " + result.size());
+            }
+
+            return result;
+
+        } catch (Exception e) {
+            System.err.println("❌ Ошибка: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    public List<OrderDTO> getOverdueDebts() {
+        LocalDate today = LocalDate.now();
+        System.out.println("=== getOverdueDebts() ===");
+        System.out.println("Сегодня: " + today);
+
+        try {
+            List<OrderDTO> result = dsl.select()
+                    .from(ORDER)
+                    .join(CLIENT).on(ORDER.CLIENTID.eq(CLIENT.CLIENTID))
+                    .where(ORDER.DUTY.eq(true)
+                            .and(ORDER.DEBT_PAYMENT_DATE.lt(today)) // как LocalDate
+                            .and(ORDER.STATUS.eq(false)))
+                    .fetch(record -> {
+                        OrderDTO dto = new OrderDTO();
+                        dto.setOrderId(record.get(ORDER.ORDERID));
+                        dto.setAmount(record.get(ORDER.AMOUNT));
+                        dto.setDate(record.get(ORDER.DATE));
+
+                        Object debtDateObj = record.get(ORDER.DEBT_PAYMENT_DATE);
+                        if (debtDateObj instanceof LocalDate) {
+                            dto.setDebt_payment_date((LocalDate) debtDateObj);
+                        } else if (debtDateObj instanceof LocalDateTime) {
+                            dto.setDebt_payment_date(((LocalDateTime) debtDateObj).toLocalDate());
+                        }
+
+                        dto.setDuty(record.get(ORDER.DUTY));
+                        dto.setStatus(record.get(ORDER.STATUS));
+                        dto.setClientId(record.get(CLIENT.CLIENTID));
+
+                        System.out.println("Найден просроченный: orderId=" + dto.getOrderId());
+                        return dto;
+                    });
+
+            System.out.println("✅ Найдено просроченных: " + result.size());
+
+            // Если ничего не найдено, пробуем через DATE()
+            if (result.isEmpty()) {
+                result = dsl.select()
+                        .from(ORDER)
+                        .join(CLIENT).on(ORDER.CLIENTID.eq(CLIENT.CLIENTID))
+                        .where(ORDER.DUTY.eq(true)
+                                .and(condition("DATE({0}) < DATE(?)", ORDER.DEBT_PAYMENT_DATE, today))
+                                .and(ORDER.STATUS.eq(false)))
+                        .fetch(record -> {
+                            OrderDTO dto = new OrderDTO();
+                            dto.setOrderId(record.get(ORDER.ORDERID));
+                            dto.setAmount(record.get(ORDER.AMOUNT));
+                            dto.setDate(record.get(ORDER.DATE));
+
+                            Object debtDateObj = record.get(ORDER.DEBT_PAYMENT_DATE);
+                            if (debtDateObj instanceof LocalDate) {
+                                dto.setDebt_payment_date((LocalDate) debtDateObj);
+                            } else if (debtDateObj instanceof LocalDateTime) {
+                                dto.setDebt_payment_date(((LocalDateTime) debtDateObj).toLocalDate());
+                            }
+
+                            dto.setDuty(record.get(ORDER.DUTY));
+                            dto.setStatus(record.get(ORDER.STATUS));
+                            dto.setClientId(record.get(CLIENT.CLIENTID));
+                            return dto;
+                        });
+
+                System.out.println("Через DATE() найдено просроченных: " + result.size());
+            }
+
+            return result;
+
+        } catch (Exception e) {
+            System.err.println("❌ Ошибка: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
 }

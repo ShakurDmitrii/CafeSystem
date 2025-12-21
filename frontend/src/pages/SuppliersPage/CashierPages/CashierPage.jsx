@@ -8,6 +8,8 @@ const API_SHIFTS = "http://localhost:8080/api/shifts";
 const API_PERSONS = "http://localhost:8080/api/persons";
 const API_DISHES = "http://localhost:8080/api/dishes";
 const API_CLIENTS = "http://localhost:8080/api/clients";
+const API_TODAY_DEBTS = "http://localhost:8080/api/clients/today-debts";
+const API_OVERDUE_DEBTS = "http://localhost:8080/api/clients/overdue-debts";
 
 export default function CashierPage() {
     const [orders, setOrders] = useState([]);
@@ -33,6 +35,11 @@ export default function CashierPage() {
 
     const [debtPaymentDate, setDebtPaymentDate] = useState("");
     const [showDatePicker, setShowDatePicker] = useState(false);
+
+    // === ДОБАВЛЕНО: Состояния для долгов ===
+    const [todayDebts, setTodayDebts] = useState([]);
+    const [overdueDebts, setOverdueDebts] = useState([]);
+    const [showDebtNotification, setShowDebtNotification] = useState(false);
 
     // При загрузке компонента восстанавливаем состояние смены из localStorage
     useEffect(() => {
@@ -99,6 +106,46 @@ export default function CashierPage() {
             setShowDatePicker(false);
         }
     }, [selectedClient, isDebt]);
+
+    // === ДОБАВЛЕНО: Функция проверки долгов ===
+    const checkDebts = async () => {
+        try {
+            const [todayResponse, overdueResponse] = await Promise.all([
+                fetch(API_TODAY_DEBTS),
+                fetch(API_OVERDUE_DEBTS)
+            ]);
+
+            const today = await todayResponse.json();
+            const overdue = await overdueResponse.json();
+
+            setTodayDebts(Array.isArray(today) ? today : []);
+            setOverdueDebts(Array.isArray(overdue) ? overdue : []);
+
+            // Показываем уведомление если есть долги
+            if ((Array.isArray(today) && today.length > 0) ||
+                (Array.isArray(overdue) && overdue.length > 0)) {
+                setShowDebtNotification(true);
+            }
+
+        } catch (e) {
+            console.error("Ошибка загрузки долгов:", e);
+        }
+    };
+
+    // === ДОБАВЛЕНО: Проверка долгов при открытии смены ===
+    useEffect(() => {
+        if (shiftOpen && currentShift) {
+            // Проверить долги при открытии смены
+            checkDebts();
+
+            // Проверять долги каждые 30 минут
+            const debtInterval = setInterval(() => {
+                checkDebts();
+            }, 30 * 60 * 1000); // 30 минут
+
+            return () => clearInterval(debtInterval);
+        }
+    }, [shiftOpen, currentShift]);
 
     const fetchShifts = async () => {
         try {
@@ -479,6 +526,92 @@ export default function CashierPage() {
         return { cookingOrders, readyOrders };
     };
 
+    // === ДОБАВЛЕНО: Компонент уведомления о долгах ===
+    const DebtNotification = () => {
+        if (!showDebtNotification || (todayDebts.length === 0 && overdueDebts.length === 0)) {
+            return null;
+        }
+
+        const totalAmount = [...todayDebts, ...overdueDebts]
+            .reduce((sum, debt) => sum + (debt.amount || 0), 0);
+
+        return (
+            <div className={styles.notificationOverlay}>
+                <div className={styles.notificationModal}>
+                    <div className={styles.notificationHeader}>
+                        <h2>📋 Уведомление о долгах</h2>
+                        <button
+                            className={styles.closeBtn}
+                            onClick={() => setShowDebtNotification(false)}
+                        >
+                            ✕
+                        </button>
+                    </div>
+
+                    <div className={styles.notificationContent}>
+                        {/* ПРОСРОЧЕННЫЕ ДОЛГИ */}
+                        {overdueDebts.length > 0 && (
+                            <div className={styles.debtSection}>
+                                <h3 className={styles.overdueTitle}>
+                                    ⚠️ ПРОСРОЧЕННЫЕ ДОЛГИ ({overdueDebts.length})
+                                </h3>
+                                {overdueDebts.map(debt => (
+                                    <div key={debt.orderId} className={styles.debtItem}>
+                                        <div className={styles.debtInfo}>
+                                            <strong>Заказ #{debt.orderId}</strong>
+                                            <div>Сумма: {debt.amount} ₽</div>
+                                            {debt.debt_payment_date && (
+                                                <div className={styles.overdueBadge}>
+                                                    Просрочено с: {formatDate(debt.debt_payment_date)}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* ДОЛГИ НА СЕГОДНЯ */}
+                        {todayDebts.length > 0 && (
+                            <div className={styles.debtSection}>
+                                <h3 className={styles.todayTitle}>
+                                    📅 ДОЛГИ НА СЕГОДНЯ ({todayDebts.length})
+                                </h3>
+                                {todayDebts.map(debt => (
+                                    <div key={debt.orderId} className={styles.debtItem}>
+                                        <div className={styles.debtInfo}>
+                                            <strong>Заказ #{debt.orderId}</strong>
+                                            <div>Сумма: {debt.amount} ₽</div>
+                                            {debt.debt_payment_date && (
+                                                <div className={styles.todayBadge}>
+                                                    Дата погашения: {formatDate(debt.debt_payment_date)}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className={styles.notificationFooter}>
+                        <button
+                            className={`${styles.btn} ${styles.primary}`}
+                            onClick={() => setShowDebtNotification(false)}
+                        >
+                            Понятно
+                        </button>
+                        <small>
+                            Всего долгов: {todayDebts.length + overdueDebts.length} на сумму {
+                            totalAmount.toFixed(2)
+                        } ₽
+                        </small>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     // Показываем индикатор загрузки
     if (isLoading) {
         return (
@@ -503,6 +636,17 @@ export default function CashierPage() {
                 <span className={shiftOpen ? styles.shiftOpen : styles.shiftClosed}>
                     {shiftOpen ? `Смена открыта | ID: ${currentShift?.shiftId || ''}` : "Смена закрыта"}
                 </span>
+
+                {/* === ДОБАВЛЕНО: Индикатор долгов в хедере === */}
+                {shiftOpen && (todayDebts.length > 0 || overdueDebts.length > 0) && (
+                    <button
+                        className={styles.debtAlertBtn}
+                        onClick={() => setShowDebtNotification(true)}
+                        title="Показать уведомления о долгах"
+                    >
+                        ⚠️ Долги: {todayDebts.length + overdueDebts.length}
+                    </button>
+                )}
             </header>
 
             {!shiftOpen ? (
@@ -900,6 +1044,9 @@ export default function CashierPage() {
                     </div>
                 </div>
             )}
+
+            {/* === ДОБАВЛЕНО: Модальное окно уведомления о долгах === */}
+            <DebtNotification />
 
             <DishModal
                 isOpen={modalOpen}

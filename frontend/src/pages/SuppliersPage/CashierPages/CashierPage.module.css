@@ -1551,3 +1551,141 @@ input:checked + .slider:before {
     margin: 10px 0;
     border-left: 4px solid #16a34a;
 }
+/* === Уведомление о долгах === */
+.notificationOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.notificationModal {
+    background: white;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.notificationHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px 12px 0 0;
+}
+
+.notificationHeader h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.closeBtn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 4px;
+}
+
+.closeBtn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.notificationContent {
+    padding: 20px;
+}
+
+.debtSection {
+    margin-bottom: 25px;
+}
+
+.debtSection:last-child {
+    margin-bottom: 0;
+}
+
+.overdueTitle {
+    color: #e74c3c;
+    margin-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e74c3c;
+}
+
+.todayTitle {
+    color: #f39c12;
+    margin-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #f39c12;
+}
+
+.debtItem {
+    padding: 15px;
+    margin-bottom: 10px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #ccc;
+}
+
+.debtItem:nth-child(odd) {
+    background: #f9f9f9;
+}
+
+.overdueBadge {
+    color: #e74c3c;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+.todayBadge {
+    color: #f39c12;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+.debtInfo {
+    flex: 1;
+}
+
+.notificationFooter {
+    padding: 20px;
+    border-top: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fa;
+    border-radius: 0 0 12px 12px;
+}
+
+.notificationFooter small {
+    color: #666;
+}
+
+/* Индикатор долгов в хедере */
+.debtAlertBtn {
+    margin-left: 20px;
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.debtAlertBtn:hover {
+    background: #c0392b;
+}
