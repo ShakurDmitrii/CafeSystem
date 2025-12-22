@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import styles from './ConsignmentNotePage.module.css';
-import { useNavigate } from "react-router-dom"; // Добавляем
+import { useNavigate } from "react-router-dom";
 
 export default function ConsignmentNotePage() {
     const [notes, setNotes] = useState([]);
@@ -22,7 +22,7 @@ export default function ConsignmentNotePage() {
     const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
     const [warehouses, setWarehouses] = useState([]);
 
-    const navigate = useNavigate(); // Добавляем useNavigate
+    const navigate = useNavigate();
 
     // --------------------Склады-------------------------------
     useEffect(() => {
@@ -30,7 +30,7 @@ export default function ConsignmentNotePage() {
             try {
                 const res = await fetch("http://localhost:8080/warehouses");
                 const data = await res.json();
-                setWarehouses(data);
+                setWarehouses(Array.isArray(data) ? data : []);
             } catch (err) {
                 console.error(err);
             }
@@ -43,13 +43,15 @@ export default function ConsignmentNotePage() {
         async function fetchAll() {
             try {
                 setLoading(true);
+
                 const resNotes = await fetch("http://localhost:8080/api/consignmentNote");
                 const notesData = await resNotes.json();
-                setNotes(notesData);
+                setNotes(Array.isArray(notesData) ? notesData : []);
 
                 const resSup = await fetch("http://localhost:8080/api/supplier");
                 const suppliersData = await resSup.json();
-                setSuppliers(suppliersData);
+                setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
+
             } catch (err) {
                 console.error(err);
                 setError(err.message);
@@ -97,26 +99,67 @@ export default function ConsignmentNotePage() {
             // Получаем товары накладной
             const resCons = await fetch(`http://localhost:8080/api/consProduct/${noteId}`);
             const consProductsData = await resCons.json();
+            console.log("Товары накладной:", consProductsData);
 
             // Получаем товары поставщика
             const resProd = await fetch(`http://localhost:8080/api/product/${note.supplierId}`);
             const productsData = await resProd.json();
-            setProducts(productsData);
+            console.log("Товары поставщика:", productsData);
 
-            // Добавляем имя продукта к каждому товару накладной
+            // Создаем Map для быстрого поиска товаров по ID
+            let productsMap = new Map();
+
+            if (Array.isArray(productsData)) {
+                // Если это массив
+                productsData.forEach(product => {
+                    const id = product.productId || product.productID || product.id;
+                    if (id !== undefined) {
+                        productsMap.set(String(id), product);
+                    }
+                });
+            } else if (productsData && typeof productsData === 'object') {
+                // Если это один товар (объект)
+                const id = productsData.productId || productsData.productID || productsData.id;
+                if (id !== undefined) {
+                    productsMap.set(String(id), productsData);
+                }
+                // Или если это объект с массивом внутри
+                for (const key in productsData) {
+                    if (Array.isArray(productsData[key])) {
+                        productsData[key].forEach(product => {
+                            const id = product.productId || product.productID || product.id;
+                            if (id !== undefined) {
+                                productsMap.set(String(id), product);
+                            }
+                        });
+                        break;
+                    }
+                }
+            }
+
+            console.log("Products Map:", productsMap);
+            setProducts(Array.from(productsMap.values())); // Сохраняем как массив для выпадающего списка
+
+            // Обрабатываем товары накладной
             const consProductsWithNames = consProductsData.map(cp => {
-                const product = productsData.find(p => p.productId === cp.productId);
+                const cpId = String(cp.productId || cp.productID || cp.id);
+                const product = productsMap.get(cpId);
+
+                console.log(`Ищем товар с ID: ${cpId}, найден:`, product);
+
                 return {
                     ...cp,
-                    productName: product ? product.productName : "Неизвестный продукт"
+                    productName: product ? product.productName : "Неизвестный продукт",
+                    productPrice: product ? product.productPrice : 0
                 };
             });
 
+            console.log("Обработанные товары:", consProductsWithNames);
+
             setConsProducts(consProductsWithNames);
             setCurrentTotal(totalsByNoteId[noteId] ?? 0);
-
-            // Инициализация формы добавления
             setNewProduct({ consignmentId: noteId, productId: "", quantity: "" });
+
         } catch (err) {
             console.error(err);
             setError(err.message);
@@ -126,6 +169,7 @@ export default function ConsignmentNotePage() {
     function closeModal() {
         setSelectedNoteId(null);
         setCurrentTotal(0);
+        setConsProducts([]);
     }
 
     // -------------------- ДОБАВЛЕНИЕ ПРОДУКТА --------------------
@@ -135,16 +179,39 @@ export default function ConsignmentNotePage() {
             return;
         }
 
+        if (!selectedWarehouseId) {
+            alert("Выберите склад!");
+            return;
+        }
+
         try {
-            const selectedProduct = products.find(p => p.productId === parseInt(newProduct.productId));
-            if (!selectedProduct) throw new Error("Продукт не найден");
+            // Создаем Map из products для быстрого поиска
+            const productsMap = new Map();
+            if (Array.isArray(products)) {
+                products.forEach(product => {
+                    const id = product.productId || product.productID || product.id;
+                    if (id !== undefined) {
+                        productsMap.set(String(id), product);
+                    }
+                });
+            }
+
+            const selectedProduct = productsMap.get(String(newProduct.productId));
+
+            if (!selectedProduct) {
+                console.log("Выбранный productId:", newProduct.productId);
+                console.log("Все доступные продукты:", products);
+                throw new Error(`Продукт с ID ${newProduct.productId} не найден`);
+            }
 
             const productToAdd = {
                 consignmentId: newProduct.consignmentId,
-                productId: selectedProduct.productId,
+                productId: selectedProduct.productId || selectedProduct.productID,
                 quantity: parseFloat(newProduct.quantity),
                 GROSS: selectedProduct.waste ?? 0,
             };
+
+            console.log("Отправляем на сервер:", productToAdd);
 
             const res = await fetch("http://localhost:8080/api/consProduct", {
                 method: "POST",
@@ -152,34 +219,41 @@ export default function ConsignmentNotePage() {
                 body: JSON.stringify(productToAdd)
             });
 
-            if (!res.ok) throw new Error("Ошибка добавления товара");
+            if (!res.ok) {
+                const errorText = await res.text();
+                throw new Error(`Ошибка добавления товара: ${errorText}`);
+            }
 
             const created = await res.json();
-            setConsProducts(prev => [
-                ...prev,
-                {
-                    ...created,
-                    productName: selectedProduct.productName
-                }
-            ]);
+            console.log("Создан consProduct:", created);
 
+            // Добавляем товар в список
+            const newConsProduct = {
+                ...created,
+                productName: selectedProduct.productName,
+                productPrice: selectedProduct.productPrice
+            };
+
+            setConsProducts(prev => [...prev, newConsProduct]);
             setNewProduct({ consignmentId: newProduct.consignmentId, productId: "", quantity: "" });
+
             // Добавляем товар на склад
-            await fetch(`http://localhost:8080/warehouses/${selectedWarehouseId}/products`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify([{ productId: selectedProduct.productId }])
-            });
+            try {
+                await fetch(`http://localhost:8080/warehouses/${selectedWarehouseId}/products`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify([{
+                        productId: selectedProduct.productId || selectedProduct.productID
+                    }])
+                });
+            } catch (warehouseErr) {
+                console.warn("Ошибка при добавлении товара на склад:", warehouseErr);
+            }
 
-            setConsProducts(prev => [
-                ...prev,
-                { ...created, productName: selectedProduct.productName }
-            ]);
-
-            setNewProduct({ consignmentId: newProduct.consignmentId, productId: "", quantity: "" });
         } catch (err) {
             console.error(err);
             setError(err.message);
+            alert(err.message);
         }
     }
 
@@ -203,15 +277,35 @@ export default function ConsignmentNotePage() {
 
     // -------------------- РАСЧЕТ ИТОГО --------------------
     async function calculateTotal() {
-        console.log("Начинаем расчёт итого. consProducts:", consProducts);
+        console.log("Начинаем расчёт итого.");
+        console.log("consProducts для расчета:", consProducts);
 
-        const total = consProducts.reduce((sum, cp) => {
-            const product = products.find(p => p.productId === cp.productId);
-            const price = product?.productPrice ?? 0;
-            const quantity = cp?.quantity ?? 0;
-            console.log(`Товар: ${product?.productName}, цена: ${price}, количество: ${quantity}`);
-            return sum + price * quantity;
-        }, 0);
+        // Создаем Map из products для быстрого поиска цен
+        const productsMap = new Map();
+        if (Array.isArray(products)) {
+            products.forEach(product => {
+                const id = product.productId || product.productID || product.id;
+                if (id !== undefined) {
+                    productsMap.set(String(id), product);
+                }
+            });
+        }
+
+        let total = 0;
+
+        for (const cp of consProducts) {
+            console.log("Обрабатываем consProduct:", cp);
+
+            const cpId = String(cp.productId || cp.productID || cp.id);
+            const product = productsMap.get(cpId);
+            const price = product ? product.productPrice : 0;
+            const quantity = cp.quantity || 0;
+            const sum = price * quantity;
+
+            console.log(`Товар: ${cp.productName}, цена: ${price}, количество: ${quantity}, сумма: ${sum}`);
+
+            total += sum;
+        }
 
         console.log("Итого:", total);
 
@@ -254,13 +348,13 @@ export default function ConsignmentNotePage() {
                             className={styles.inputField}
                         >
                             <option value="">Выберите поставщика</option>
-                            {suppliers.map(s => (
-                                <option key={s.supplierID} value={s.supplierID}>{s.supplierName}</option>
+                            {Array.isArray(suppliers) && suppliers.map(s => (
+                                <option key={s.supplierID || s.supplierId || s.id}
+                                        value={s.supplierID || s.supplierId || s.id}>
+                                    {s.supplierName}
+                                </option>
                             ))}
                         </select>
-
-
-
                     </label>
 
                     <input
@@ -289,10 +383,15 @@ export default function ConsignmentNotePage() {
                     </tr>
                     </thead>
                     <tbody>
-                    {notes.map(note => (
+                    {Array.isArray(notes) && notes.map(note => (
                         <tr key={note.consignmentId}>
                             <td>{note.consignmentId}</td>
-                            <td>{suppliers.find(s => s.supplierID === note.supplierId)?.supplierName || ''}</td>
+                            <td>
+                                {Array.isArray(suppliers)
+                                    ? suppliers.find(s => (s.supplierID || s.supplierId || s.id) == note.supplierId)?.supplierName || ''
+                                    : ''
+                                }
+                            </td>
                             <td>{note.consignmentId}</td>
                             <td>{note.date}</td>
                             <td>{totalsByNoteId[note.consignmentId] ?? "–"}</td>
@@ -325,43 +424,47 @@ export default function ConsignmentNotePage() {
                         </div>
 
                         <div className={styles.modalContent}>
-                            <table className={styles.consignmentTable}>
+                            {consProducts.length === 0 ? (
+                                <div className={styles.emptyState}>
+                                    <p>Товаров в накладной нет</p>
+                                </div>
+                            ) : (
+                                <table className={styles.consignmentTable}>
+                                    <thead>
+                                    <tr>
+                                        <th>Продукт</th>
+                                        <th>Кол-во</th>
+                                        <th>Цена</th>
+                                        <th>Сумма</th>
+                                        <th></th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {consProducts.map(p => {
+                                        const price = p.productPrice || 0;
+                                        const quantity = p.quantity || 0;
+                                        const sum = price * quantity;
 
-                                <thead>
-
-                                <tr>
-                                    <th>Продукт</th>
-                                    <th>Кол-во</th>
-                                    <th>Цена</th>
-                                    <th>Сумма</th>
-                                    <th></th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                {consProducts.map(p => {
-                                    const product = products.find(prod => prod.productId === p.productId);
-                                    const price = product?.productPrice ?? 0;
-                                    const sum = p.quantity * price;
-
-                                    return (
-                                        <tr key={p.consProductId || `${p.productId}-${Math.random()}`}>
-                                            <td>{p.productName}</td>
-                                            <td>{p.quantity}</td>
-                                            <td>{price.toFixed(2)}</td>
-                                            <td>{sum.toFixed(2)}</td>
-                                            <td>
-                                                <button
-                                                    className={styles.deleteSmallBtn}
-                                                    onClick={() => deleteProduct(p.consProductId)}
-                                                >
-                                                    ✖
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                                </tbody>
-                            </table>
+                                        return (
+                                            <tr key={p.consProductId || `${p.productId}-${Math.random()}`}>
+                                                <td>{p.productName || "Неизвестный продукт"}</td>
+                                                <td>{quantity}</td>
+                                                <td>{price.toFixed(2)}</td>
+                                                <td>{sum.toFixed(2)}</td>
+                                                <td>
+                                                    <button
+                                                        className={styles.deleteSmallBtn}
+                                                        onClick={() => deleteProduct(p.consProductId)}
+                                                    >
+                                                        ✖
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    </tbody>
+                                </table>
+                            )}
 
                             <div className={styles.addProductSection}>
                                 <h3>Добавить товар</h3>
@@ -370,9 +473,10 @@ export default function ConsignmentNotePage() {
                                         value={selectedWarehouseId}
                                         onChange={e => setSelectedWarehouseId(e.target.value)}
                                         className={styles.inputField}
+                                        required
                                     >
                                         <option value="">Выберите склад</option>
-                                        {warehouses.map(w => (
+                                        {Array.isArray(warehouses) && warehouses.map(w => (
                                             <option key={w.warehouseId} value={w.warehouseId}>{w.warehouseName}</option>
                                         ))}
                                     </select>
@@ -383,8 +487,9 @@ export default function ConsignmentNotePage() {
                                         className={styles.inputField}
                                     >
                                         <option value="">Выберите товар</option>
-                                        {products.map(p => (
-                                            <option key={p.productId} value={p.productId}>
+                                        {Array.isArray(products) && products.map(p => (
+                                            <option key={p.productId || p.productID}
+                                                    value={p.productId || p.productID}>
                                                 {p.productName} — Цена: {p.productPrice} — Остаток: {p.waste}
                                             </option>
                                         ))}

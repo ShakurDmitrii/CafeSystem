@@ -3,11 +3,28 @@ package com.shakur.cafehelp.DTO;
 public class DishDTO {
     public int dishId;
     public String dishName;
+    public String category;
     public Double weight;
     public Double firstCost;
     public Double price;
     public int techProduct;
     public int qty;
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
+    }
+
+    public int getQty() {
+        return qty;
+    }
+
+    public void setQty(int qty) {
+        this.qty = qty;
+    }
 
     public int getTechProduct() {
         return techProduct;

@@ -15,6 +15,8 @@ import TechCardPage from "./pages/TechCard/TechCardPage";
 import WarehousesPage from "./pages/Warehouse/WarehousesPage";
 import ClientsPage from "./pages/SuppliersPage/ClientPages/ClientsPage";
 
+import MlPage from "./pages/MLPanel/MlPage";
+
 
 function App() {
     return (
@@ -30,6 +32,7 @@ function App() {
                     <Link to="/warehouse" className="App-link">Управление Складами</Link>
                     <Link to="/clients" className="App-link">Наши Клиенты</Link>
                     <Link to="/" className="App-link">Домашняя Страница</Link>
+                    <Link to="/ml" className="App-link">🤖 AI Аналитика</Link>
 
                 </nav>
 
@@ -46,6 +49,7 @@ function App() {
                         <Route path="/person" element={<PersonPage/>}/>
                         <Route path="/dish" element={<DishPage/>}/>
                         <Route path="/warehouse" element={<WarehousesPage/>}/>
+                        <Route path="/ml" element={<MlPage />} />
                     </Routes>
                 </div>
             </div>

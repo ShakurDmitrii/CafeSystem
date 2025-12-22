@@ -1,4 +1,4 @@
-package com.shakur.cafehelp.Controller;
+package com.shakur.cafehelp.Controller.PyController;
 
 import com.shakur.cafehelp.DTO.ConsignmentNoteDTO;
 import com.shakur.cafehelp.DTO.ProductDTO;
@@ -6,7 +6,6 @@ import com.shakur.cafehelp.DTO.SupplierDTO;
 import com.shakur.cafehelp.Service.ConsignmentNoteService;
 import com.shakur.cafehelp.Service.ProductService;
 import com.shakur.cafehelp.Service.SupplierService;
-import jooqdata.tables.Supplier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;

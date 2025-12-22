@@ -30,6 +30,7 @@ public class DishService {
         record.setFirstcost(dto.firstCost);
         record.setTechproductid(dto.techProduct);
         record.setWeight(dto.weight);
+        record.setCategory(dto.category);
 
         record.store();
 
@@ -50,6 +51,7 @@ public class DishService {
                     dish.setFirstCost(record.getFirstcost());
                     dish.setTechProduct(record.getTechproductid());
                     dish.setWeight(record.getWeight());
+                    dish.setCategory(record.getCategory());
                     return dish;
                 }).toList();
     }
@@ -69,6 +71,7 @@ public class DishService {
         dish.setFirstCost(record.getFirstcost());
         dish.setTechProduct(record.getTechproductid());
         dish.setWeight(record.getWeight());
+        dish.setCategory(record.getCategory());
         return dish;
     }
 
@@ -86,6 +89,7 @@ public class DishService {
         record.setFirstcost(dto.getFirstCost());
         record.setTechproductid(dto.getTechProduct());
         record.setWeight(dto.getWeight());
+        record.setCategory(dto.getCategory());
 
         record.store();
 

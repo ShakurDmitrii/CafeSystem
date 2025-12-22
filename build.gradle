@@ -31,6 +31,13 @@ dependencies {
     jooqGenerator "org.jooq:jooq-meta-extensions:3.19.9"
     jooqGenerator "org.postgresql:postgresql:42.7.3"
 
+    compileOnly 'org.projectlombok:lombok:1.18.30'
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+    // Lombok для тестов тоже
+    testCompileOnly 'org.projectlombok:lombok:1.18.30'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.30'
+
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0'
 }
 jooq {
