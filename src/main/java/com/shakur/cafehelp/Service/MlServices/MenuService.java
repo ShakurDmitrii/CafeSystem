@@ -13,7 +13,7 @@ import static jooqdata.tables.Dish.DISH;
 
 @Service
 @RequiredArgsConstructor
-public class MenuService {
+public class  MenuService {
 
     private final DSLContext dsl;
 

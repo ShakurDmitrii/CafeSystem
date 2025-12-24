@@ -19,7 +19,7 @@ import java.util.Map;
 
 // Java контроллер
 @RestController
-@RequestMapping("/api/ml")
+
 @RequiredArgsConstructor
 public class MlTrainingController {
 
@@ -27,7 +27,7 @@ public class MlTrainingController {
     private final MenuService menuService;
     private final MlTrainingService mlTrainingService;
 
-    @PostMapping("/train-with-recent-data")
+    @PostMapping("api/ml/train-with-recent-data")
     public ResponseEntity<Map<String, Object>> trainWithRecentData(
             @RequestBody TrainRequest request) {
 

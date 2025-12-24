@@ -1,124 +1,97 @@
 # app/services/ml_service.py
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List
 import pandas as pd
-import numpy as np
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MultiLabelBinarizer
 import joblib
 import logging
-from itertools import combinations
-from collections import defaultdict
 import random
+from typing import List
+from xgboost import XGBRegressor
 
 logger = logging.getLogger(__name__)
 
-# Создаем отдельное приложение для ML
-ml_app = FastAPI(title="Sushi ML Service")
-
-
-class MLRequest(BaseModel):
-    ingredients: List[str]
-
-
-class BatchMLRequest(BaseModel):
-    rolls: List[MLRequest]
-
-
-# Модель загружается один раз при старте
+# Глобальные переменные модели
 model = None
 mlb = None
-pair_weights = {}
-pair_list = []
 
-
-@ml_app.on_event("startup")
-async def load_model():
+def load_model():
+    """Загружает модель и mlb из файлов, если они есть"""
     global model, mlb
     try:
         model = joblib.load("model.pkl")
         mlb = joblib.load("mlb.pkl")
         logger.info("ML модель загружена")
-    except:
+    except FileNotFoundError:
         logger.warning("Модель не загружена, нужны данные для обучения")
 
 
-@ml_app.post("/predict/single")
-async def predict_single(request: MLRequest):
+def predict_single(ingredients: List[str]) -> float:
     """Предсказание для одного ролла"""
     if model is None:
-        raise HTTPException(status_code=503, detail="ML модель не обучена")
-
-    try:
-        prediction = _predict_sales(request.ingredients)
-        return {
-            "predicted_sales": float(prediction),
-            "ingredients": request.ingredients,
-            "confidence": 0.85  # Заглушка
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise RuntimeError("ML модель не обучена")
+    # Заглушка: случайное число
+    return random.uniform(50, 200)
 
 
-@ml_app.post("/predict/batch")
-async def predict_batch(request: BatchMLRequest):
+def predict_batch(rolls: List[List[str]]) -> list:
     """Пакетное предсказание"""
     results = []
-    for roll in request.rolls:
+    for ingredients in rolls:
         try:
-            prediction = _predict_sales(roll.ingredients)
+            prediction = predict_single(ingredients)
             results.append({
-                "ingredients": roll.ingredients,
+                "ingredients": ingredients,
                 "predicted_sales": float(prediction)
             })
         except Exception as e:
             results.append({
-                "ingredients": roll.ingredients,
+                "ingredients": ingredients,
                 "error": str(e)
             })
-
-    return {"results": results}
-
-
-@ml_app.post("/train")
-async def train_model(data: dict):
-    """Обучение модели на данных от Java"""
-    try:
-        # Преобразуем данные в DataFrame
-        records = data.get("records", [])
-        df = pd.DataFrame(records)
-
-        # Обучаем модель
-        global model, mlb
-        model, mlb = _train_ml_model(df)
-
-        # Сохраняем модель
-        joblib.dump(model, "model.pkl")
-        joblib.dump(mlb, "mlb.pkl")
-
-        return {"status": "trained", "records": len(records)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return results
 
 
-@ml_app.get("/health")
-async def health():
-    return {"status": "ready", "model_loaded": model is not None}
+def train_model(records: list):
+    global model, mlb
+    if not records:
+        raise ValueError("Нет данных для обучения")
 
+    df = pd.DataFrame(records)
 
-# Внутренние функции ML
-def _predict_sales(ingredients: List[str]) -> float:
-    """Логика предсказания"""
-    # Твоя ML логика здесь
-    return random.uniform(50, 200)  # Заглушка
-
-
-def _train_ml_model(df: pd.DataFrame):
-    """Обучение модели"""
-    # Твоя логика обучения здесь
+    # Преобразуем ингредиенты в бинарные фичи
     mlb = MultiLabelBinarizer()
-    X = mlb.fit_transform(df['ingredients'])
-    model = RandomForestRegressor()
-    model.fit(X, df['sales'])
-    return model, mlb
+    X_ingredients = mlb.fit_transform(df['ingredients'])
+
+    # Можно добавить числовые признаки, например dayOfWeek, month
+    extra_features = df[['dayOfWeek', 'month']].to_numpy() if 'dayOfWeek' in df.columns else None
+    if extra_features is not None:
+        import numpy as np
+        X = np.hstack([X_ingredients, extra_features])
+    else:
+        X = X_ingredients
+
+    y = df['sales']
+
+    # Разделяем на train/test
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    # XGBoost регрессор
+    model = XGBRegressor(
+        n_estimators=300,
+        max_depth=6,
+        learning_rate=0.05,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42
+    )
+    model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
+
+    # Можно проверить метрику
+    rmse = ((model.predict(X_test) - y_test) ** 2).mean() ** 0.5
+    print(f"Training completed, RMSE on test: {rmse:.2f}")
+
+    # Сохраняем модель и mlb
+    joblib.dump(model, "xgb_model.pkl")
+    joblib.dump(mlb, "mlb.pkl")
+
+    return {"status": "trained", "records": len(records), "rmse": rmse}

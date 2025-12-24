@@ -90,7 +90,7 @@ export const ApiClient = {
         try {
             const requestData = {
                 ingredients: ingredients,
-                date: new Date().toISOString().split('T')[0]
+
             };
 
             console.log('Predicting sales for:', ingredients);
