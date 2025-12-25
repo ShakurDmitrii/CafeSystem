@@ -15,11 +15,15 @@ export default function WarehousePage() {
     const [movementQuantity, setMovementQuantity] = useState("");
 
     const [productsFrom, setProductsFrom] = useState([]);
+    const [warehouseProducts, setWarehouseProducts] = useState({});
+    const [loadingWarehouses, setLoadingWarehouses] = useState(true);
 
-    const [modalOpen, setModalOpen] = useState(false);
-    const [modalWarehouse, setModalWarehouse] = useState(null);
-    const [warehouseProducts, setWarehouseProducts] = useState([]);
-    const [loadingProducts, setLoadingProducts] = useState(false);
+    // Состояния для добавления продукта
+    const [newProductName, setNewProductName] = useState("");
+    const [newProductPrice, setNewProductPrice] = useState("");
+    const [newProductWaste, setNewProductWaste] = useState("");
+    const [newProductQuantity, setNewProductQuantity] = useState(""); // Добавляем quantity
+    const [addingToWarehouseId, setAddingToWarehouseId] = useState(null);
 
     useEffect(() => {
         loadWarehouses();
@@ -31,13 +35,99 @@ export default function WarehousePage() {
         setMovementProduct("");
     }, [movementFrom]);
 
-    const loadWarehouses = () => {
-        fetch(API_WAREHOUSES)
-            .then(res => res.json())
-            .then(data => setWarehouses(Array.isArray(data) ? data : []))
-            .catch(err => console.error(err));
+    const loadWarehouses = async () => {
+        setLoadingWarehouses(true);
+        try {
+            const res = await fetch(API_WAREHOUSES);
+            const data = await res.json();
+            const warehousesArray = Array.isArray(data) ? data : [];
+            setWarehouses(warehousesArray);
+
+            // Загружаем продукты для всех складов
+            await loadAllWarehouseProducts(warehousesArray);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoadingWarehouses(false);
+        }
     };
 
+    const loadAllWarehouseProducts = async (warehousesList) => {
+        const productsMap = {};
+
+        for (const wh of warehousesList) {
+            try {
+                const res = await fetch(`${API_WAREHOUSES}/${wh.warehouseId}/products`);
+                const warehouseProductsData = await res.json();
+
+                console.log(`Данные продуктов для склада ${wh.warehouseId}:`, warehouseProductsData);
+
+                if (Array.isArray(warehouseProductsData) && warehouseProductsData.length > 0) {
+                    const productsFullData = await Promise.all(
+                        warehouseProductsData.map(async (warehouseProduct) => {
+                            const { productId } = warehouseProduct;
+
+                            if (!productId) return null;
+
+                            try {
+                                // Шаг 1: Получаем основной продукт
+                                const resProd = await fetch(`http://localhost:8080/api/product/${productId}`);
+                                if (!resProd.ok) {
+                                    return {
+                                        productId: productId,
+                                        productName: "Неизвестный продукт",
+                                        productPrice: "-",
+                                        waste: "-",
+                                        quantity: 0
+                                    };
+                                }
+
+                                const productData = await resProd.json();
+                                const product = Array.isArray(productData) ? productData[0] : productData;
+
+                                // Шаг 2: Получаем ConsProductDTO для quantity
+                                let quantity = 0;
+                                try {
+                                    const consRes = await fetch(`http://localhost:8080/api/consProduct/product/${productId}`);
+                                    if (consRes.ok) {
+                                        const consProduct = await consRes.json();
+                                        quantity = consProduct.quantity || 0;
+                                        console.log(`ConsProduct для ${productId}:`, consProduct);
+                                    }
+                                } catch (consErr) {
+                                    console.warn(`Не удалось получить ConsProduct для ${productId}:`, consErr);
+                                }
+
+                                return {
+                                    ...product,
+                                    quantity: quantity
+                                };
+
+                            } catch (err) {
+                                console.error("Ошибка продукта", productId, err);
+                                return {
+                                    productId: productId,
+                                    productName: "Неизвестный продукт",
+                                    productPrice: "-",
+                                    waste: "-",
+                                    quantity: 0
+                                };
+                            }
+                        })
+                    );
+
+                    productsMap[wh.warehouseId] = productsFullData.filter(p => p !== null);
+                } else {
+                    productsMap[wh.warehouseId] = [];
+                }
+            } catch (err) {
+                console.error(`Ошибка загрузки продуктов для склада ${wh.warehouseId}:`, err);
+                productsMap[wh.warehouseId] = [];
+            }
+        }
+
+        setWarehouseProducts(productsMap);
+    };
     const loadProductsFromWarehouse = (warehouseId) => {
         fetch(`${API_WAREHOUSES}/${warehouseId}/products`)
             .then(res => res.json())
@@ -102,73 +192,70 @@ export default function WarehousePage() {
                 setMovementQuantity("");
                 setProductsFrom([]);
                 alert("Перемещение создано");
+                loadWarehouses();
             })
             .catch(err => console.error(err));
     };
 
-    // --- Модалка с корректным рендером продуктов ---
-    const openWarehouseModal = async (wh) => {
-        setModalWarehouse(wh);
-        setLoadingProducts(true);
+    // Функция для добавления продукта на склад
+    const handleAddProductToWarehouse = async (warehouseId) => {
+        if (!newProductName.trim() || !newProductPrice.trim() || !newProductWaste.trim() || !newProductQuantity.trim()) {
+            alert("Заполните все поля для добавления продукта");
+            return;
+        }
+
+        const productPayload = [
+            {
+                productName: newProductName,
+                productPrice: parseFloat(newProductPrice),
+                waste: newProductWaste,
+                quantity: parseFloat(newProductQuantity) // Добавляем quantity
+            }
+        ];
 
         try {
-            const res = await fetch(`${API_WAREHOUSES}/${wh.warehouseId}/products`);
-            const warehouseProductsData = await res.json();
+            const response = await fetch(`${API_WAREHOUSES}/${warehouseId}/products`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(productPayload)
+            });
 
-            if (!Array.isArray(warehouseProductsData) || warehouseProductsData.length === 0) {
-                setWarehouseProducts([]);
-                setModalOpen(true);
-                return;
+            if (response.ok) {
+                // Сброс полей ввода
+                setNewProductName("");
+                setNewProductPrice("");
+                setNewProductWaste("");
+                setNewProductQuantity("");
+                setAddingToWarehouseId(null);
+
+                // Перезагружаем данные
+                loadWarehouses();
+                alert("Продукт успешно добавлен на склад!");
+            } else {
+                alert("Ошибка при добавлении продукта");
             }
-
-            const productsFullData = await Promise.all(
-                warehouseProductsData.map(async (p) => {
-                    if (!p.productId) return null;
-
-                    try {
-                        const resProd = await fetch(`http://localhost:8080/api/product/${p.productId}`);
-                        if (!resProd.ok) {
-                            return {
-                                productId: p.productId,
-                                productName: "Неизвестный продукт",
-                                productPrice: "-",
-                                waste: "-"
-                            };
-                        }
-
-                        const productData = await resProd.json();
-                        // Берём первый элемент массива
-                        return Array.isArray(productData) ? productData[0] : productData;
-
-                    } catch (err) {
-                        console.error("Ошибка продукта", p.productId, err);
-                        return {
-                            productId: p.productId,
-                            productName: "Неизвестный продукт",
-                            productPrice: "-",
-                            waste: "-"
-                        };
-                    }
-                })
-            );
-
-            setWarehouseProducts(productsFullData.filter(p => p !== null));
-            setModalOpen(true);
-
-        } catch (err) {
-            console.error(err);
-            setWarehouseProducts([]);
-            setModalOpen(true);
-        } finally {
-            setLoadingProducts(false);
+        } catch (error) {
+            console.error("Ошибка:", error);
+            alert("Ошибка при добавлении продукта");
         }
     };
 
+    // Функция для начала добавления продукта на склад
+    const startAddingProduct = (warehouseId) => {
+        setAddingToWarehouseId(warehouseId);
+        setNewProductName("");
+        setNewProductPrice("");
+        setNewProductWaste("");
+        setNewProductQuantity("");
+    };
 
-    const closeModal = () => {
-        setModalOpen(false);
-        setModalWarehouse(null);
-        setWarehouseProducts([]);
+    // Функция для отмены добавления продукта
+    const cancelAddingProduct = () => {
+        setAddingToWarehouseId(null);
+        setNewProductName("");
+        setNewProductPrice("");
+        setNewProductWaste("");
+        setNewProductQuantity("");
     };
 
     return (
@@ -198,21 +285,132 @@ export default function WarehousePage() {
             </div>
 
             {/* Список складов */}
-            <ul className={styles.list}>
-                {warehouses.map(wh => (
-                    <li key={wh.warehouseId} className={styles.listItem}>
-                        <span>{wh.warehouseName}</span>
-                        <div className={styles.listItemButtons}>
-                            <button className={`${styles.listItemButton} ${styles.editButton}`} onClick={() => handleEdit(wh)}>Редактировать</button>
-                            <button className={`${styles.listItemButton} ${styles.deleteButton}`} onClick={() => handleDelete(wh.warehouseId)}>Удалить</button>
-                            <button className={`${styles.listItemButton}`} onClick={() => openWarehouseModal(wh)}>Просмотр продуктов</button>
+            {loadingWarehouses ? (
+                <p>Загрузка складов...</p>
+            ) : (
+                <div className={styles.warehousesList}>
+                    {warehouses.map(wh => (
+                        <div key={wh.warehouseId} className={styles.warehouseCard}>
+                            <div className={styles.warehouseHeader}>
+                                <h3 className={styles.warehouseTitle}>
+                                    {wh.warehouseName}
+                                    <span className={styles.productCount}>
+                                        ({warehouseProducts[wh.warehouseId]?.length || 0} товаров)
+                                    </span>
+                                </h3>
+                                <div className={styles.warehouseActions}>
+                                    <button
+                                        className={`${styles.actionButton} ${styles.editButton}`}
+                                        onClick={() => handleEdit(wh)}
+                                    >
+                                        Редактировать
+                                    </button>
+                                    <button
+                                        className={`${styles.actionButton} ${styles.deleteButton}`}
+                                        onClick={() => handleDelete(wh.warehouseId)}
+                                    >
+                                        Удалить
+                                    </button>
+                                    <button
+                                        className={`${styles.actionButton} ${styles.addButton}`}
+                                        onClick={() => startAddingProduct(wh.warehouseId)}
+                                    >
+                                        + Добавить продукт
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Форма добавления нового продукта */}
+                            {addingToWarehouseId === wh.warehouseId && (
+                                <div className={styles.addProductForm}>
+                                    <h4>Добавить новый продукт на склад</h4>
+                                    <div className={styles.productInputs}>
+                                        <input
+                                            className={styles.productInput}
+                                            type="text"
+                                            placeholder="Название продукта"
+                                            value={newProductName}
+                                            onChange={e => setNewProductName(e.target.value)}
+                                        />
+                                        <input
+                                            className={styles.productInput}
+                                            type="number"
+                                            placeholder="Цена продукта"
+                                            value={newProductPrice}
+                                            onChange={e => setNewProductPrice(e.target.value)}
+                                            min="0"
+                                            step="0.01"
+                                        />
+                                        <input
+                                            className={styles.productInput}
+                                            type="text"
+                                            placeholder="Waste"
+                                            value={newProductWaste}
+                                            onChange={e => setNewProductWaste(e.target.value)}
+                                        />
+                                        <input
+                                            className={styles.productInput}
+                                            type="number"
+                                            placeholder="Количество"
+                                            value={newProductQuantity}
+                                            onChange={e => setNewProductQuantity(e.target.value)}
+                                            min="0"
+                                            step="1"
+                                        />
+                                        <div className={styles.productFormButtons}>
+                                            <button
+                                                className={`${styles.button} ${styles.saveProductButton}`}
+                                                onClick={() => handleAddProductToWarehouse(wh.warehouseId)}
+                                            >
+                                                Сохранить продукт
+                                            </button>
+                                            <button
+                                                className={`${styles.button} ${styles.cancelProductButton}`}
+                                                onClick={cancelAddingProduct}
+                                            >
+                                                Отмена
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Продукты склада */}
+                            <div className={styles.productsSection}>
+                                {warehouseProducts[wh.warehouseId]?.length > 0 ? (
+                                    <table className={styles.productsTable}>
+                                        <thead>
+                                        <tr>
+                                            <th>Продукт</th>
+                                            <th>ID</th>
+                                            <th>Цена</th>
+                                            <th>Waste</th>
+                                            <th>Количество</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {warehouseProducts[wh.warehouseId].map(p => (
+                                            <tr key={p.productId}>
+                                                <td>{p.productName}</td>
+                                                <td>{p.productId}</td>
+                                                <td>{p.productPrice}</td>
+                                                <td>{p.waste}</td>
+                                                <td>{p.quantity || 0}</td>
+                                            </tr>
+                                        ))}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <p className={styles.noProducts}>На складе нет продуктов</p>
+                                )}
+                            </div>
                         </div>
-                    </li>
-                ))}
-            </ul>
+                    ))}
+                </div>
+            )}
 
             {/* Форма перемещения */}
-            <h3>Создать перемещение</h3>
+            <h3 className={styles.sectionTitle}>Создать перемещение</h3>
             <div className={styles.form}>
                 <select className={styles.input} value={movementFrom} onChange={e => setMovementFrom(e.target.value)}>
                     <option value="">Склад отправитель</option>
@@ -236,46 +434,6 @@ export default function WarehousePage() {
                 />
                 <button className={styles.button} onClick={handleMovement}>Создать</button>
             </div>
-
-            {/* Модалка */}
-            {modalOpen && (
-                <div className={styles.modalOverlay}>
-                    <div className={styles.modal}>
-                        <div className={styles.modalHeader}>
-                            <h3>Продукты склада: {modalWarehouse?.warehouseName}</h3>
-                            <button onClick={closeModal} className={styles.closeModalBtn}>×</button>
-                        </div>
-                        <div className={styles.modalContent}>
-                            {loadingProducts ? (
-                                <p>Загрузка продуктов...</p>
-                            ) : warehouseProducts.length > 0 ? (
-                                <table className={styles.table}>
-                                    <thead>
-                                    <tr>
-                                        <th>Продукт</th>
-                                        <th>ID</th>
-                                        <th>Цена</th>
-                                        <th>Waste</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody>
-                                    {warehouseProducts.map(p => (
-                                        <tr key={p.productId}>
-                                            <td>{p.productName}</td>
-                                            <td>{p.productId}</td>
-                                            <td>{p.productPrice}</td>
-                                            <td>{p.waste}</td>
-                                        </tr>
-                                    ))}
-                                    </tbody>
-                                </table>
-                            ) : (
-                                <p>Продукты не найдены</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

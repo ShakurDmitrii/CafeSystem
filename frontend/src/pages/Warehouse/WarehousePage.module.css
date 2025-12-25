@@ -150,3 +150,590 @@
 .table th {
     background-color: #f2f2f2;
 }
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.header {
+    color: #333;
+    margin-bottom: 30px;
+}
+
+.form {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+}
+
+.input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    flex: 1;
+    min-width: 200px;
+}
+
+.button {
+    padding: 8px 16px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.button:hover {
+    background-color: #0056b3;
+}
+
+.cancelButton {
+    background-color: #6c757d;
+}
+
+.cancelButton:hover {
+    background-color: #5a6268;
+}
+
+.warehousesList {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-bottom: 40px;
+}
+
+.warehouseCard {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.warehouseHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.warehouseTitle {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #333;
+}
+
+.productCount {
+    font-size: 1rem;
+    color: #666;
+    margin-left: 10px;
+    font-weight: normal;
+}
+
+.warehouseActions {
+    display: flex;
+    gap: 10px;
+}
+
+.actionButton {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    font-size: 0.9rem;
+}
+
+.editButton {
+    background-color: #28a745;
+    color: white;
+}
+
+.editButton:hover {
+    background-color: #218838;
+}
+
+.deleteButton {
+    background-color: #dc3545;
+    color: white;
+}
+
+.deleteButton:hover {
+    background-color: #c82333;
+}
+
+.productsSection {
+    margin-top: 15px;
+}
+
+.productsTable {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.productsTable th {
+    background-color: #f8f9fa;
+    padding: 12px;
+    text-align: left;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+}
+
+.productsTable td {
+    padding: 12px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.productsTable tr:hover {
+    background-color: #f8f9fa;
+}
+
+.noProducts {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.sectionTitle {
+    color: #333;
+    margin: 30px 0 20px 0;
+}
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.header {
+    color: #333;
+    margin-bottom: 30px;
+}
+
+.form {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+}
+
+.input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    flex: 1;
+    min-width: 200px;
+}
+
+.button {
+    padding: 8px 16px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.button:hover {
+    background-color: #0056b3;
+}
+
+.cancelButton {
+    background-color: #6c757d;
+}
+
+.cancelButton:hover {
+    background-color: #5a6268;
+}
+
+.warehousesList {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-bottom: 40px;
+}
+
+.warehouseCard {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.warehouseHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.warehouseTitle {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #333;
+}
+
+.productCount {
+    font-size: 1rem;
+    color: #666;
+    margin-left: 10px;
+    font-weight: normal;
+}
+
+.warehouseActions {
+    display: flex;
+    gap: 10px;
+}
+
+.actionButton {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    font-size: 0.9rem;
+}
+
+.editButton {
+    background-color: #28a745;
+    color: white;
+}
+
+.editButton:hover {
+    background-color: #218838;
+}
+
+.deleteButton {
+    background-color: #dc3545;
+    color: white;
+}
+
+.deleteButton:hover {
+    background-color: #c82333;
+}
+
+.addButton {
+    background-color: #007bff;
+    color: white;
+}
+
+.addButton:hover {
+    background-color: #0056b3;
+}
+
+/* Стили для формы добавления продукта */
+.addProductForm {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #007bff;
+}
+
+.addProductForm h4 {
+    margin: 0 0 15px 0;
+    color: #333;
+}
+
+.productInputs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+.productInput {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-width: 200px;
+    flex: 1;
+}
+
+.productFormButtons {
+    display: flex;
+    gap: 10px;
+    margin-left: auto;
+}
+
+.saveProductButton {
+    background-color: #28a745;
+}
+
+.saveProductButton:hover {
+    background-color: #218838;
+}
+
+.cancelProductButton {
+    background-color: #6c757d;
+}
+
+.cancelProductButton:hover {
+    background-color: #5a6268;
+}
+
+.productsSection {
+    margin-top: 15px;
+}
+
+.productsTable {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.productsTable th {
+    background-color: #f8f9fa;
+    padding: 12px;
+    text-align: left;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+}
+
+.productsTable td {
+    padding: 12px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.productsTable tr:hover {
+    background-color: #f8f9fa;
+}
+
+.noProducts {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.sectionTitle {
+    color: #333;
+    margin: 30px 0 20px 0;
+}
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.header {
+    color: #333;
+    margin-bottom: 30px;
+}
+
+.form {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+}
+
+.input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    flex: 1;
+    min-width: 200px;
+}
+
+.button {
+    padding: 8px 16px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.button:hover {
+    background-color: #0056b3;
+}
+
+.cancelButton {
+    background-color: #6c757d;
+}
+
+.cancelButton:hover {
+    background-color: #5a6268;
+}
+
+.warehousesList {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-bottom: 40px;
+}
+
+.warehouseCard {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.warehouseHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.warehouseTitle {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #333;
+}
+
+.productCount {
+    font-size: 1rem;
+    color: #666;
+    margin-left: 10px;
+    font-weight: normal;
+}
+
+.warehouseActions {
+    display: flex;
+    gap: 10px;
+}
+
+.actionButton {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    font-size: 0.9rem;
+}
+
+.editButton {
+    background-color: #28a745;
+    color: white;
+}
+
+.editButton:hover {
+    background-color: #218838;
+}
+
+.deleteButton {
+    background-color: #dc3545;
+    color: white;
+}
+
+.deleteButton:hover {
+    background-color: #c82333;
+}
+
+.addButton {
+    background-color: #007bff;
+    color: white;
+}
+
+.addButton:hover {
+    background-color: #0056b3;
+}
+
+/* Стили для формы добавления продукта */
+.addProductForm {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #007bff;
+}
+
+.addProductForm h4 {
+    margin: 0 0 15px 0;
+    color: #333;
+}
+
+.productInputs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+.productInput {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-width: 180px;
+    flex: 1;
+}
+
+.productFormButtons {
+    display: flex;
+    gap: 10px;
+    margin-left: auto;
+}
+
+.saveProductButton {
+    background-color: #28a745;
+    white-space: nowrap;
+}
+
+.saveProductButton:hover {
+    background-color: #218838;
+}
+
+.cancelProductButton {
+    background-color: #6c757d;
+    white-space: nowrap;
+}
+
+.cancelProductButton:hover {
+    background-color: #5a6268;
+}
+
+.productsSection {
+    margin-top: 15px;
+}
+
+.productsTable {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.productsTable th {
+    background-color: #f8f9fa;
+    padding: 12px;
+    text-align: left;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+}
+
+.productsTable td {
+    padding: 12px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.productsTable tr:hover {
+    background-color: #f8f9fa;
+}
+
+.noProducts {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.sectionTitle {
+    color: #333;
+    margin: 30px 0 20px 0;
+}

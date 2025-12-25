@@ -4,9 +4,18 @@ public class ProductWarehouseDTO {
     public int productWarehouseId;
     public int productId;
     public int warehouseId;
+    public Double quantity;
 
     public int getProductWarehouseId() {
         return productWarehouseId;
+    }
+
+    public Double getQuantity() {
+        return quantity;
+    }
+
+    public void setQuantity(Double quantity) {
+        this.quantity = quantity;
     }
 
     public void setProductWarehouseId(int productWarehouseId) {

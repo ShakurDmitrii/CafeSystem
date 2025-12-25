@@ -21,6 +21,10 @@
             return consProductService.getConsProduct();
         }
 
+        @GetMapping("/product/{id}") ConsProductDTO getConsProductById(@PathVariable int id) {
+            return consProductService.getConsProductById(id);
+        }
+
         @GetMapping("/{consignmentId}")
         public List<ConsProductDTO> getConsProductByConsignment(@PathVariable int consignmentId) {
             List<ConsProductDTO> products = consProductService.getConsProductByConsId(consignmentId);

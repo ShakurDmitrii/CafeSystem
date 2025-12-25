@@ -7,6 +7,7 @@ import org.jooq.DSLContext;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Objects;
 
 @Service
 public class ConsProductService {
@@ -29,6 +30,34 @@ public class ConsProductService {
                     consProductDTO.quantity = record.getQuantity();
                     return consProductDTO;
                 }).toList();
+    }
+    public ConsProductDTO getConsProductById(int id) {
+        // Получаем все записи с данным productId
+        List<ConsproductRecord> records = dsl.selectFrom(Consproduct.CONSPRODUCT)
+                .where(Consproduct.CONSPRODUCT.PRODUCTID.eq(id))
+                .fetch();
+
+        if (records.isEmpty()) {
+            return null;
+        }
+
+        // Суммируем quantity из всех записей
+        int totalQuantity = records.stream()
+                .map(ConsproductRecord::getQuantity)
+                .filter(Objects::nonNull)
+                .mapToInt(q -> q.intValue())  // Исправлено здесь
+                .sum();
+
+        // Берем первую запись для остальных полей
+        ConsproductRecord firstRecord = records.get(0);
+
+        ConsProductDTO consProductDTO = new ConsProductDTO();
+        consProductDTO.consignmentId = firstRecord.getConsignmentid();
+        consProductDTO.productId = firstRecord.getProductid();
+        consProductDTO.GROSS = firstRecord.getGross();
+        consProductDTO.quantity = (double) totalQuantity;
+
+        return consProductDTO;
     }
 
     public ConsProductDTO createConsProduct(ConsProductDTO consProductDTO) {

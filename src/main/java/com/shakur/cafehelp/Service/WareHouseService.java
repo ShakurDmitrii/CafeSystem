@@ -98,6 +98,7 @@ public class WareHouseService {
             ProductwarehouseRecord record = dsl.newRecord(Productwarehouse.PRODUCTWAREHOUSE);
             record.setWarehouseid(warehouseId);
             record.setProductid(pw.getProductId());
+            record.setQuantity(pw.getQuantity());
             record.store();
         }
     }
