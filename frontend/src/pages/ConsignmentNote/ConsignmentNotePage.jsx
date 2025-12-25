@@ -96,72 +96,95 @@ export default function ConsignmentNotePage() {
         setSelectedSupplierId(note.supplierId);
 
         try {
-            // Получаем товары накладной
+            // 1. Получаем товары накладной
             const resCons = await fetch(`http://localhost:8080/api/consProduct/${noteId}`);
             const consProductsData = await resCons.json();
             console.log("Товары накладной:", consProductsData);
 
-            // Получаем товары поставщика
-            const resProd = await fetch(`http://localhost:8080/api/product/${note.supplierId}`);
-            const productsData = await resProd.json();
-            console.log("Товары поставщика:", productsData);
+            // 2. Получаем товары поставщика для выпадающего списка
+            try {
+                const resSupProducts = await fetch(`http://localhost:8080/api/product/supplier/${note.supplierId}`);
+                const supplierProductsData = await resSupProducts.json();
+                console.log("Товары поставщика:", supplierProductsData);
 
-            // Создаем Map для быстрого поиска товаров по ID
-            let productsMap = new Map();
-
-            if (Array.isArray(productsData)) {
-                // Если это массив
-                productsData.forEach(product => {
-                    const id = product.productId || product.productID || product.id;
-                    if (id !== undefined) {
-                        productsMap.set(String(id), product);
-                    }
-                });
-            } else if (productsData && typeof productsData === 'object') {
-                // Если это один товар (объект)
-                const id = productsData.productId || productsData.productID || productsData.id;
-                if (id !== undefined) {
-                    productsMap.set(String(id), productsData);
-                }
-                // Или если это объект с массивом внутри
-                for (const key in productsData) {
-                    if (Array.isArray(productsData[key])) {
-                        productsData[key].forEach(product => {
-                            const id = product.productId || product.productID || product.id;
-                            if (id !== undefined) {
-                                productsMap.set(String(id), product);
+                // Преобразуем данные в массив, если это необходимо
+                let productsArray = [];
+                if (Array.isArray(supplierProductsData)) {
+                    productsArray = supplierProductsData;
+                } else if (supplierProductsData && typeof supplierProductsData === 'object') {
+                    // Если это один товар
+                    if (supplierProductsData.productId || supplierProductsData.productID) {
+                        productsArray = [supplierProductsData];
+                    } else {
+                        // Или если это объект с массивом внутри
+                        for (const key in supplierProductsData) {
+                            if (Array.isArray(supplierProductsData[key])) {
+                                productsArray = supplierProductsData[key];
+                                break;
                             }
-                        });
-                        break;
+                        }
                     }
                 }
+
+                setProducts(productsArray);
+            } catch (err) {
+                console.warn("Не удалось получить товары поставщика:", err);
+                setProducts([]);
             }
+            // 3. Для каждого товара накладной получаем его полную информацию
+            const consProductsWithNames = await Promise.all(
+                consProductsData.map(async (cp) => {
+                    try {
+                        const productId = cp.productId || cp.productID;
+                        if (!productId) {
+                            return {
+                                ...cp,
+                                productName: "Неизвестный продукт",
+                                productPrice: 0,
+                                waste: 0
+                            };
+                        }
 
-            console.log("Products Map:", productsMap);
-            setProducts(Array.from(productsMap.values())); // Сохраняем как массив для выпадающего списка
+                        // Получаем информацию о товаре
+                        const resProd = await fetch(`http://localhost:8080/api/product/${productId}`);
 
-            // Обрабатываем товары накладной
-            const consProductsWithNames = consProductsData.map(cp => {
-                const cpId = String(cp.productId || cp.productID || cp.id);
-                const product = productsMap.get(cpId);
+                        if (!resProd.ok) {
+                            throw new Error(`Ошибка получения товара ${productId}`);
+                        }
 
-                console.log(`Ищем товар с ID: ${cpId}, найден:`, product);
+                        const productData = await resProd.json();
+                        console.log(`Получен товар ${productId}:`, productData);
 
-                return {
-                    ...cp,
-                    productName: product ? product.productName : "Неизвестный продукт",
-                    productPrice: product ? product.productPrice : 0
-                };
-            });
+                        return {
+                            ...cp,
+                            productName: productData.productName ||
+                                productData.name ||
+                                "Неизвестный продукт",
+                            productPrice: productData.productPrice ||
+                                productData.price ||
+                                0,
+                            waste: productData.waste || 0
+                        };
+                    } catch (err) {
+                        console.error(`Ошибка получения товара:`, err);
+                        return {
+                            ...cp,
+                            productName: "Неизвестный продукт",
+                            productPrice: 0,
+                            waste: 0
+                        };
+                    }
+                })
+            );
 
-            console.log("Обработанные товары:", consProductsWithNames);
+            console.log("Обработанные товары накладной:", consProductsWithNames);
 
             setConsProducts(consProductsWithNames);
             setCurrentTotal(totalsByNoteId[noteId] ?? 0);
             setNewProduct({ consignmentId: noteId, productId: "", quantity: "" });
 
         } catch (err) {
-            console.error(err);
+            console.error("Ошибка в openProducts:", err);
             setError(err.message);
         }
     }

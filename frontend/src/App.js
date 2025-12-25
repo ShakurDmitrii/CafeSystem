@@ -5,8 +5,8 @@ import './App.css';
 // Страницы
 import SuppliersPage from './pages/SuppliersPage/SuppliersPage';
 import SupplierProductPage from "./pages/SuppliersPage/SupplierProductPage";
-import ConsignmentNotePage from "./pages/SuppliersPage/ConsignmentNotePage";
-import PrintConsignmentNotePage from "./pages/SuppliersPage/PrintConsignmentNotePage";
+import ConsignmentNotePage from "./pages/ConsignmentNote/ConsignmentNotePage";
+import PrintConsignmentNotePage from "./pages/ConsignmentNote/PrintConsignmentNotePage";
 import CashierPage from "./pages/SuppliersPage/CashierPages/CashierPage";
 import PersonPage from "./pages/SuppliersPage/PersonPage";
 import DishPage from "./pages/SuppliersPage/CashierPages/DishPage";

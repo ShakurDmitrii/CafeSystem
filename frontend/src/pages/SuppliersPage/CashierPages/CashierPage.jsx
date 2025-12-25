@@ -1047,7 +1047,6 @@ export default function CashierPage() {
 
             {/* === ДОБАВЛЕНО: Модальное окно уведомления о долгах === */}
             <DebtNotification />
-
             <DishModal
                 isOpen={modalOpen}
                 onClose={() => setModalOpen(false)}
