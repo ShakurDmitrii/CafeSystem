@@ -281,17 +281,25 @@ export default function ConsignmentNotePage() {
     }
 
     // -------------------- УДАЛЕНИЕ ПРОДУКТА --------------------
-    async function deleteProduct(consProductId) {
-        if (!consProductId) return;
+    // Используем productId как идентификатор для DELETE /api/consProduct/{productId}
+    async function deleteProduct(productId) {
+        if (!productId) return;
 
         try {
-            const res = await fetch(`http://localhost:8080/api/consProduct/${consProductId}`, {
+            const idToDelete = Number(productId);
+            if (!idToDelete) {
+                console.error("Некорректный productId для удаления:", productId);
+                return;
+            }
+
+            const res = await fetch(`http://localhost:8080/api/consProduct/${idToDelete}`, {
                 method: "DELETE"
             });
 
             if (!res.ok) throw new Error("Ошибка удаления товара");
 
-            setConsProducts(prev => prev.filter(p => p.consProductId !== consProductId));
+            // Удаляем из списка по productId
+            setConsProducts(prev => prev.filter(p => p.productId !== idToDelete));
         } catch (err) {
             console.error(err);
             setError(err.message);
@@ -477,7 +485,7 @@ export default function ConsignmentNotePage() {
                                                 <td>
                                                     <button
                                                         className={styles.deleteSmallBtn}
-                                                        onClick={() => deleteProduct(p.consProductId)}
+                                                        onClick={() => deleteProduct(p.productId)}
                                                     >
                                                         ✖
                                                     </button>

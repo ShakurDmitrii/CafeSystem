@@ -45,9 +45,11 @@ export default function PrintConsignmentNotePage() {
                 const productsArray = Array.isArray(allProductsData) ? allProductsData : [allProductsData];
                 setAllProducts(productsArray);
 
-                // Сопоставляем товары накладной с их названиями
+                // Сопоставляем товары накладной с их названиями.
+                // Для идентификации строки используем productId (он же пойдёт в DELETE /api/consProduct/{productId}).
                 const productsWithNames = consProductsData.map(cp => {
                     const product = productsArray.find(p => p.productId === cp.productId);
+
                     return {
                         ...cp,
                         productName: product ? product.productName : 'Неизвестный продукт',
@@ -147,18 +149,26 @@ export default function PrintConsignmentNotePage() {
     };
 
     // Удаление товара
-    const handleDeleteProduct = async (consProductId, productPrice, quantity) => {
+    // Здесь в качестве идентификатора используется productId, т.к. бэкенд ожидает /api/consProduct/{productId}
+    const handleDeleteProduct = async (productId, productPrice, quantity) => {
         if (!window.confirm('Удалить этот товар из накладной?')) return;
 
         try {
-            const response = await fetch(`http://localhost:8080/api/consProduct/${consProductId}`, {
+            const idToDelete = Number(productId);
+            if (!idToDelete) {
+                console.error('Некорректный productId для удаления:', productId);
+                alert('Не удалось определить ID товара для удаления');
+                return;
+            }
+
+            const response = await fetch(`http://localhost:8080/api/consProduct/${idToDelete}`, {
                 method: 'DELETE'
             });
 
             if (!response.ok) throw new Error('Ошибка удаления товара');
 
-            // Удаляем из списка
-            setProducts(prev => prev.filter(p => p.consProductId !== consProductId));
+            // Удаляем из списка (по productId)
+            setProducts(prev => prev.filter(p => p.productId !== idToDelete));
 
             // Обновляем общую сумму
             const newTotal = totalAmount - (productPrice * quantity);
@@ -250,7 +260,7 @@ export default function PrintConsignmentNotePage() {
                         </thead>
                         <tbody>
                         {products.map((product, index) => (
-                            <tr key={product.consProductId}>
+                            <tr key={product.consProductId || product.productId || index}>
                                 <td>{index + 1}</td>
                                 <td>{product.productName}</td>
                                 <td>{product.quantity}</td>
@@ -259,7 +269,7 @@ export default function PrintConsignmentNotePage() {
                                 <td>
                                     <button
                                         onClick={() => handleDeleteProduct(
-                                            product.consProductId,
+                                            product.productId,
                                             product.productPrice,
                                             product.quantity
                                         )}
