@@ -40,11 +40,14 @@ export default function PrintConsignmentNotePage() {
                 // Загружаем все товары поставщика для выпадающего списка
                 const resAllProducts = await fetch(`http://localhost:8080/api/product/${noteData.supplierId}`);
                 const allProductsData = await resAllProducts.json();
-                setAllProducts(allProductsData);
+
+                // API возвращает один объект товара, поэтому приводим к массиву
+                const productsArray = Array.isArray(allProductsData) ? allProductsData : [allProductsData];
+                setAllProducts(productsArray);
 
                 // Сопоставляем товары накладной с их названиями
                 const productsWithNames = consProductsData.map(cp => {
-                    const product = allProductsData.find(p => p.productId === cp.productId);
+                    const product = productsArray.find(p => p.productId === cp.productId);
                     return {
                         ...cp,
                         productName: product ? product.productName : 'Неизвестный продукт',
