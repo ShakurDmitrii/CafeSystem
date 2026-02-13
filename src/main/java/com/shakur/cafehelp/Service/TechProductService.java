@@ -30,7 +30,7 @@ public class TechProductService {
         record.setWaste(techProduct.getWaste());
         record.store();
 
-        techProduct.techProductId = record.getTechproductid();
+        techProduct.setTechProductId(record.getTechproductid());
         return techProduct;
     }
 
@@ -71,12 +71,12 @@ public class TechProductService {
     // ===============================
     // DELETE
     // ===============================
-    public boolean delete(int id) {
-        int deleted = dsl.deleteFrom(Tables.TECHPRODUCT)
-                .where(Tables.TECHPRODUCT.TECHPRODUCTID.eq(id))
-                .execute();
-        return deleted > 0;
-    }
+        public boolean delete(int id) {
+            int deleted = dsl.deleteFrom(Tables.TECHPRODUCT)
+                    .where(Tables.TECHPRODUCT.TECHPRODUCTID.eq(id))
+                    .execute();
+            return deleted > 0;
+        }
 
     // ===============================
     // HELPER: конвертация в DTO

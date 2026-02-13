@@ -1,46 +1,35 @@
 package com.shakur.cafehelp.DTO;
 
 public class TechProductDTO {
-    public int techProductId;
-    public int DishId;
-    public int ProductId;
-    public Double waste;
-    public Double weight;
 
-    public int getTechProductId() {
+    private Integer techProductId;
+    private Integer dishId;
+    private Integer productId;
+    private Double waste;
+    private Double weight;
+
+    public Integer getTechProductId() {
         return techProductId;
     }
 
-    public void setTechProductId(int techProductId) {
-        techProductId = techProductId;
+    public void setTechProductId(Integer techProductId) {
+        this.techProductId = techProductId;
     }
 
-    public int getDishId() {
-        return DishId;
+    public Integer getDishId() {
+        return dishId;
     }
 
-    public void setDishId(int dishId) {
-        DishId = dishId;
+    public void setDishId(Integer dishId) {
+        this.dishId = dishId;
     }
 
-    public int getProductId() {
-        return ProductId;
+    public Integer getProductId() {
+        return productId;
     }
 
-    public void setProductId(int productId) {
-        ProductId = productId;
-    }
-
-    public void setTechProductName(String techProductName) {
-        techProductName = techProductName;
-    }
-
-    public int getProduct() {
-        return ProductId;
-    }
-
-    public void setProduct(int product) {
-        ProductId = product;
+    public void setProductId(Integer productId) {
+        this.productId = productId;
     }
 
     public Double getWaste() {
