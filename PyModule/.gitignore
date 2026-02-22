@@ -1,0 +1,18 @@
+.venv/
+.idea/
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ML artifacts
+models/
+*.pkl
+*.joblib
+
+# Generated data
+app/script/ml_training_data.csv
+
+# OS/editor
+.DS_Store
+Thumbs.db

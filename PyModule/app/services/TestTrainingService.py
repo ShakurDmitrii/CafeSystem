@@ -6,6 +6,8 @@ import joblib
 import random
 from datetime import datetime, timedelta
 
+from app.services.model_paths import MODELS_DIR, MODEL_PATH, MLB_PATH, LEGACY_MODEL_PATH, LEGACY_MLB_PATH
+
 class TestTrainingService:
     def __init__(self):
         self.model = None
@@ -41,9 +43,12 @@ class TestTrainingService:
         self.model = HistGradientBoostingRegressor()
         self.model.fit(X, y)
 
-        # Сохраняем модель
-        joblib.dump(self.model, "../../model.pkl")
-        joblib.dump(self.mlb, "../../mlb.pkl")
+        # Сохраняем модель в единое место + legacy копию для совместимости.
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        joblib.dump(self.model, MODEL_PATH)
+        joblib.dump(self.mlb, MLB_PATH)
+        joblib.dump(self.model, LEGACY_MODEL_PATH)
+        joblib.dump(self.mlb, LEGACY_MLB_PATH)
 
         return {
             "status": "trained_on_test_data",

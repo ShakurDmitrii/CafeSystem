@@ -8,7 +8,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class CorsConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**")  // Все пути с /api/
+        registry.addMapping("/**")  // Разрешаем CORS для всех backend-роутов (включая /warehouses)
                 .allowedOrigins("http://localhost:3000")  // React dev сервер
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")

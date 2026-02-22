@@ -10,6 +10,8 @@ import jooqdata.tables.Clientduty;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
+import jooqdata.tables.InventoryDocumentLines;
+import jooqdata.tables.InventoryDocuments;
 import jooqdata.tables.Order;
 import jooqdata.tables.Orderdish;
 import jooqdata.tables.Person;
@@ -17,7 +19,9 @@ import jooqdata.tables.Product;
 import jooqdata.tables.Productwarehouse;
 import jooqdata.tables.Shift;
 import jooqdata.tables.Shiftperson;
+import jooqdata.tables.StockMovements;
 import jooqdata.tables.Supplier;
+import jooqdata.tables.SupplierPriceHistory;
 import jooqdata.tables.Techproduct;
 import jooqdata.tables.Warehouse;
 
@@ -59,6 +63,16 @@ public class Tables {
     public static final Dish DISH = Dish.DISH;
 
     /**
+     * The table <code>sales.inventory_document_lines</code>.
+     */
+    public static final InventoryDocumentLines INVENTORY_DOCUMENT_LINES = InventoryDocumentLines.INVENTORY_DOCUMENT_LINES;
+
+    /**
+     * The table <code>sales.inventory_documents</code>.
+     */
+    public static final InventoryDocuments INVENTORY_DOCUMENTS = InventoryDocuments.INVENTORY_DOCUMENTS;
+
+    /**
      * The table <code>sales.order</code>.
      */
     public static final Order ORDER = Order.ORDER;
@@ -94,9 +108,19 @@ public class Tables {
     public static final Shiftperson SHIFTPERSON = Shiftperson.SHIFTPERSON;
 
     /**
+     * The table <code>sales.stock_movements</code>.
+     */
+    public static final StockMovements STOCK_MOVEMENTS = StockMovements.STOCK_MOVEMENTS;
+
+    /**
      * The table <code>sales.supplier</code>.
      */
     public static final Supplier SUPPLIER = Supplier.SUPPLIER;
+
+    /**
+     * The table <code>sales.supplier_price_history</code>.
+     */
+    public static final SupplierPriceHistory SUPPLIER_PRICE_HISTORY = SupplierPriceHistory.SUPPLIER_PRICE_HISTORY;
 
     /**
      * The table <code>sales.techproduct</code>.

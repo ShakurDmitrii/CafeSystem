@@ -13,7 +13,9 @@ import java.util.function.Function;
 import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Consproduct.ConsproductPath;
+import jooqdata.tables.InventoryDocumentLines.InventoryDocumentLinesPath;
 import jooqdata.tables.Productwarehouse.ProductwarehousePath;
+import jooqdata.tables.StockMovements.StockMovementsPath;
 import jooqdata.tables.Supplier.SupplierPath;
 import jooqdata.tables.Techproduct.TechproductPath;
 import jooqdata.tables.records.ProductRecord;
@@ -203,6 +205,19 @@ public class Product extends TableImpl<ProductRecord> {
         return _consproduct;
     }
 
+    private transient InventoryDocumentLinesPath _inventoryDocumentLines;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>sales.inventory_document_lines</code> table
+     */
+    public InventoryDocumentLinesPath inventoryDocumentLines() {
+        if (_inventoryDocumentLines == null)
+            _inventoryDocumentLines = new InventoryDocumentLinesPath(this, null, Keys.INVENTORY_DOCUMENT_LINES__INVENTORY_DOCUMENT_LINES_PRODUCT_FK.getInverseKey());
+
+        return _inventoryDocumentLines;
+    }
+
     private transient ProductwarehousePath _productwarehouse;
 
     /**
@@ -214,6 +229,19 @@ public class Product extends TableImpl<ProductRecord> {
             _productwarehouse = new ProductwarehousePath(this, null, Keys.PRODUCTWAREHOUSE__PRODUCTWAREHOUSEID_PRODUCT_FK.getInverseKey());
 
         return _productwarehouse;
+    }
+
+    private transient StockMovementsPath _stockMovements;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>sales.stock_movements</code> table
+     */
+    public StockMovementsPath stockMovements() {
+        if (_stockMovements == null)
+            _stockMovements = new StockMovementsPath(this, null, Keys.STOCK_MOVEMENTS__STOCK_MOVEMENTS_PRODUCT_FK.getInverseKey());
+
+        return _stockMovements;
     }
 
     private transient TechproductPath _techproduct;

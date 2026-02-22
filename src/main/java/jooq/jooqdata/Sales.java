@@ -13,6 +13,8 @@ import jooqdata.tables.Clientduty;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
+import jooqdata.tables.InventoryDocumentLines;
+import jooqdata.tables.InventoryDocuments;
 import jooqdata.tables.Order;
 import jooqdata.tables.Orderdish;
 import jooqdata.tables.Person;
@@ -20,7 +22,9 @@ import jooqdata.tables.Product;
 import jooqdata.tables.Productwarehouse;
 import jooqdata.tables.Shift;
 import jooqdata.tables.Shiftperson;
+import jooqdata.tables.StockMovements;
 import jooqdata.tables.Supplier;
+import jooqdata.tables.SupplierPriceHistory;
 import jooqdata.tables.Techproduct;
 import jooqdata.tables.Warehouse;
 
@@ -73,6 +77,16 @@ public class Sales extends SchemaImpl {
     public final Dish DISH = Dish.DISH;
 
     /**
+     * The table <code>sales.inventory_document_lines</code>.
+     */
+    public final InventoryDocumentLines INVENTORY_DOCUMENT_LINES = InventoryDocumentLines.INVENTORY_DOCUMENT_LINES;
+
+    /**
+     * The table <code>sales.inventory_documents</code>.
+     */
+    public final InventoryDocuments INVENTORY_DOCUMENTS = InventoryDocuments.INVENTORY_DOCUMENTS;
+
+    /**
      * The table <code>sales.order</code>.
      */
     public final Order ORDER = Order.ORDER;
@@ -108,9 +122,19 @@ public class Sales extends SchemaImpl {
     public final Shiftperson SHIFTPERSON = Shiftperson.SHIFTPERSON;
 
     /**
+     * The table <code>sales.stock_movements</code>.
+     */
+    public final StockMovements STOCK_MOVEMENTS = StockMovements.STOCK_MOVEMENTS;
+
+    /**
      * The table <code>sales.supplier</code>.
      */
     public final Supplier SUPPLIER = Supplier.SUPPLIER;
+
+    /**
+     * The table <code>sales.supplier_price_history</code>.
+     */
+    public final SupplierPriceHistory SUPPLIER_PRICE_HISTORY = SupplierPriceHistory.SUPPLIER_PRICE_HISTORY;
 
     /**
      * The table <code>sales.techproduct</code>.
@@ -144,6 +168,8 @@ public class Sales extends SchemaImpl {
             Consignmentnote.CONSIGNMENTNOTE,
             Consproduct.CONSPRODUCT,
             Dish.DISH,
+            InventoryDocumentLines.INVENTORY_DOCUMENT_LINES,
+            InventoryDocuments.INVENTORY_DOCUMENTS,
             Order.ORDER,
             Orderdish.ORDERDISH,
             Person.PERSON,
@@ -151,7 +177,9 @@ public class Sales extends SchemaImpl {
             Productwarehouse.PRODUCTWAREHOUSE,
             Shift.SHIFT,
             Shiftperson.SHIFTPERSON,
+            StockMovements.STOCK_MOVEMENTS,
             Supplier.SUPPLIER,
+            SupplierPriceHistory.SUPPLIER_PRICE_HISTORY,
             Techproduct.TECHPRODUCT,
             Warehouse.WAREHOUSE
         );

@@ -157,6 +157,15 @@ export default function OrderCard({ order, markOrderReady }) {
     }, [secondsPassed, order.time, order.status, isDelayed, delayMinutes, order.orderId]);
 
     // Форматирование времени
+    const getDelayParts = () => {
+        if (!order.time) return { minutes: 0, seconds: 0 };
+        const totalDelaySeconds = Math.max(0, secondsPassed - order.time * 60);
+        return {
+            minutes: Math.floor(totalDelaySeconds / 60),
+            seconds: totalDelaySeconds % 60
+        };
+    };
+
     const formatTime = () => {
         if (!order.time) return null;
 
@@ -164,6 +173,7 @@ export default function OrderCard({ order, markOrderReady }) {
         const elapsedSeconds = secondsPassed % 60;
 
         if (isDelayed) {
+            const { minutes, seconds } = getDelayParts();
             return (
                 <div style={{
                     color: "#ff0000",
@@ -173,7 +183,8 @@ export default function OrderCard({ order, markOrderReady }) {
                     borderRadius: "4px",
                     margin: "5px 0"
                 }}>
-                    ⚠ ЗАДЕРЖКА: +{delayMinutes} мин
+                    ⚠ ЗАДЕРЖКА: +{minutes.toString().padStart(2, "0")}:
+                    {seconds.toString().padStart(2, "0")} ({minutes} мин)
                 </div>
             );
         } else {
@@ -332,7 +343,12 @@ export default function OrderCard({ order, markOrderReady }) {
                 {/* Информация о времени */}
                 <div style={{ fontSize: "0.9em", color: "#666", marginBottom: "10px" }}>
                     Время приготовления: {order.time || 0} мин
-                    {delayMinutes > 0 && ` | Задержка: ${delayMinutes} мин`}
+                    {delayMinutes > 0 && (() => {
+                        const { minutes, seconds } = getDelayParts();
+                        return ` | Задержка: ${minutes.toString().padStart(2, "0")}:${seconds
+                            .toString()
+                            .padStart(2, "0")} (${minutes} мин)`;
+                    })()}
                 </div>
 
                 <div>

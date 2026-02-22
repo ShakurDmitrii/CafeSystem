@@ -66,11 +66,25 @@ public class WareHouseController {
         return ResponseEntity.ok().build();
     }
 
-    // Можно еще добавить GET /warehouses/{id}/products для просмотра продуктов на складе
     @GetMapping("/{id}/products")
     public ResponseEntity<List<ProductWarehouseDTO>> getProductsOnWarehouse(@PathVariable("id") int warehouseId) {
         List<ProductWarehouseDTO> products = wareHouseService.getProductsOnWarehouse(warehouseId);
         return ResponseEntity.ok(products);
+    }
+
+    /** Добавить или списать количество продукта на складе (body: { "delta": число }) */
+    @PatchMapping("/{warehouseId}/products/{productId}/quantity")
+    public ResponseEntity<Void> adjustProductQuantity(
+            @PathVariable("warehouseId") int warehouseId,
+            @PathVariable("productId") int productId,
+            @RequestBody java.util.Map<String, Number> body
+    ) {
+        Number deltaNum = body != null ? body.get("delta") : null;
+        if (deltaNum == null) return ResponseEntity.badRequest().build();
+        double delta = deltaNum.doubleValue();
+        boolean ok = wareHouseService.adjustQuantity(warehouseId, productId, delta);
+        if (!ok) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok().build();
     }
 
 }

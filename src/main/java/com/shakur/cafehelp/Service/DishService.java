@@ -5,6 +5,7 @@ import jooqdata.tables.Dish;
 import jooqdata.tables.Order;
 import jooqdata.tables.records.DishRecord;
 import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,13 +23,24 @@ public class DishService {
         this.dsl = dsl;
     }
 
+    private Integer nextTechProductId() {
+        Integer max = dsl.select(DSL.max(DISH.TECHPRODUCTID))
+                .from(DISH)
+                .fetchOne(0, Integer.class);
+        return (max == null ? 1 : max + 1);
+    }
+
+    private Integer normalizeTechProductForCreate(Integer techProduct) {
+        return (techProduct == null || techProduct <= 0) ? nextTechProductId() : techProduct;
+    }
+
     // Создание блюда
     public DishDTO createDish(DishDTO dto) {
         DishRecord record = dsl.newRecord(DISH);
         record.setDishname(dto.dishName);
         record.setPrice(dto.price);
         record.setFirstcost(dto.firstCost);
-        record.setTechproductid(dto.techProduct);
+        record.setTechproductid(normalizeTechProductForCreate(dto.techProduct));
         record.setWeight(dto.weight);
         record.setCategory(dto.category);
 
@@ -87,7 +99,9 @@ public class DishService {
         record.setDishname(dto.getDishName());
         record.setPrice(dto.getPrice());
         record.setFirstcost(dto.getFirstCost());
-        record.setTechproductid(dto.getTechProduct());
+        if (dto.getTechProduct() != null && dto.getTechProduct() > 0) {
+            record.setTechproductid(dto.getTechProduct());
+        }
         record.setWeight(dto.getWeight());
         record.setCategory(dto.getCategory());
 

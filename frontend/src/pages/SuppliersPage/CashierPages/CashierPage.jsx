@@ -651,31 +651,6 @@ export default function CashierPage() {
 
             {!shiftOpen ? (
                 <div className={styles.closedMessage}>
-                    <h2>Смены</h2>
-                    {allShifts.length === 0 ? (
-                        <div className={styles.empty}>Нет доступных смен</div>
-                    ) : (
-                        allShifts.map(s => (
-                            <div key={s.shiftId} className={styles.orderCard}>
-                                <div>
-                                    <b>Смена #{s.shiftId}</b>
-                                    <div>Дата: {s.data || 'Не указана'}</div>
-                                    <div>Время: {s.startTime || 'Не указано'}</div>
-                                    <div>Статус: {!s.endTime ? "🟢 Открыта" : "🔴 Закрыта"}</div>
-                                    {s.personName && <div>Кассир: {s.personName}</div>}
-                                </div>
-                                {!s.endTime && (
-                                    <button
-                                        className={`${styles.btn} ${styles.primary}`}
-                                        onClick={() => openExistingShift(s)}
-                                    >
-                                        Войти
-                                    </button>
-                                )}
-                            </div>
-                        ))
-                    )}
-
                     <div className={styles.selectEmployeeWrapper}>
                         <h3>Открыть новую смену</h3>
                         <select
@@ -707,6 +682,31 @@ export default function CashierPage() {
                             {isLoading ? "Открывается..." : "Открыть новую смену"}
                         </button>
                     </div>
+
+                    <h2>Смены</h2>
+                    {allShifts.length === 0 ? (
+                        <div className={styles.empty}>Нет доступных смен</div>
+                    ) : (
+                        allShifts.map(s => (
+                            <div key={s.shiftId} className={styles.orderCard}>
+                                <div>
+                                    <b>Смена #{s.shiftId}</b>
+                                    <div>Дата: {s.data || 'Не указана'}</div>
+                                    <div>Время: {s.startTime || 'Не указано'}</div>
+                                    <div>Статус: {!s.endTime ? "🟢 Открыта" : "🔴 Закрыта"}</div>
+                                    {s.personName && <div>Кассир: {s.personName}</div>}
+                                </div>
+                                {!s.endTime && (
+                                    <button
+                                        className={`${styles.btn} ${styles.primary}`}
+                                        onClick={() => openExistingShift(s)}
+                                    >
+                                        Войти
+                                    </button>
+                                )}
+                            </div>
+                        ))
+                    )}
                 </div>
             ) : (
                 <div className={styles.body}>

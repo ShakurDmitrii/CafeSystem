@@ -1,177 +1,129 @@
-/* Общие стили страницы */
 .page {
-    height: 100vh;
+    min-height: 100vh;
     background: #f3f4f6;
-    font-family: "Segoe UI", sans-serif;
+    font-family: "Segoe UI", Tahoma, sans-serif;
     display: flex;
     flex-direction: column;
     margin: 0;
 }
 
-/* HEADER */
 .header {
-    height: 60px;
+    min-height: 60px;
     background: #111827;
     color: #fff;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 20px;
+    gap: 12px;
+    padding: 10px 20px;
 }
 
 .brand {
     font-size: 22px;
     font-weight: 700;
+    white-space: nowrap;
 }
 
-.shift {
-    display: flex;
-    align-items: center;
-    gap: 16px;
+.shiftOpen,
+.shiftClosed {
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 13px;
 }
 
 .shiftOpen {
-    color: #4ade80;
-    font-weight: 600;
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
 }
 
 .shiftClosed {
-    color: #f87171;
-    font-weight: 600;
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
 }
 
-/* BODY */
 .body {
     display: grid;
-    grid-template-columns: 2fr 1fr;
-    height: calc(100vh - 60px);
-    gap: 10px;
-    padding: 10px;
-    overflow: hidden;
-}
-
-/* ORDER PANEL */
-.orderPanel {
-    background: #fff;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    border-radius: 10px;
-    overflow-y: auto;
-    max-height: 100%;
-}
-
-.items {
+    grid-template-columns: minmax(0, 2fr) minmax(360px, 1fr);
+    gap: 12px;
+    padding: 12px;
     flex: 1;
-    margin-top: 10px;
+    min-height: 0;
+}
+
+.orderPanel,
+.ordersPanel {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    padding: 16px;
+    min-height: 0;
+    overflow: auto;
+}
+
+.orderPanel h2,
+.ordersHeader h2,
+.clientSection h3 {
+    margin: 0 0 12px;
+    color: #111827;
+}
+
+.ordersHeader {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.orderStats {
+    display: flex;
+    align-items: center;
     gap: 8px;
 }
 
-.item {
-    display: grid;
-    grid-template-columns: 2fr 1fr 1fr auto;
-    gap: 10px;
-    align-items: center;
-}
-
-.item input {
-    padding: 6px 8px;
-    border-radius: 6px;
-    border: 1px solid #d1d5db;
-    width: 100%;
-    font-size: 14px;
-}
-
-.name {
+.cookingCount,
+.readyCount {
+    font-size: 13px;
     font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 999px;
 }
 
-.sum {
-    text-align: right;
+.cookingCount {
+    background: #fef3c7;
+    color: #92400e;
 }
 
-.total {
-    display: flex;
-    justify-content: space-between;
-    font-size: 20px;
-    font-weight: 700;
-    margin: 15px 0;
+.readyCount {
+    background: #dcfce7;
+    color: #166534;
 }
 
-/* ORDERS PANEL */
-.ordersPanel {
-    background: #f9fafb;
-    padding: 20px;
-    border-left: 1px solid #e5e7eb;
-    border-radius: 10px;
-    overflow-y: auto;
-    max-height: 100%;
-}
-
-.orderCard {
-    background: #fff;
-    border-radius: 10px;
-    padding: 14px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.orderCard:hover {
-    transform: scale(1.01);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.status {
-    font-weight: 700;
-}
-
-.ready {
-    border-left: 5px solid #16a34a;
-}
-
-.cooking {
-    border-left: 5px solid #eab308;
-}
-
-/* BUTTONS */
 .btn {
-    padding: 6px 12px; /* уменьшил padding */
-    border-radius: 6px;
     border: none;
+    border-radius: 8px;
     cursor: pointer;
     font-weight: 600;
-    font-size: 14px; /* сделал чуть меньше */
-    transition: background 0.2s, opacity 0.2s, transform 0.2s;
-    min-width: 100px; /* фиксированная минимальная ширина для выравнивания */
-    text-align: center;
+    font-size: 14px;
+    padding: 8px 12px;
+    min-width: 100px;
+    transition: transform 0.15s, opacity 0.15s, background 0.15s;
 }
 
 .btn:hover {
-    opacity: 0.9;
-}
-.shiftbtn {
-    padding: 4px 12px;      /* уменьшенный padding */
-    font-size: 14px;        /* размер текста */
-    line-height: 1.2;       /* компактная высота строки */
-    flex-shrink: 0;
-    min-width: 120px;
-    max-width: 180px;
-    border-radius: 8px;
+    opacity: 0.92;
+    transform: translateY(-1px);
 }
 
-/* Если кнопка слишком растягивается в flex */
-.shift {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
 }
-
 
 .primary {
     background: #16a34a;
@@ -188,162 +140,146 @@
     color: #fff;
 }
 
-.edit {
-    background: #e5e7eb;
+.clientSection {
+    margin-bottom: 14px;
+    padding: 12px;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
 }
 
-.empty {
-    color: #6b7280;
-    font-style: italic;
-    padding: 10px 0;
-    text-align: center;
-}
-
-.closedMessage {
-    grid-column: 1 / -1;
-    text-align: center;
-    padding: 50px;
-    font-size: 20px;
-    color: #ef4444;
-    font-weight: 600;
-}
-
-/* SELECTED ORDER DETAILS */
-.selectedOrderPanel {
-    background: #fefefe;
-    padding: 15px;
-    border-radius: 8px;
-    margin-top: 10px;
-}
-
-.selectedOrderPanel h2 {
-    margin-bottom: 10px;
-}
-
-/* SELECT EMPLOYEE */
-.selectEmployeeBtn {
-    padding: 10px 16px;
-    border-radius: 8px;
-    border: 1px solid #0284c7;
-    background-color: #0284c7;
-    color: #fff;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s, transform 0.2s;
-}
-
-.selectEmployeeBtn:hover {
-    background-color: #0369a1;
-    transform: translateY(-2px);
-}
-
-.selectEmployeeWrapper {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.selectedPerson {
-    font-weight: 600;
-    color: #0284c7;
-}
-
-/* MODAL */
-.pageOverlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 1000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-.modalContent {
-    background: #fff;
-    padding: 20px;
-    border-radius: 12px;
-    width: 500px;
-    max-height: 80vh;
-    overflow-y: auto;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+.clientSearch {
     position: relative;
 }
 
-.modalHeader {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
+.clientSearch input {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
 }
 
-.modalHeader h2 {
-    margin: 0;
-    font-size: 20px;
+.clientResults {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    max-height: 240px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+    margin-bottom: 10px;
 }
 
-.modalCloseBtn {
-    background: transparent;
-    border: none;
-    font-size: 24px;
+.clientOption {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f1f5f9;
     cursor: pointer;
-}
-
-.modalItemList {
     display: flex;
-    flex-direction: column;
-    gap: 12px;
+    justify-content: space-between;
+    gap: 10px;
 }
 
-.modalItem {
+.clientOption:last-child {
+    border-bottom: none;
+}
+
+.clientOption:hover {
+    background: #f8fafc;
+}
+
+.selectedClientCard {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
     padding: 10px;
     border-radius: 8px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid #86efac;
+    background: #f0fdf4;
+}
+
+.createClientBtn {
+    width: 100%;
+    margin-top: 8px;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 12px;
     cursor: pointer;
-    transition: background 0.2s, border-color 0.2s;
-}
-
-.modalItem:hover {
-    background: #f3f4f6;
-    border-color: #0284c7;
-}
-
-.modalItemName {
+    background: #16a34a;
+    color: #fff;
     font-weight: 600;
 }
 
-.modalItemPrice {
-    font-weight: 500;
-    color: #16a34a;
-}
-
-.modalItemQty {
-    width: 50px;
-    margin-left: 10px;
-    padding: 4px 6px;
-    border-radius: 6px;
-    border: 1px solid #e5e7eb;
+.noResults {
     text-align: center;
+    color: #6b7280;
+    padding: 12px;
 }
 
-/* ORDER TYPE SWITCH */
+.empty,
+.emptyItems {
+    text-align: center;
+    color: #6b7280;
+    font-style: italic;
+    background: #f8fafc;
+    border: 1px dashed #d1d5db;
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.item {
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) auto auto auto;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 8px;
+    padding: 8px;
+    border-radius: 8px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+}
+
+.qtyControls {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.qtyControls button {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid #d1d5db;
+    background: #f3f4f6;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.qtyControls span {
+    min-width: 22px;
+    text-align: center;
+    font-weight: 600;
+}
+
 .switchWrapper {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-top: 15px;
+    padding: 10px;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-top: 10px;
 }
 
 .switch {
     position: relative;
     display: inline-block;
-    width: 60px;
+    width: 56px;
     height: 28px;
 }
 
@@ -355,1337 +291,347 @@
 
 .slider {
     position: absolute;
+    inset: 0;
     cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #ccc;
-    transition: 0.4s;
-    border-radius: 34px;
+    background: #d1d5db;
+    border-radius: 999px;
+    transition: background 0.2s;
 }
 
 .slider:before {
-    position: absolute;
     content: "";
-    height: 24px;
+    position: absolute;
     width: 24px;
+    height: 24px;
     left: 2px;
-    bottom: 2px;
-    background-color: white;
-    transition: 0.4s;
+    top: 2px;
     border-radius: 50%;
+    background: #fff;
+    transition: transform 0.2s;
 }
 
-input:checked + .slider {
-    background-color: #16a34a;
+.switch input:checked + .slider {
+    background: #16a34a;
 }
 
-input:checked + .slider:before {
-    transform: translateX(32px);
+.switch input:checked + .slider:before {
+    transform: translateX(28px);
 }
 
-.switchLabel {
-    font-weight: 600;
-    user-select: none;
-}
-
-.item {
-    display: grid;
-    grid-template-columns: 2fr 1fr 1fr auto;
-    gap: 10px;
-    align-items: center;
-}
-
-/* Контрол количества */
-.qtyControls {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-}
-
-.qtyControls button {
-    width: 28px;
-    height: 28px;
-    font-size: 16px;
-    font-weight: bold;
-    border-radius: 6px;
-    border: 1px solid #d1d5db;
-    background: #f3f4f6;
-    cursor: pointer;
-}
-
-.qtyControls span {
-    min-width: 24px;
-    text-align: center;
-}
-.timeInput {
-    margin: 15px 0;
-    padding: 10px;
-    background: #f5f5f5;
-    border-radius: 8px;
-}
-
-.timeInput label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: 500;
-    color: #333;
-}
-
-.timeInput input {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 16px;
-}
-
-/* Стили для карточек */
-.orderCard {
-    border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 15px;
-    transition: all 0.3s ease;
-}
-
-.cooking {
-    background: #e3f2fd;
-    border-left: 4px solid #2196f3;
-}
-
-.delayed {
-    background: #ffebee;
-    border-left: 4px solid #f44336;
-    animation: pulse 1.5s infinite;
-}
-
-.ready {
-    background: #e8f5e9;
-    border-left: 4px solid #4caf50;
-}
-.debtCheckbox {
-    margin: 15px 0;
-    padding: 10px;
-    background: #fff3e0;
+.debtSection {
+    margin-top: 10px;
+    padding: 12px;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
     border-radius: 8px;
 }
 
 .debtCheckbox label {
     display: flex;
     align-items: center;
-    gap: 10px;
-    cursor: pointer;
-}
-
-.debtCheckbox input[type="checkbox"] {
-    width: 20px;
-    height: 20px;
-    cursor: pointer;
-}
-
-.debtCheckbox span {
-    font-weight: 500;
-    color: #333;
-}
-/* Стили для раздела клиента */
-.clientSection {
-    margin: 15px 0;
-    padding: 15px;
-    background: #f8f9fa;
-    border-radius: 8px;
-}
-
-.clientSection h3 {
-    margin-top: 0;
-    margin-bottom: 10px;
-    color: #333;
-}
-
-.selectedClientCard {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px;
-    background: white;
-    border: 1px solid #4caf50;
-    border-radius: 6px;
-    margin-bottom: 10px;
-}
-
-.clientSearch {
-    margin-bottom: 10px;
-}
-
-.clientSearch input {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 16px;
-    margin-bottom: 10px;
-}
-
-.clientResults {
-    max-height: 200px;
-    overflow-y: auto;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    background: white;
-    margin-bottom: 10px;
-}
-
-.clientOption {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px;
-    border-bottom: 1px solid #eee;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-.clientOption:hover {
-    background: #f0f0f0;
-}
-
-.clientOption:last-child {
-    border-bottom: none;
-}
-
-.noResults {
-    padding: 20px;
-    text-align: center;
-    color: #666;
-}
-
-.createClientBtn {
-    padding: 8px 16px;
-    background: #2196f3;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    margin-top: 10px;
-}
-
-/* Модальное окно для создания клиента */
-.modalOverlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-}
-
-.modal {
-    background: white;
-    padding: 25px;
-    border-radius: 8px;
-    min-width: 400px;
-    max-width: 500px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-}
-
-.modal h3 {
-    margin-top: 0;
-    margin-bottom: 20px;
-    color: #333;
-}
-
-.modalContent {
-    margin-bottom: 20px;
-}
-
-.modalInput {
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 10px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 16px;
-}
-
-.modalActions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-}
-
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.8; }
-    100% { opacity: 1; }
-}
-/* Стили для кнопок в Header */
-.shiftBtn {
-    padding: 4px 12px;
-    font-size: 14px;
-    line-height: 1.2;
-    border-radius: 8px;
-    flex-shrink: 0;
-    min-width: 120px;
-    max-width: 180px;
-}
-
-/* Стили для сообщения при закрытой смене */
-.closedMessage {
-    grid-column: 1 / -1;
-    text-align: center;
-    padding: 50px;
-    font-size: 20px;
-    color: #ef4444;
-    font-weight: 600;
-}
-
-/* Стили для карточек смен в списке */
-.closedMessage .orderCard {
-    background: #fff;
-    border-radius: 10px;
-    padding: 14px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    max-width: 400px;
-    margin-left: auto;
-    margin-right: auto;
-    border: 1px solid #e5e7eb;
-}
-
-.closedMessage h2 {
-    color: #111827;
-    margin-bottom: 20px;
-}
-
-/* Стили для кнопок добавления/удаления позиций в item */
-.item .btn.danger {
-    padding: 4px 8px;
-    font-size: 12px;
-    min-width: auto;
-    height: 28px;
-}
-
-/* Стили для общего контейнера при закрытой смене */
-.selectEmployeeWrapper {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 15px;
-    margin-top: 30px;
-    padding: 20px;
-    background: #fff;
-    border-radius: 10px;
-    max-width: 400px;
-    margin-left: auto;
-    margin-right: auto;
-}
-
-.selectEmployeeBtn {
-    padding: 10px 16px;
-    border-radius: 8px;
-    border: 1px solid #0284c7;
-    background-color: #0284c7;
-    color: #fff;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s, transform 0.2s;
-    width: 100%;
-    text-align: center;
-}
-
-.selectEmployeeBtn:hover {
-    background-color: #0369a1;
-    transform: translateY(-2px);
-}
-
-.selectedPerson {
-    font-weight: 600;
-    color: #0284c7;
-    padding: 10px;
-    background: #f0f9ff;
-    border-radius: 6px;
-    text-align: center;
-    width: 100%;
-}
-
-/* Стили для списка клиентов с поиском */
-.clientSearch {
-    position: relative;
-    width: 100%;
-}
-
-.clientResults {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    z-index: 100;
-    max-height: 300px;
-    overflow-y: auto;
-}
-
-.clientOption {
-    padding: 12px;
-    border-bottom: 1px solid #eee;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.clientOption:hover {
-    background-color: #f5f5f5;
-}
-
-.clientOption:last-child {
-    border-bottom: none;
-}
-
-/* Стили для выбранного клиента */
-.selectedClientCard {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px;
-    background: #e8f5e9;
-    border: 2px solid #4caf50;
-    border-radius: 8px;
-    margin: 10px 0;
-}
-
-/* Стили для кнопок в модальном окне клиента */
-.modalActions .btn {
-    padding: 10px 20px;
-    border-radius: 6px;
-    border: none;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 14px;
-    transition: all 0.2s;
-}
-
-.modalActions .btn.primary {
-    background: #16a34a;
-    color: white;
-}
-
-.modalActions .btn.secondary {
-    background: #6b7280;
-    color: white;
-}
-
-.modalActions .btn:hover {
-    opacity: 0.9;
-    transform: translateY(-2px);
-}
-
-/* Стили для отключенного чекбокса долга */
-.debtCheckbox input[type="checkbox"]:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.debtCheckbox span {
-    color: inherit;
-}
-
-/* Стили для кнопки создания клиента в результатах поиска */
-.createClientBtn {
-    width: 100%;
-    padding: 12px;
-    background: #16a34a;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-weight: 600;
-    cursor: pointer;
-    margin-top: 10px;
-    transition: background 0.2s;
-}
-
-.createClientBtn:hover {
-    background: #15803d;
-}
-
-/* Стили для пустого состояния */
-.noResults {
-    padding: 20px;
-    text-align: center;
-    color: #6b7280;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-}
-
-/* Стили для сообщений о состоянии */
-.empty {
-    padding: 40px;
-    text-align: center;
-    color: #6b7280;
-    font-style: italic;
-    background: #f9fafb;
-    border-radius: 8px;
-    margin: 20px 0;
-}
-
-/* Стили для заголовков секций */
-.orderPanel h2,
-.ordersPanel h2,
-.clientSection h3 {
-    color: #111827;
-    margin-bottom: 15px;
-    padding-bottom: 8px;
-    border-bottom: 2px solid #e5e7eb;
-}
-
-/* Стили для инпута времени */
-.timeInput input {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-size: 16px;
-    margin-top: 5px;
-}
-
-.timeInput label {
-    font-weight: 600;
-    color: #374151;
-}
-
-/* Стили для итоговой суммы */
-.total {
-    background: #f9fafb;
-    padding: 15px;
-    border-radius: 8px;
-    margin: 15px 0;
-    border: 2px solid #e5e7eb;
-}
-
-.total span:first-child {
-    font-weight: 700;
-    color: #111827;
-}
-
-.total span:last-child {
-    font-weight: 700;
-    color: #16a34a;
-    font-size: 24px;
-}
-
-/* Стили для переключателя типа заказа */
-.switchWrapper {
-    padding: 10px;
-    background: #f9fafb;
-    border-radius: 8px;
-    margin: 10px 0;
-}
-
-.switchWrapper span {
-    font-weight: 600;
-    color: #374151;
-}
-
-/* Стили для кнопки добавления позиции */
-.orderPanel .btn.secondary {
-    margin: 10px 0;
-    padding: 12px;
-    font-size: 16px;
-}
-
-/* Анимация для задержанных заказов */
-@keyframes pulse {
-    0% {
-        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7);
-    }
-    70% {
-        box-shadow: 0 0 0 10px rgba(244, 67, 54, 0);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0);
-    }
-}
-
-.delayed {
-    animation: pulse 2s infinite;
-}
-
-/* Стили для скроллбаров */
-.orderPanel::-webkit-scrollbar,
-.ordersPanel::-webkit-scrollbar,
-.clientResults::-webkit-scrollbar {
-    width: 6px;
-}
-
-.orderPanel::-webkit-scrollbar-track,
-.ordersPanel::-webkit-scrollbar-track,
-.clientResults::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 3px;
-}
-
-.orderPanel::-webkit-scrollbar-thumb,
-.ordersPanel::-webkit-scrollbar-thumb,
-.clientResults::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 3px;
-}
-
-.orderPanel::-webkit-scrollbar-thumb:hover,
-.ordersPanel::-webkit-scrollbar-thumb:hover,
-.clientResults::-webkit-scrollbar-thumb:hover {
-    background: #a1a1a1;
-}
-
-/* Адаптивность для мобильных устройств */
-@media (max-width: 768px) {
-    .body {
-        grid-template-columns: 1fr;
-        height: auto;
-    }
-
-    .header {
-        flex-direction: column;
-        height: auto;
-        padding: 15px;
-        gap: 10px;
-    }
-
-    .shift {
-        flex-direction: column;
-        gap: 10px;
-    }
-
-    .orderPanel,
-    .ordersPanel {
-        max-height: 50vh;
-    }
-
-    .modal {
-        min-width: 90%;
-        margin: 20px;
-    }
-
-    .item {
-        grid-template-columns: 1fr 1fr;
-        grid-template-rows: auto auto;
-        gap: 5px;
-    }
-
-    .item .btn.danger {
-        grid-column: 2;
-        grid-row: 2;
-    }
-
-    .qtyControls {
-        grid-column: 1;
-        grid-row: 2;
-    }
-}
-
-/* Стили для состояния загрузки (опционально) */
-.loading {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 3px solid #f3f3f3;
-    border-top: 3px solid #3498db;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* Стили для подсказок */
-.tooltip {
-    position: relative;
-    display: inline-block;
-}
-
-.tooltip .tooltiptext {
-    visibility: hidden;
-    width: 200px;
-    background-color: #374151;
-    color: #fff;
-    text-align: center;
-    border-radius: 6px;
-    padding: 5px;
-    position: absolute;
-    z-index: 1;
-    bottom: 125%;
-    left: 50%;
-    margin-left: -100px;
-    opacity: 0;
-    transition: opacity 0.3s;
-    font-size: 12px;
-}
-
-.tooltip:hover .tooltiptext {
-    visibility: visible;
-    opacity: 1;
-}
-
-/* Стили для иконок */
-.icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    margin-right: 8px;
-}
-
-/* Стили для статусов заказов */
-.status-badge {
-    padding: 4px 8px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-}
-
-.status-cooking {
-    background: #fef3c7;
-    color: #92400e;
-}
-
-.status-ready {
-    background: #d1fae5;
-    color: #065f46;
-}
-
-.status-delayed {
-    background: #fee2e2;
-    color: #991b1b;
-}
-/* Стили для секции долга с датой погашения */
-.debtSection {
-    margin: 15px 0;
-    padding: 15px;
-    background: #fff3e0;
-    border-radius: 8px;
-    border: 1px solid #ffb74d;
-}
-
-.debtCheckbox {
-    margin-bottom: 10px;
+    gap: 8px;
 }
 
 .debtDatePicker {
     margin-top: 10px;
-    padding: 10px;
     background: #fff;
-    border-radius: 6px;
-    border: 1px solid #ffb74d;
-}
-
-.debtDatePicker label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: 600;
-    color: #e65100;
+    border: 1px solid #fdba74;
+    border-radius: 8px;
+    padding: 10px;
 }
 
 .dateInput {
     width: 100%;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 16px;
-    margin-bottom: 5px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 8px 10px;
 }
 
 .dateInfo {
-    color: #666;
-    font-size: 14px;
-    padding: 5px;
-    background: #f5f5f5;
-    border-radius: 4px;
+    margin-top: 6px;
+    color: #9a3412;
+    font-size: 13px;
 }
 
-.dateInfo strong {
-    color: #e65100;
+.timeInput {
+    margin-top: 10px;
 }
 
-/* Стили для отображения даты погашения в карточке заказа */
-.debtPaymentBadge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 8px;
-    background: linear-gradient(135deg, #fff3e0, #ffe0b2);
-    color: #e65100;
-    border-radius: 12px;
-    font-size: 12px;
+.timeInput label {
+    display: block;
+    margin-bottom: 6px;
+    color: #374151;
     font-weight: 600;
-    margin-top: 5px;
-    border: 1px solid #ffb74d;
 }
 
-.debtPaymentBadge::before {
-    content: "📅";
-    margin-right: 4px;
-}
-
-.debtPaymentOverdue {
-    background: linear-gradient(135deg, #ffebee, #ffcdd2);
-    color: #d32f2f;
-    border: 1px solid #f44336;
-    animation: pulseWarning 1.5s infinite;
-}
-
-.debtPaymentToday {
-    background: linear-gradient(135deg, #fff3e0, #ffecb3);
-    color: #f57c00;
-    border: 1px solid #ff9800;
-}
-
-.debtPaymentFuture {
-    background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
-    color: #388e3c;
-    border: 1px solid #4caf50;
-}
-
-@keyframes pulseWarning {
-    0% {
-        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.4);
-    }
-    70% {
-        box-shadow: 0 0 0 5px rgba(244, 67, 54, 0);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0);
-    }
-}
-
-/* Стили для предупреждения о просроченном долге */
-.debtWarning {
-    background: linear-gradient(135deg, #ffebee, #ffcdd2);
-    border: 2px solid #f44336;
+.timeInput input {
+    width: 100%;
+    border: 1px solid #d1d5db;
     border-radius: 8px;
-    padding: 10px;
-    margin: 10px 0;
-    color: #d32f2f;
-    font-weight: 600;
+    padding: 8px 10px;
+}
+
+.total {
+    margin: 12px 0;
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 8px;
-}
-
-.debtWarning::before {
-    content: "⚠️";
-    font-size: 16px;
-}
-
-/* Стили для календаря в модальном окне */
-.calendarIcon {
-    cursor: pointer;
-    background: none;
-    border: none;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    font-weight: 700;
     font-size: 20px;
-    margin-left: 10px;
-    color: #2196f3;
 }
 
-/* Стили для инструментов даты */
-.dateTooltip {
-    position: relative;
-    display: inline-block;
+.orderGroup + .orderGroup {
+    margin-top: 14px;
 }
 
-.dateTooltip .tooltiptext {
-    visibility: hidden;
-    width: 200px;
-    background-color: #333;
-    color: #fff;
-    text-align: center;
-    border-radius: 6px;
-    padding: 8px;
-    position: absolute;
-    z-index: 1;
-    bottom: 125%;
-    left: 50%;
-    margin-left: -100px;
-    opacity: 0;
-    transition: opacity 0.3s;
-    font-size: 12px;
+.groupHeader h3 {
+    margin: 0 0 8px;
+    color: #374151;
+    font-size: 15px;
 }
 
-.dateTooltip:hover .tooltiptext {
-    visibility: visible;
-    opacity: 1;
-}
-
-/* Стили для счетчика дней до погашения */
-.debtDaysCounter {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 6px;
+.orderCard {
     border-radius: 10px;
-    font-size: 11px;
-    font-weight: bold;
-    margin-left: 5px;
+    padding: 12px;
+    margin-bottom: 10px;
 }
 
-.daysOverdue {
-    background: #f44336;
-    color: white;
+.cooking {
+    border-left: 4px solid #2196f3;
 }
 
-.daysToday {
-    background: #ff9800;
-    color: white;
-}
-
-.daysFuture {
-    background: #4caf50;
-    color: white;
-}
-
-/* Адаптивные стили для мобильных */
-@media (max-width: 768px) {
-    .debtDatePicker {
-        padding: 8px;
-    }
-
-    .dateInput {
-        font-size: 14px;
-        padding: 6px;
-    }
-
-    .debtPaymentBadge {
-        font-size: 10px;
-        padding: 3px 6px;
-    }
-}
-
-/* Стили для вспомогательных сообщений */
-.hintText {
-    color: #666;
-    font-size: 12px;
-    margin-top: 4px;
-    font-style: italic;
-}
-
-/* Стили для разделителей */
-.sectionDivider {
-    height: 1px;
-    background: linear-gradient(to right, transparent, #ddd, transparent);
-    margin: 15px 0;
-}
-/* Стили для OrderCard */
-
-/* Анимация для просроченных долгов */
-@keyframes blinkWarning {
-    0%, 100% {
-        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7);
-    }
-    50% {
-        box-shadow: 0 0 0 5px rgba(244, 67, 54, 0);
-    }
-}
-
-/* Стили для просроченного долга */
-.debtOverdue {
-    animation: blinkWarning 1.5s infinite;
-    border: 2px solid #f44336 !important;
-}
-
-/* Стили для баджа долга */
-.debtBadge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    margin-left: 10px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.debtBadge.overdue {
-    background: linear-gradient(135deg, #ff5252, #d32f2f);
-    color: white;
-}
-
-.debtBadge.today {
-    background: linear-gradient(135deg, #ff9800, #f57c00);
-    color: white;
-}
-
-.debtBadge.future {
-    background: linear-gradient(135deg, #4caf50, #2e7d32);
-    color: white;
-}
-
-/* Стили для отображения даты погашения */
-.debtPaymentInfo {
-    background: linear-gradient(135deg, #fff3e0, #ffe0b2);
-    border-left: 4px solid #ff9800;
-    padding: 8px;
-    margin: 8px 0;
-    border-radius: 4px;
-    font-size: 0.9em;
-}
-
-.debtPaymentInfo.overdue {
-    background: linear-gradient(135deg, #ffebee, #ffcdd2);
-    border-left: 4px solid #f44336;
-    animation: blinkWarning 2s infinite;
-}
-
-.debtPaymentInfo.today {
-    background: linear-gradient(135deg, #fff3e0, #ffecb3);
-    border-left: 4px solid #ff9800;
-}
-
-.debtPaymentInfo.future {
-    background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+.ready {
     border-left: 4px solid #4caf50;
 }
 
-/* Стили для иконки календаря */
-.calendarIcon {
-    font-size: 0.9em;
-    margin-right: 4px;
-    vertical-align: middle;
+.closedMessage {
+    text-align: center;
+    padding: 30px 12px;
 }
 
-/* Стили для счетчика дней */
-.daysCounter {
-    font-size: 0.8em;
-    padding: 1px 5px;
+.selectEmployeeWrapper {
+    max-width: 560px;
+    margin: 16px auto 0;
+    padding: 16px;
+    border: 1px solid #e5e7eb;
     border-radius: 10px;
-    margin-left: 5px;
-    font-weight: bold;
-}
-
-.daysCounter.overdue {
-    background: #d32f2f;
-    color: white;
-}
-
-.daysCounter.today {
-    background: #ff9800;
-    color: white;
-}
-
-.daysCounter.future {
-    background: #4caf50;
-    color: white;
-}
-/* Стили для загрузки */
-.loadingContainer {
+    background: #fff;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    gap: 10px;
+}
+
+.selectEmployeeBtn {
+    width: 100%;
+    border: 1px solid #0284c7;
+    background: #0284c7;
+    color: #fff;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.selectedPerson {
+    color: #0369a1;
+    font-weight: 600;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+.loadingContainer {
+    min-height: calc(100vh - 60px);
+    display: flex;
+    flex-direction: column;
     justify-content: center;
-    height: calc(100vh - 60px);
-    gap: 20px;
+    align-items: center;
+    gap: 14px;
 }
 
 .spinner {
-    width: 50px;
-    height: 50px;
-    border: 5px solid #f3f3f3;
-    border-top: 5px solid #16a34a;
+    width: 44px;
+    height: 44px;
+    border: 4px solid #e5e7eb;
+    border-top-color: #16a34a;
     border-radius: 50%;
     animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
-/* Стили для отображения количества заказов */
-.ordersHeader {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-}
-
-.ordersHeader h2 {
-    margin: 0;
-}
-
-/* Стили для пустого списка заказов */
-.empty {
-    text-align: center;
-    padding: 40px;
-    color: #666;
-    font-style: italic;
-    background: #f9fafb;
-    border-radius: 8px;
-    margin: 20px 0;
-}
-
-.emptyItems {
-    text-align: center;
-    padding: 20px;
-    color: #999;
-    font-style: italic;
-    background: #f5f5f5;
-    border-radius: 6px;
-    margin: 10px 0;
-}
-
-/* Стили для кнопок с состоянием disabled */
-.btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-/* Стили для сохранения состояния */
-.orderCard {
-    transition: all 0.3s ease;
-}
-
-.orderCard:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-/* Стили для улучшенного отображения смен */
-.closedMessage .orderCard {
-    margin-bottom: 15px;
-    padding: 15px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    background: white;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    max-width: 600px;
-    margin-left: auto;
-    margin-right: auto;
-}
-
-/* Стили для отображения ID смены в хедере */
-.shiftOpen, .shiftClosed {
-    font-weight: 600;
-    padding: 5px 15px;
-    border-radius: 20px;
-}
-
-.shiftOpen {
-    background: #dcfce7;
-    color: #166534;
-    border: 1px solid #bbf7d0;
-}
-
-.shiftClosed {
-    background: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #fecaca;
-}
-
-/* Стили для улучшенного UX */
-.selectEmployeeWrapper {
-    margin-top: 30px;
-    padding: 25px;
-    background: white;
-    border-radius: 10px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    max-width: 500px;
-    margin-left: auto;
-    margin-right: auto;
-}
-
-.selectEmployeeWrapper h3 {
-    margin-top: 0;
-    margin-bottom: 20px;
-    color: #111827;
-    text-align: center;
-}
-
-.selectEmployeeBtn {
-    width: 100%;
-    padding: 12px;
-    margin-bottom: 15px;
-}
-
-/* Анимация для плавного появления */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.orderPanel, .ordersPanel {
-    animation: fadeIn 0.3s ease-out;
-}
-
-/* Улучшенные стили для клиентской секции */
-.clientSection {
-    animation: fadeIn 0.5s ease-out;
-}
-
-/* Стили для ошибок и предупреждений */
-.errorMessage {
-    background: #fee2e2;
-    color: #991b1b;
-    padding: 10px;
-    border-radius: 6px;
-    margin: 10px 0;
-    border-left: 4px solid #ef4444;
-}
-
-.successMessage {
-    background: #dcfce7;
-    color: #166534;
-    padding: 10px;
-    border-radius: 6px;
-    margin: 10px 0;
-    border-left: 4px solid #16a34a;
-}
-/* === Уведомление о долгах === */
+.modalOverlay,
 .notificationOverlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 1000;
+    padding: 16px;
 }
 
+.modal,
 .notificationModal {
-    background: white;
-    border-radius: 12px;
-    width: 90%;
-    max-width: 600px;
-    max-height: 80vh;
+    width: min(680px, 95vw);
+    max-height: 90vh;
     overflow-y: auto;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.2);
+}
+
+.modal {
+    max-width: 520px;
+    padding: 20px;
+}
+
+.modalContent {
+    margin-top: 10px;
+}
+
+.modalInput {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+}
+
+.modalActions {
+    margin-top: 14px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.closeBtn {
+    border: none;
+    border-radius: 8px;
+    background: #6b7280;
+    color: #fff;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-weight: 600;
 }
 
 .notificationHeader {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 20px;
-    border-bottom: 1px solid #eee;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border-radius: 12px 12px 0 0;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: #fff;
 }
 
-.notificationHeader h2 {
-    margin: 0;
-    font-size: 1.5rem;
-}
-
-.closeBtn {
-    background: none;
-    border: none;
-    color: white;
-    font-size: 1.5rem;
-    cursor: pointer;
-    padding: 5px 10px;
-    border-radius: 4px;
-}
-
-.closeBtn:hover {
-    background: rgba(255, 255, 255, 0.1);
+.notificationHeader .closeBtn {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .notificationContent {
-    padding: 20px;
+    padding: 14px 16px;
 }
 
-.debtSection {
-    margin-bottom: 25px;
+.notificationFooter {
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    border-top: 1px solid #e5e7eb;
+    background: #f8fafc;
 }
 
-.debtSection:last-child {
-    margin-bottom: 0;
-}
-
+.todayTitle,
 .overdueTitle {
-    color: #e74c3c;
-    margin-top: 0;
-    padding-bottom: 10px;
-    border-bottom: 2px solid #e74c3c;
+    margin: 0 0 10px;
 }
 
 .todayTitle {
-    color: #f39c12;
-    margin-top: 0;
-    padding-bottom: 10px;
-    border-bottom: 2px solid #f39c12;
+    color: #d97706;
+}
+
+.overdueTitle {
+    color: #dc2626;
 }
 
 .debtItem {
-    padding: 15px;
-    margin-bottom: 10px;
-    background: #f8f9fa;
+    border: 1px solid #e5e7eb;
     border-radius: 8px;
-    border-left: 4px solid #ccc;
-}
-
-.debtItem:nth-child(odd) {
-    background: #f9f9f9;
-}
-
-.overdueBadge {
-    color: #e74c3c;
-    font-weight: bold;
-    margin-top: 5px;
-}
-
-.todayBadge {
-    color: #f39c12;
-    font-weight: bold;
-    margin-top: 5px;
+    padding: 10px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
 }
 
 .debtInfo {
     flex: 1;
 }
 
-.notificationFooter {
-    padding: 20px;
-    border-top: 1px solid #eee;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: #f8f9fa;
-    border-radius: 0 0 12px 12px;
+.todayBadge {
+    color: #d97706;
+    font-weight: 700;
 }
 
-.notificationFooter small {
-    color: #666;
+.overdueBadge {
+    color: #dc2626;
+    font-weight: 700;
 }
 
-/* Индикатор долгов в хедере */
 .debtAlertBtn {
-    margin-left: 20px;
-    background: #e74c3c;
-    color: white;
     border: none;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-weight: bold;
+    border-radius: 999px;
+    padding: 8px 14px;
+    background: #dc2626;
+    color: #fff;
+    font-weight: 700;
     cursor: pointer;
-    transition: background 0.3s;
 }
 
 .debtAlertBtn:hover {
-    background: #c0392b;
+    background: #b91c1c;
+}
+
+@media (max-width: 980px) {
+    .body {
+        grid-template-columns: 1fr;
+        min-height: auto;
+    }
+
+    .ordersPanel {
+        min-height: 320px;
+    }
+}
+
+@media (max-width: 640px) {
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .item {
+        grid-template-columns: 1fr;
+    }
+
+    .total {
+        font-size: 18px;
+    }
+
+    .btn {
+        width: 100%;
+    }
 }

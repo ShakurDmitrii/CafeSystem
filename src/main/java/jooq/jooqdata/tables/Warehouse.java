@@ -12,6 +12,7 @@ import java.util.function.Function;
 import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Productwarehouse.ProductwarehousePath;
+import jooqdata.tables.StockMovements.StockMovementsPath;
 import jooqdata.tables.records.WarehouseRecord;
 
 import org.jooq.Condition;
@@ -165,6 +166,19 @@ public class Warehouse extends TableImpl<WarehouseRecord> {
             _productwarehouse = new ProductwarehousePath(this, null, Keys.PRODUCTWAREHOUSE__PRODUCTWAREHOUSEID_WAREHOUSE_FK.getInverseKey());
 
         return _productwarehouse;
+    }
+
+    private transient StockMovementsPath _stockMovements;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>sales.stock_movements</code> table
+     */
+    public StockMovementsPath stockMovements() {
+        if (_stockMovements == null)
+            _stockMovements = new StockMovementsPath(this, null, Keys.STOCK_MOVEMENTS__STOCK_MOVEMENTS_WAREHOUSE_FK.getInverseKey());
+
+        return _stockMovements;
     }
 
     @Override

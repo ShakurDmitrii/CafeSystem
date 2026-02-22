@@ -10,6 +10,7 @@ export default function TechCardPage() {
     const { dishId } = useParams();
 
     const [dishName, setDishName] = useState(""); // название блюда
+    const [dishPrice, setDishPrice] = useState(null); // цена блюда из БД
     const [items, setItems] = useState([]);
     const [products, setProducts] = useState([]);
     const [productId, setProductId] = useState("");
@@ -20,15 +21,18 @@ export default function TechCardPage() {
     const [editingTechProductId, setEditingTechProductId] = useState(null);
 
     useEffect(() => {
-        loadDishName();
+        loadDish();
         loadTechCard();
         loadProducts();
     }, []);
 
-    const loadDishName = () => {
+    const loadDish = () => {
         fetch(`${API_DISHES}/${dishId}`)
             .then(res => res.json())
-            .then(data => setDishName(data.dishName))
+            .then(data => {
+                setDishName(data.dishName ?? "");
+                setDishPrice(data.price ?? data.dishPrice ?? null);
+            })
             .catch(err => console.error("Ошибка загрузки блюда:", err));
     };
 
@@ -140,14 +144,13 @@ export default function TechCardPage() {
             .catch(err => console.error(err));
     };
 
-    // Расчёт себестоимости блюда
+    // Расчёт себестоимости блюда (без учета отходов)
     const totalCost = items.reduce((sum, i) => {
         const product = products.find(p => p.productId === i.productId);
-        const price = product?.productPrice || 0; // цена за кг/единицу
+        const price = product?.productPrice || 0; // цена за кг
         const weightGr = i.weight || 0;
-        const wastePercent = i.waste || 0;
-        const netWeightKg = (weightGr * (1 - wastePercent / 100)) / 1000; // чистый вес в кг
-        const cost = netWeightKg * price;
+        const weightKg = weightGr / 1000; // вес в кг
+        const cost = weightKg * price;
         return sum + cost;
     }, 0);
 
@@ -206,18 +209,17 @@ export default function TechCardPage() {
                         const product = products.find(p => p.productId === i.productId);
                         const price = product?.productPrice || 0;
                         const weightGr = i.weight || 0;
-                        const wastePercent = i.waste || 0;
-                        const netWeightKg = (weightGr * (1 - wastePercent / 100)) / 1000;
-                        const cost = netWeightKg * price;
+                        const weightKg = weightGr / 1000; // вес в кг
+                        const cost = weightKg * price;
 
                         return (
                             <li key={i.techProductId} className={styles.ingredientItem}>
                                 <div className={styles.ingredientMain}>
                                     <strong>{product?.productName || "Неизвестный"}</strong>
                                     {" — "}
-                                    цена: {price} ₽
+                                    цена: {price} ₽/кг
                                     {" — "}
-                                    {i.weight} г (отход {i.waste ?? 0}%)
+                                    {i.weight} г
                                     {" — "}
                                     себестоимость: {cost.toFixed(2)} ₽
                                 </div>
@@ -243,7 +245,12 @@ export default function TechCardPage() {
                 )}
             </ul>
 
-            <h3 className={styles.totalCost}>Себестоимость блюда: {totalCost.toFixed(2)} ₽</h3>
+            <div className={styles.totalCostBlock}>
+                <span className={styles.totalCost}>Себестоимость: {totalCost.toFixed(2)} ₽</span>
+                {dishPrice != null && (
+                    <span className={styles.totalCost}>Цена блюда: {Number(dishPrice).toFixed(2)} ₽</span>
+                )}
+            </div>
         </div>
     );
 }

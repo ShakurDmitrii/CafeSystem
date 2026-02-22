@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import styles from './ConsignmentNotePage.module.css';
 import { useNavigate } from "react-router-dom";
 
+const API_MOVEMENTS = "http://localhost:8080/movements";
+const CONSIGNMENT_MOVEMENT_PREFIX = "consignment-note:";
+
 export default function ConsignmentNotePage() {
     const [notes, setNotes] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
@@ -13,16 +16,45 @@ export default function ConsignmentNotePage() {
     const [selectedSupplierId, setSelectedSupplierId] = useState(null);
 
     const [consProducts, setConsProducts] = useState([]);
-    const [newProduct, setNewProduct] = useState({ consignmentId: "", productId: "", quantity: "" });
+    const [newProduct, setNewProduct] = useState({ consignmentId: "", productId: "", quantity: "", unitPrice: "" });
     const [formData, setFormData] = useState({ supplierId: '', date: '' });
 
     const [currentTotal, setCurrentTotal] = useState(0);
     const [totalsByNoteId, setTotalsByNoteId] = useState({});
+    const [isCalculatingAll, setIsCalculatingAll] = useState(false);
 
     const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
     const [warehouses, setWarehouses] = useState([]);
 
     const navigate = useNavigate();
+
+    async function getNoteReceiptMovements(noteId) {
+        const marker = `${CONSIGNMENT_MOVEMENT_PREFIX}${noteId}`;
+        const res = await fetch(API_MOVEMENTS);
+        if (!res.ok) throw new Error("Не удалось получить движения для накладной");
+
+        const data = await res.json();
+        const rows = Array.isArray(data) ? data : [];
+        const noteRows = rows.filter(m => {
+            const comment = String(m.comment ?? "").trim();
+            return m.docType === "receipt" && comment === marker;
+        });
+
+        const priceByProductId = {};
+        let total = 0;
+        noteRows.forEach(m => {
+            if (m.productId != null && m.unitPrice != null && priceByProductId[m.productId] == null) {
+                priceByProductId[m.productId] = Number(m.unitPrice);
+            }
+            if (m.lineTotal != null) {
+                total += Number(m.lineTotal) || 0;
+            } else if (m.unitPrice != null && m.quantity != null) {
+                total += (Number(m.unitPrice) || 0) * (Number(m.quantity) || 0);
+            }
+        });
+
+        return { noteRows, priceByProductId, total };
+    }
 
     // --------------------Склады-------------------------------
     useEffect(() => {
@@ -179,9 +211,28 @@ export default function ConsignmentNotePage() {
 
             console.log("Обработанные товары накладной:", consProductsWithNames);
 
-            setConsProducts(consProductsWithNames);
-            setCurrentTotal(totalsByNoteId[noteId] ?? 0);
-            setNewProduct({ consignmentId: noteId, productId: "", quantity: "" });
+            let priceMap = {};
+            let movementTotal = null;
+            try {
+                const movementData = await getNoteReceiptMovements(noteId);
+                priceMap = movementData.priceByProductId;
+                movementTotal = movementData.noteRows.length > 0 ? movementData.total : null;
+            } catch (e) {
+                console.warn("Не удалось получить цены из движений:", e);
+            }
+
+            const mergedProducts = consProductsWithNames.map(cp => {
+                const pId = cp.productId || cp.productID;
+                const movementPrice = pId != null ? priceMap[pId] : null;
+                return {
+                    ...cp,
+                    productPrice: movementPrice ?? cp.productPrice
+                };
+            });
+
+            setConsProducts(mergedProducts);
+            setCurrentTotal(movementTotal ?? totalsByNoteId[noteId] ?? 0);
+            setNewProduct({ consignmentId: noteId, productId: "", quantity: "", unitPrice: "" });
 
         } catch (err) {
             console.error("Ошибка в openProducts:", err);
@@ -197,8 +248,8 @@ export default function ConsignmentNotePage() {
 
     // -------------------- ДОБАВЛЕНИЕ ПРОДУКТА --------------------
     async function addProduct() {
-        if (!newProduct.productId || !newProduct.quantity) {
-            alert("Выберите продукт и укажите количество!");
+        if (!newProduct.productId || !newProduct.quantity || !newProduct.unitPrice) {
+            alert("Выберите продукт, укажите количество и цену закупки!");
             return;
         }
 
@@ -250,27 +301,55 @@ export default function ConsignmentNotePage() {
             const created = await res.json();
             console.log("Создан consProduct:", created);
 
+            const currentNote = notes.find(n => String(n.consignmentId) === String(newProduct.consignmentId));
+            const noteDate = currentNote?.date ? String(currentNote.date).slice(0, 10) : null;
+
+            const movementPayload = {
+                docType: "receipt",
+                docDate: noteDate ? `${noteDate}T00:00:00` : undefined,
+                fromWarehouseId: null,
+                toWarehouseId: Number(selectedWarehouseId),
+                productId: selectedProduct.productId || selectedProduct.productID,
+                quantity: parseFloat(newProduct.quantity),
+                supplierId: selectedSupplierId ? Number(selectedSupplierId) : null,
+                unitPrice: parseFloat(newProduct.unitPrice),
+                comment: `${CONSIGNMENT_MOVEMENT_PREFIX}${newProduct.consignmentId}`,
+                createdBy: "consignment-ui"
+            };
+
+            const movementRes = await fetch(API_MOVEMENTS, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(movementPayload)
+            });
+
+            if (!movementRes.ok) {
+                await fetch(`http://localhost:8080/api/consProduct/${created.consProductId}`, {
+                    method: "DELETE"
+                }).catch(() => {});
+                const errText = await movementRes.text();
+                throw new Error(`Ошибка создания движения: ${errText || movementRes.status}`);
+            }
+
             // Добавляем товар в список
+            const enteredUnitPrice = parseFloat(newProduct.unitPrice);
+            const enteredQuantity = parseFloat(newProduct.quantity);
             const newConsProduct = {
                 ...created,
                 productName: selectedProduct.productName,
-                productPrice: selectedProduct.productPrice
+                productPrice: Number.isFinite(enteredUnitPrice) ? enteredUnitPrice : 0
             };
 
             setConsProducts(prev => [...prev, newConsProduct]);
-            setNewProduct({ consignmentId: newProduct.consignmentId, productId: "", quantity: "" });
+            setNewProduct({ consignmentId: newProduct.consignmentId, productId: "", quantity: "", unitPrice: "" });
 
-            // Добавляем товар на склад
-            try {
-                await fetch(`http://localhost:8080/warehouses/${selectedWarehouseId}/products`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify([{
-                        productId: selectedProduct.productId || selectedProduct.productID
-                    }])
-                });
-            } catch (warehouseErr) {
-                console.warn("Ошибка при добавлении товара на склад:", warehouseErr);
+            if (Number.isFinite(enteredUnitPrice) && Number.isFinite(enteredQuantity)) {
+                const lineSum = enteredUnitPrice * enteredQuantity;
+                setCurrentTotal(prev => prev + lineSum);
+                setTotalsByNoteId(prev => ({
+                    ...prev,
+                    [Number(newProduct.consignmentId)]: (prev[Number(newProduct.consignmentId)] ?? 0) + lineSum
+                }));
             }
 
         } catch (err) {
@@ -307,51 +386,84 @@ export default function ConsignmentNotePage() {
     }
 
     // -------------------- РАСЧЕТ ИТОГО --------------------
-    async function calculateTotal() {
-        console.log("Начинаем расчёт итого.");
-        console.log("consProducts для расчета:", consProducts);
-
-        // Создаем Map из products для быстрого поиска цен
-        const productsMap = new Map();
-        if (Array.isArray(products)) {
-            products.forEach(product => {
-                const id = product.productId || product.productID || product.id;
-                if (id !== undefined) {
-                    productsMap.set(String(id), product);
-                }
-            });
-        }
-
-        let total = 0;
-
-        for (const cp of consProducts) {
-            console.log("Обрабатываем consProduct:", cp);
-
-            const cpId = String(cp.productId || cp.productID || cp.id);
-            const product = productsMap.get(cpId);
-            const price = product ? product.productPrice : 0;
-            const quantity = cp.quantity || 0;
-            const sum = price * quantity;
-
-            console.log(`Товар: ${cp.productName}, цена: ${price}, количество: ${quantity}, сумма: ${sum}`);
-
-            total += sum;
-        }
-
-        console.log("Итого:", total);
-
-        setCurrentTotal(total);
-        setTotalsByNoteId(prev => ({ ...prev, [selectedNoteId]: total }));
+    async function calculateTotalForNote(noteId) {
+        const note = notes.find(n => n.consignmentId === noteId);
+        if (!note) return;
 
         try {
-            await fetch(`http://localhost:8080/api/consignmentNote/${selectedNoteId}`, {
+            const resCons = await fetch(`http://localhost:8080/api/consProduct/${noteId}`);
+            const consProductsData = await resCons.json();
+            const consProductsArray = Array.isArray(consProductsData) ? consProductsData : [];
+
+            let total = 0;
+            try {
+                const movementData = await getNoteReceiptMovements(noteId);
+                total = movementData.total;
+            } catch (e) {
+                console.warn("Не удалось посчитать итого по движениям, fallback на справочник цен:", e);
+            }
+
+            if (!total && consProductsArray.length > 0) {
+                for (const cp of consProductsArray) {
+                    const productId = cp.productId || cp.productID;
+                    const quantity = Number(cp.quantity) || 0;
+                    if (!productId) continue;
+
+                    try {
+                        const resProd = await fetch(`http://localhost:8080/api/product/${productId}`);
+                        if (!resProd.ok) continue;
+                        const productData = await resProd.json();
+                        const price = Number(productData.productPrice || productData.price) || 0;
+                        total += price * quantity;
+                    } catch (err) {
+                        console.warn(`Не удалось получить цену для товара ${productId}:`, err);
+                    }
+                }
+            }
+
+            setTotalsByNoteId(prev => ({ ...prev, [noteId]: total }));
+            if (selectedNoteId === noteId) setCurrentTotal(total);
+
+            await fetch(`http://localhost:8080/api/consignmentNote/${noteId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ amount: total })
             });
-            console.log("Amount успешно обновлен на сервере");
         } catch (err) {
-            console.error("Ошибка при обновлении amount:", err);
+            console.error("Ошибка при расчете итого:", err);
+            setError(err.message);
+        }
+    }
+
+    async function calculateAllTotals() {
+        if (!Array.isArray(notes) || notes.length === 0) return;
+        try {
+            setIsCalculatingAll(true);
+            await Promise.all(notes.map(note => calculateTotalForNote(note.consignmentId)));
+        } finally {
+            setIsCalculatingAll(false);
+        }
+    }
+
+    async function handleDeleteNote(noteId) {
+        if (!window.confirm(`Удалить накладную #${noteId}?`)) return;
+        try {
+            const res = await fetch(`http://localhost:8080/api/consignmentNote/${noteId}`, {
+                method: "DELETE"
+            });
+            if (!res.ok) throw new Error("Ошибка удаления накладной");
+
+            setNotes(prev => prev.filter(n => n.consignmentId !== noteId));
+            setTotalsByNoteId(prev => {
+                const next = { ...prev };
+                delete next[noteId];
+                return next;
+            });
+
+            if (selectedNoteId === noteId) closeModal();
+        } catch (err) {
+            console.error(err);
+            setError(err.message);
         }
     }
 
@@ -410,7 +522,18 @@ export default function ConsignmentNotePage() {
                         <th>Номер</th>
                         <th>Дата</th>
                         <th>Итого</th>
-                        <th>Действия</th>
+                        <th>
+                            Действия
+                            <button
+                                type="button"
+                                className={styles.calculateBtn}
+                                onClick={calculateAllTotals}
+                                disabled={isCalculatingAll}
+                                style={{ marginLeft: "8px" }}
+                            >
+                                {isCalculatingAll ? "Считаю..." : "Рассчитать все"}
+                            </button>
+                        </th>
                     </tr>
                     </thead>
                     <tbody>
@@ -432,10 +555,22 @@ export default function ConsignmentNotePage() {
                                         Товары
                                     </button>
                                     <button
+                                        className={styles.calculateBtn}
+                                        onClick={() => calculateTotalForNote(note.consignmentId)}
+                                    >
+                                        Рассчитать Итого
+                                    </button>
+                                    <button
                                         className={styles.printBtn}
                                         onClick={() => handlePrintForm(note.consignmentId)}
                                     >
                                         Печатная форма
+                                    </button>
+                                    <button
+                                        className={styles.deleteBtn}
+                                        onClick={() => handleDeleteNote(note.consignmentId)}
+                                    >
+                                        Удалить
                                     </button>
                                 </div>
                             </td>
@@ -514,7 +649,17 @@ export default function ConsignmentNotePage() {
 
                                     <select
                                         value={newProduct.productId}
-                                        onChange={e => setNewProduct({ ...newProduct, productId: e.target.value })}
+                                        onChange={e => {
+                                            const productId = e.target.value;
+                                            const selected = products.find(p =>
+                                                String(p.productId || p.productID) === String(productId)
+                                            );
+                                            setNewProduct({
+                                                ...newProduct,
+                                                productId,
+                                                unitPrice: selected?.productPrice != null ? String(selected.productPrice) : newProduct.unitPrice
+                                            });
+                                        }}
                                         className={styles.inputField}
                                     >
                                         <option value="">Выберите товар</option>
@@ -536,6 +681,16 @@ export default function ConsignmentNotePage() {
                                         min="0"
                                     />
 
+                                    <input
+                                        type="number"
+                                        placeholder="Цена закупки"
+                                        className={styles.inputField}
+                                        value={newProduct.unitPrice}
+                                        onChange={e => setNewProduct({ ...newProduct, unitPrice: e.target.value })}
+                                        step="0.01"
+                                        min="0"
+                                    />
+
                                     <button className={styles.addBtn} onClick={addProduct}>Добавить</button>
                                 </div>
                             </div>
@@ -543,9 +698,6 @@ export default function ConsignmentNotePage() {
                             <div className={styles.totalSection}>
                                 <div className={styles.totalInfo}>
                                     <strong>Итого: {currentTotal.toFixed(2)}</strong>
-                                    <button className={styles.calculateBtn} onClick={calculateTotal}>
-                                        Рассчитать Итого
-                                    </button>
                                 </div>
 
                                 <div className={styles.modalActions}>

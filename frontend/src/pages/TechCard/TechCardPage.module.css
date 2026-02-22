@@ -108,8 +108,15 @@
    color: #6e7781;
  }
 
+ .totalCostBlock {
+   margin-top: 16px;
+   display: flex;
+   flex-wrap: wrap;
+   gap: 24px;
+   align-items: baseline;
+ }
+
  .totalCost {
-   margin-top: 12px;
    font-size: 16px;
    font-weight: 600;
  }

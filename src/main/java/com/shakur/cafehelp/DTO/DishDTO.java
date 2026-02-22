@@ -7,7 +7,7 @@ public class DishDTO {
     public Double weight;
     public Double firstCost;
     public Double price;
-    public int techProduct;
+    public Integer techProduct;
     public int qty;
 
     public String getCategory() {
@@ -26,11 +26,11 @@ public class DishDTO {
         this.qty = qty;
     }
 
-    public int getTechProduct() {
+    public Integer getTechProduct() {
         return techProduct;
     }
 
-    public void setTechProduct(int techProduct) {
+    public void setTechProduct(Integer techProduct) {
         this.techProduct = techProduct;
     }
 

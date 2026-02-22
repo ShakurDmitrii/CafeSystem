@@ -99,6 +99,18 @@ public class ConsignmentNoteService {
                 }).toList();
     }
 
+    @Transactional
+    public boolean deleteConsignmentNote(int consignmentId) {
+        dsl.deleteFrom(CONSPRODUCT)
+                .where(CONSPRODUCT.CONSIGNMENTID.eq(consignmentId))
+                .execute();
+
+        int deleted = dsl.deleteFrom(CONSIGNMENTNOTE)
+                .where(CONSIGNMENTNOTE.CONSIGNMENTID.eq(consignmentId))
+                .execute();
+        return deleted > 0;
+    }
+
     public ConsignmentNoteDTO getConsignmentWithProducts(int consignmentId) {
         // Получаем накладную
         ConsignmentNoteDTO noteDto = dsl.selectFrom(CONSIGNMENTNOTE)

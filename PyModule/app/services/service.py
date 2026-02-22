@@ -8,6 +8,15 @@ import random
 from typing import List
 from xgboost import XGBRegressor
 
+from app.services.model_paths import (
+    MODELS_DIR,
+    MODEL_PATH,
+    MLB_PATH,
+    LEGACY_MODEL_PATH,
+    LEGACY_XGB_MODEL_PATH,
+    LEGACY_MLB_PATH,
+)
+
 logger = logging.getLogger(__name__)
 
 # Глобальные переменные модели
@@ -18,8 +27,14 @@ def load_model():
     """Загружает модель и mlb из файлов, если они есть"""
     global model, mlb
     try:
-        model = joblib.load("model.pkl")
-        mlb = joblib.load("mlb.pkl")
+        model_path = MODEL_PATH if MODEL_PATH.exists() else LEGACY_XGB_MODEL_PATH
+        if not model_path.exists():
+            model_path = LEGACY_MODEL_PATH
+
+        mlb_path = MLB_PATH if MLB_PATH.exists() else LEGACY_MLB_PATH
+
+        model = joblib.load(model_path)
+        mlb = joblib.load(mlb_path)
         logger.info("ML модель загружена")
     except FileNotFoundError:
         logger.warning("Модель не загружена, нужны данные для обучения")
@@ -90,8 +105,9 @@ def train_model(records: list):
     rmse = ((model.predict(X_test) - y_test) ** 2).mean() ** 0.5
     print(f"Training completed, RMSE on test: {rmse:.2f}")
 
-    # Сохраняем модель и mlb
-    joblib.dump(model, "xgb_model.pkl")
-    joblib.dump(mlb, "mlb.pkl")
+    # Сохраняем модель и mlb в единое место хранения.
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model, MODEL_PATH)
+    joblib.dump(mlb, MLB_PATH)
 
     return {"status": "trained", "records": len(records), "rmse": rmse}

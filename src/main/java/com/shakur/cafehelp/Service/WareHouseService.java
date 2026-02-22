@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import jooqdata.tables.Productwarehouse;
 import java.util.List;
+import java.util.ArrayList;
 
 import static jooqdata.tables.Warehouse.WAREHOUSE;
 
@@ -103,7 +104,7 @@ public class WareHouseService {
         }
     }
 
-    // Можно добавить метод для получения всех продуктов на складе
+    // Получение всех продуктов на складе
     public List<ProductWarehouseDTO> getProductsOnWarehouse(int warehouseId) {
         return dsl.selectFrom(Productwarehouse.PRODUCTWAREHOUSE)
                 .where(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID.eq(warehouseId))
@@ -114,9 +115,109 @@ public class WareHouseService {
                     dto.setProductWarehouseId(r.getProductwarehouseid());
                     dto.setProductId(r.getProductid());
                     dto.setWarehouseId(r.getWarehouseid());
+                    dto.setQuantity(r.getQuantity() != null ? r.getQuantity() : 0.0);
                     return dto;
                 })
                 .toList();
+    }
+
+    /** Изменить количество продукта на складе (положительный delta — добавить, отрицательный — списать) */
+    @Transactional
+    public boolean adjustQuantity(int warehouseId, int productId, double delta) {
+        List<ProductwarehouseRecord> records = dsl.selectFrom(Productwarehouse.PRODUCTWAREHOUSE)
+                .where(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID.eq(warehouseId))
+                .and(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID.eq(productId))
+                .orderBy(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTWAREHOUSEID.asc())
+                .fetch();
+
+        if (records.isEmpty()) return false;
+
+        if (delta >= 0) {
+            ProductwarehouseRecord first = records.get(0);
+            double current = first.getQuantity() != null ? first.getQuantity() : 0.0;
+            first.setQuantity(current + delta);
+            first.store();
+            return true;
+        }
+
+        double needToSubtract = -delta;
+        double available = records.stream()
+                .map(r -> r.getQuantity() != null ? r.getQuantity() : 0.0)
+                .reduce(0.0, Double::sum);
+
+        if (available <= 0) return true;
+
+        if (needToSubtract > available) needToSubtract = available;
+
+        for (ProductwarehouseRecord record : records) {
+            if (needToSubtract <= 0) break;
+            double current = record.getQuantity() != null ? record.getQuantity() : 0.0;
+            if (current <= 0) continue;
+
+            double take = Math.min(current, needToSubtract);
+            record.setQuantity(current - take);
+            record.store();
+            needToSubtract -= take;
+        }
+
+        return true;
+    }
+
+    /** Перемещение количества товара между складами */
+    @Transactional
+    public boolean moveProduct(int fromWarehouseId, int toWarehouseId, int productId, double quantity) {
+        if (quantity <= 0 || fromWarehouseId == toWarehouseId) return false;
+
+        List<ProductwarehouseRecord> fromRecords = dsl.selectFrom(Productwarehouse.PRODUCTWAREHOUSE)
+                .where(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID.eq(fromWarehouseId))
+                .and(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID.eq(productId))
+                .orderBy(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTWAREHOUSEID.asc())
+                .fetch();
+
+        if (fromRecords.isEmpty()) return false;
+
+        double available = fromRecords.stream()
+                .map(r -> r.getQuantity() != null ? r.getQuantity() : 0.0)
+                .reduce(0.0, Double::sum);
+
+        if (available < quantity) return false;
+
+        double remaining = quantity;
+        List<ProductwarehouseRecord> updatedFrom = new ArrayList<>();
+        for (ProductwarehouseRecord record : fromRecords) {
+            if (remaining <= 0) break;
+            double current = record.getQuantity() != null ? record.getQuantity() : 0.0;
+            if (current <= 0) continue;
+
+            double take = Math.min(current, remaining);
+            record.setQuantity(current - take);
+            updatedFrom.add(record);
+            remaining -= take;
+        }
+
+        for (ProductwarehouseRecord record : updatedFrom) {
+            record.store();
+        }
+
+        ProductwarehouseRecord toRecord = dsl.selectFrom(Productwarehouse.PRODUCTWAREHOUSE)
+                .where(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID.eq(toWarehouseId))
+                .and(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID.eq(productId))
+                .orderBy(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTWAREHOUSEID.asc())
+                .limit(1)
+                .fetchOne();
+
+        if (toRecord == null) {
+            toRecord = dsl.newRecord(Productwarehouse.PRODUCTWAREHOUSE);
+            toRecord.setWarehouseid(toWarehouseId);
+            toRecord.setProductid(productId);
+            toRecord.setQuantity(quantity);
+        } else {
+            double toCurrent = toRecord.getQuantity() != null ? toRecord.getQuantity() : 0.0;
+            toRecord.setQuantity(toCurrent + quantity);
+        }
+        toRecord.store();
+
+        return true;
     }
 
 }

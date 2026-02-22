@@ -12,6 +12,7 @@ import PersonPage from "./pages/SuppliersPage/PersonPage";
 import DishPage from "./pages/SuppliersPage/CashierPages/DishPage";
 import TechCardPage from "./pages/TechCard/TechCardPage";
 import WarehousesPage from "./pages/Warehouse/WarehousesPage";
+import MovementPage from "./pages/Warehouse/Movement";
 import ClientsPage from "./pages/SuppliersPage/ClientPages/ClientsPage";
 import MlPage from "./pages/MLPanel/MlPage";
 
@@ -32,6 +33,7 @@ function App() {
                         <Link to="/cashier" className="App-link">Касса</Link>
                         <Link to="/dish" className="App-link">Меню</Link>
                         <Link to="/warehouse" className="App-link">Склады</Link>
+                        <Link to="/movements" className="App-link">Движения</Link>
                         <Link to="/clients" className="App-link">Клиенты</Link>
                     </nav>
 
@@ -66,6 +68,7 @@ function App() {
                         <Route path="/person" element={<PersonPage />} />
                         <Route path="/dish" element={<DishPage />} />
                         <Route path="/warehouse" element={<WarehousesPage />} />
+                        <Route path="/movements" element={<MovementPage />} />
                         <Route path="/ml" element={<MlPage />} />
                         <Route path="/" element={<div style={{ padding: '2rem' }}><h2>Домашняя страница</h2></div>} />
                     </Routes>

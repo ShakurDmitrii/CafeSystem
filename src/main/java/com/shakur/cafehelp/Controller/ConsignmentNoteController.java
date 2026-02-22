@@ -48,4 +48,11 @@ public class ConsignmentNoteController {
         return consignmentNoteService.createConsignmentNote(consignmentNoteDTO);
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteConsignmentNote(@PathVariable int id) {
+        boolean deleted = consignmentNoteService.deleteConsignmentNote(id);
+        if (!deleted) return ResponseEntity.notFound().build();
+        return ResponseEntity.noContent().build();
+    }
+
 }
