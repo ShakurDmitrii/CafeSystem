@@ -21,6 +21,18 @@ input {
     border: 1px solid #cbd5e1;
 }
 
+select {
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+}
+
+.error {
+    color: #b42318;
+    font-size: 0.95rem;
+}
+
 .btn {
     padding: 10px 16px;
     border-radius: 8px;

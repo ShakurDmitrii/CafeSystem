@@ -5,7 +5,7 @@ COPY build.gradle settings.gradle gradlew gradlew.bat ./
 COPY gradle ./gradle
 COPY src ./src
 
-RUN gradle --no-daemon bootJar -x test
+RUN gradle --no-daemon bootJar -x test -x generateJooq
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app

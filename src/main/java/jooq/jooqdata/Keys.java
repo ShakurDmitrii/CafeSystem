@@ -23,6 +23,7 @@ import jooqdata.tables.StockMovements;
 import jooqdata.tables.Supplier;
 import jooqdata.tables.SupplierPriceHistory;
 import jooqdata.tables.Techproduct;
+import jooqdata.tables.UserAccount;
 import jooqdata.tables.Warehouse;
 import jooqdata.tables.records.ClientRecord;
 import jooqdata.tables.records.ClientdishRecord;
@@ -43,6 +44,7 @@ import jooqdata.tables.records.StockMovementsRecord;
 import jooqdata.tables.records.SupplierPriceHistoryRecord;
 import jooqdata.tables.records.SupplierRecord;
 import jooqdata.tables.records.TechproductRecord;
+import jooqdata.tables.records.UserAccountRecord;
 import jooqdata.tables.records.WarehouseRecord;
 
 import org.jooq.ForeignKey;
@@ -85,6 +87,9 @@ public class Keys {
     public static final UniqueKey<SupplierPriceHistoryRecord> SUPPLIER_PRICE_HISTORY_UNIQUE = Internal.createUniqueKey(SupplierPriceHistory.SUPPLIER_PRICE_HISTORY, DSL.name("supplier_price_history_unique"), new TableField[] { SupplierPriceHistory.SUPPLIER_PRICE_HISTORY.SUPPLIER_ID }, true);
     public static final UniqueKey<SupplierPriceHistoryRecord> SUPPLIER_PRICE_HISTORY_UNIQUE_1 = Internal.createUniqueKey(SupplierPriceHistory.SUPPLIER_PRICE_HISTORY, DSL.name("supplier_price_history_unique_1"), new TableField[] { SupplierPriceHistory.SUPPLIER_PRICE_HISTORY.PRODUCT_ID }, true);
     public static final UniqueKey<TechproductRecord> TECHPRODUCT_PK = Internal.createUniqueKey(Techproduct.TECHPRODUCT, DSL.name("techproduct_pk"), new TableField[] { Techproduct.TECHPRODUCT.TECHPRODUCTID }, true);
+    public static final UniqueKey<UserAccountRecord> USER_ACCOUNT_PK = Internal.createUniqueKey(UserAccount.USER_ACCOUNT, DSL.name("user_account_pk"), new TableField[] { UserAccount.USER_ACCOUNT.ID }, true);
+    public static final UniqueKey<UserAccountRecord> USER_ACCOUNT_UNIQUE = Internal.createUniqueKey(UserAccount.USER_ACCOUNT, DSL.name("user_account_unique"), new TableField[] { UserAccount.USER_ACCOUNT.PERSONID }, true);
+    public static final UniqueKey<UserAccountRecord> USER_ACCOUNT_UNIQUE_1 = Internal.createUniqueKey(UserAccount.USER_ACCOUNT, DSL.name("user_account_unique_1"), new TableField[] { UserAccount.USER_ACCOUNT.USERNAME }, true);
     public static final UniqueKey<WarehouseRecord> WAREHOUSE_PK = Internal.createUniqueKey(Warehouse.WAREHOUSE, DSL.name("warehouse_pk"), new TableField[] { Warehouse.WAREHOUSE.WAREHOUSEID }, true);
     public static final UniqueKey<WarehouseRecord> WAREHOUSE_UNIQUE = Internal.createUniqueKey(Warehouse.WAREHOUSE, DSL.name("warehouse_unique"), new TableField[] { Warehouse.WAREHOUSE.WAREHOUSENAME }, true);
 
@@ -111,4 +116,5 @@ public class Keys {
     public static final ForeignKey<StockMovementsRecord, WarehouseRecord> STOCK_MOVEMENTS__STOCK_MOVEMENTS_WAREHOUSE_FK = Internal.createForeignKey(StockMovements.STOCK_MOVEMENTS, DSL.name("stock_movements_warehouse_fk"), new TableField[] { StockMovements.STOCK_MOVEMENTS.WAREHOUSE_ID }, Keys.WAREHOUSE_PK, new TableField[] { Warehouse.WAREHOUSE.WAREHOUSEID }, true);
     public static final ForeignKey<TechproductRecord, DishRecord> TECHPRODUCT__TECHPRODUCT_DISH_FK = Internal.createForeignKey(Techproduct.TECHPRODUCT, DSL.name("techproduct_dish_fk"), new TableField[] { Techproduct.TECHPRODUCT.DISHID }, Keys.DISH_PK, new TableField[] { Dish.DISH.DISHID }, true);
     public static final ForeignKey<TechproductRecord, ProductRecord> TECHPRODUCT__TECHPRODUCT_PRODUCT_FK = Internal.createForeignKey(Techproduct.TECHPRODUCT, DSL.name("techproduct_product_fk"), new TableField[] { Techproduct.TECHPRODUCT.PRODUCTID }, Keys.PRODUCT_PK, new TableField[] { Product.PRODUCT.PRODUCTID }, true);
+    public static final ForeignKey<UserAccountRecord, PersonRecord> USER_ACCOUNT__USER_ACCOUNT_PERSON_FK = Internal.createForeignKey(UserAccount.USER_ACCOUNT, DSL.name("user_account_person_fk"), new TableField[] { UserAccount.USER_ACCOUNT.PERSONID }, Keys.PERSON_PK, new TableField[] { Person.PERSON.PERSONID }, true);
 }

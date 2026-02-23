@@ -1,6 +1,7 @@
 package com.shakur.cafehelp.Controller;
 
 import com.shakur.cafehelp.DTO.PersonDTO;
+import com.shakur.cafehelp.DTO.PersonRegistrationRequestDTO;
 import com.shakur.cafehelp.Service.PersonService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -40,6 +41,12 @@ public class PersonController {
     @PostMapping
     public PersonDTO createPerson(@RequestBody PersonDTO dto) {
         return personService.create(dto);
+    }
+
+    // Регистрация сотрудника (с аккаунтом для входа)
+    @PostMapping("/register")
+    public PersonDTO registerPerson(@RequestBody PersonRegistrationRequestDTO dto) {
+        return personService.register(dto);
     }
 
     // Обновление сотрудника

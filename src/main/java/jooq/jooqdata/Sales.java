@@ -26,6 +26,7 @@ import jooqdata.tables.StockMovements;
 import jooqdata.tables.Supplier;
 import jooqdata.tables.SupplierPriceHistory;
 import jooqdata.tables.Techproduct;
+import jooqdata.tables.UserAccount;
 import jooqdata.tables.Warehouse;
 
 import org.jooq.Catalog;
@@ -142,6 +143,11 @@ public class Sales extends SchemaImpl {
     public final Techproduct TECHPRODUCT = Techproduct.TECHPRODUCT;
 
     /**
+     * The table <code>sales.user_account</code>.
+     */
+    public final UserAccount USER_ACCOUNT = UserAccount.USER_ACCOUNT;
+
+    /**
      * The table <code>sales.warehouse</code>.
      */
     public final Warehouse WAREHOUSE = Warehouse.WAREHOUSE;
@@ -181,6 +187,7 @@ public class Sales extends SchemaImpl {
             Supplier.SUPPLIER,
             SupplierPriceHistory.SUPPLIER_PRICE_HISTORY,
             Techproduct.TECHPRODUCT,
+            UserAccount.USER_ACCOUNT,
             Warehouse.WAREHOUSE
         );
     }

@@ -36,24 +36,30 @@ export default function PrintConsignmentNotePage() {
                 // Загружаем товары накладной
                 const resConsProducts = await fetch(`http://localhost:8080/api/consProduct/${id}`);
                 const consProductsData = await resConsProducts.json();
+                const consProductsArray = Array.isArray(consProductsData) ? consProductsData : [];
 
                 // Загружаем все товары поставщика для выпадающего списка
-                const resAllProducts = await fetch(`http://localhost:8080/api/product/${noteData.supplierId}`);
+                const resAllProducts = await fetch(`http://localhost:8080/api/product/supplier/${noteData.supplierId}`);
                 const allProductsData = await resAllProducts.json();
 
-                // API возвращает один объект товара, поэтому приводим к массиву
-                const productsArray = Array.isArray(allProductsData) ? allProductsData : [allProductsData];
+                // Нормализуем ответ к массиву
+                const productsArray = Array.isArray(allProductsData)
+                    ? allProductsData
+                    : (allProductsData ? [allProductsData] : []);
                 setAllProducts(productsArray);
 
                 // Сопоставляем товары накладной с их названиями.
                 // Для идентификации строки используем productId (он же пойдёт в DELETE /api/consProduct/{productId}).
-                const productsWithNames = consProductsData.map(cp => {
-                    const product = productsArray.find(p => p.productId === cp.productId);
+                const productsWithNames = consProductsArray.map(cp => {
+                    const cpProductId = Number(cp.productId ?? cp.productID);
+                    const product = productsArray.find(
+                        p => Number(p.productId ?? p.productID) === cpProductId
+                    );
 
                     return {
                         ...cp,
                         productName: product ? product.productName : 'Неизвестный продукт',
-                        productPrice: product ? product.productPrice : 0
+                        productPrice: Number(product?.productPrice ?? product?.price ?? 0)
                     };
                 });
 
@@ -103,17 +109,20 @@ export default function PrintConsignmentNotePage() {
             const addedProduct = await response.json();
 
             // Находим название добавленного товара
-            const productInfo = allProducts.find(p => p.productId === parseInt(newProduct.productId));
+            const productInfo = allProducts.find(
+                p => Number(p.productId ?? p.productID) === parseInt(newProduct.productId)
+            );
 
             // Обновляем список товаров
+            const unitPrice = Number(productInfo?.productPrice ?? 0);
             setProducts(prev => [...prev, {
                 ...addedProduct,
                 productName: productInfo ? productInfo.productName : 'Неизвестный продукт',
-                productPrice: productInfo ? productInfo.productPrice : 0
+                productPrice: unitPrice
             }]);
 
             // Обновляем общую сумму
-            const newTotal = totalAmount + (productInfo.productPrice * parseFloat(newProduct.quantity));
+            const newTotal = totalAmount + (unitPrice * parseFloat(newProduct.quantity));
             setTotalAmount(newTotal);
 
             // Обновляем amount в накладной

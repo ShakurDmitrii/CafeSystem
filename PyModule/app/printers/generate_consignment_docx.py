@@ -101,10 +101,17 @@ def generate_consignment_docx(consignment, logo_path=r".\app\img\logo.jpg"):
     sig_cells[0].text = ""
     sig_cells[1].text = ""
 
-    # Сохраняем на рабочий стол
+    # Сохраняем на рабочий стол (или в ./prints как fallback)
     desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+    try:
+        os.makedirs(desktop, exist_ok=True)
+        output_dir = desktop
+    except OSError:
+        output_dir = os.path.abspath("./prints")
+        os.makedirs(output_dir, exist_ok=True)
+
     filename = f"Накладная_{consignment.consignmentId}.docx"
-    filepath = os.path.join(desktop, filename)
+    filepath = os.path.join(output_dir, filename)
     doc.save(filepath)
     print(f"Накладная сохранена: {filepath}")
 

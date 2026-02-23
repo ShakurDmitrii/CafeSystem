@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shakur.cafehelp.DTO.MlDTO.AnaliticDTO.*;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
@@ -30,10 +31,14 @@ import java.util.Optional;
 public class PythonAnalyticsClient {
 
     private static RestTemplate restTemplate;
-    private static final String pythonApiUrl = "http://localhost:8000";
+    private static String pythonApiUrl = "http://localhost:8000";
 
-    public PythonAnalyticsClient(RestTemplateBuilder restTemplateBuilder) {
+    public PythonAnalyticsClient(
+            RestTemplateBuilder restTemplateBuilder,
+            @Value("${python.api.url:http://localhost:8000}") String configuredPythonApiUrl
+    ) {
         this.restTemplate = configureRestTemplate(restTemplateBuilder);
+        pythonApiUrl = configuredPythonApiUrl;
         log.info("PythonAnalyticsClient initialized with URL: {}", pythonApiUrl);
     }
 

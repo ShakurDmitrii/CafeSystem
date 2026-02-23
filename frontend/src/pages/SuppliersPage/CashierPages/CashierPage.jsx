@@ -50,7 +50,13 @@ export default function CashierPage() {
         setIsLoading(true);
 
         fetch(API_PERSONS)
-            .then(r => r.json())
+            .then(async (r) => {
+                if (!r.ok) {
+                    throw new Error(`Не удалось загрузить сотрудников (${r.status})`);
+                }
+                const text = await r.text();
+                return text ? JSON.parse(text) : [];
+            })
             .then(d => setPersons(Array.isArray(d) ? d : []))
             .catch(e => console.error("Ошибка загрузки сотрудников:", e));
 

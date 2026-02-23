@@ -3,8 +3,49 @@ import numpy as np
 from typing import List, Dict
 from datetime import datetime, timedelta
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _to_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        if isinstance(value, str):
+            value = value.replace(",", ".").strip()
+        return float(value)
+    except Exception:
+        return default
+
+
+def _to_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        if isinstance(value, str):
+            value = value.replace(",", ".").strip()
+        return int(float(value))
+    except Exception:
+        return default
+
+
+def _parse_date_value(value: Any):
+    if value is None:
+        return pd.NaT
+
+    # Jackson LocalDate can come as [YYYY, MM, DD]
+    if isinstance(value, (list, tuple)) and len(value) >= 3:
+        try:
+            y, m, d = int(value[0]), int(value[1]), int(value[2])
+            return pd.Timestamp(year=y, month=m, day=d)
+        except Exception:
+            return pd.NaT
+
+    try:
+        return pd.to_datetime(value, errors='coerce')
+    except Exception:
+        return pd.NaT
 
 
 def process_sales_data(sales_data: List[dict]) -> pd.DataFrame:
@@ -13,21 +54,52 @@ def process_sales_data(sales_data: List[dict]) -> pd.DataFrame:
 
     df = pd.DataFrame(sales_data)
     logger.info(f"Processing {len(df)} sales records")
+    logger.info(f"Incoming columns: {list(df.columns)}")
 
-    if 'totalAmount' in df.columns:
-        df['profit'] = df['totalAmount'] * 0.5
-        df['cost'] = df['totalAmount'] * 0.5
-        df['margin'] = 50.0
+    # Нормализуем дату (поддержка нескольких имен полей).
+    date_col = None
+    for candidate in ["saleDate", "date", "createdAt", "docDate", "sale_date"]:
+        if candidate in df.columns:
+            date_col = candidate
+            break
+
+    if date_col is not None:
+        df["saleDate"] = df[date_col].apply(_parse_date_value)
     else:
-        df['profit'] = 0.0
-        df['cost'] = 0.0
-        df['margin'] = 0.0
+        df["saleDate"] = pd.NaT
 
-    if 'quantity' not in df.columns:
-        df['quantity'] = 1
+    # Нормализуем количество.
+    qty_col = None
+    for candidate in ["quantity", "qty", "count"]:
+        if candidate in df.columns:
+            qty_col = candidate
+            break
+    if qty_col is not None:
+        df["quantity"] = df[qty_col].apply(_to_int)
+    else:
+        df["quantity"] = 1
 
-    if 'saleDate' in df.columns:
-        df['saleDate'] = pd.to_datetime(df['saleDate'])
+    # Нормализуем сумму.
+    amount_col = None
+    for candidate in ["totalAmount", "amount", "lineTotal", "sum"]:
+        if candidate in df.columns:
+            amount_col = candidate
+            break
+    if amount_col is not None:
+        df["totalAmount"] = df[amount_col].apply(_to_float)
+    else:
+        # fallback: quantity * pricePerUnit, если есть
+        if "pricePerUnit" in df.columns:
+            df["totalAmount"] = df["quantity"].apply(_to_float) * df["pricePerUnit"].apply(_to_float)
+        else:
+            df["totalAmount"] = 0.0
+
+    df['profit'] = df['totalAmount'] * 0.5
+    df['cost'] = df['totalAmount'] * 0.5
+    df['margin'] = 50.0
+
+    # Убираем строки без количества.
+    df = df[df["quantity"] > 0].copy()
 
     return df
 
@@ -122,6 +194,12 @@ def analyze_top_rolls(df: pd.DataFrame) -> List[Dict]:
 
 def generate_sales_trend(df: pd.DataFrame, time_range: str) -> List[Dict]:
     if df.empty or 'saleDate' not in df.columns:
+        return []
+
+    df = df.copy()
+    df = df[df['saleDate'].notna()]
+    if df.empty:
+        logger.warning("No valid saleDate values after normalization")
         return []
 
     df['date_only'] = df['saleDate'].dt.date

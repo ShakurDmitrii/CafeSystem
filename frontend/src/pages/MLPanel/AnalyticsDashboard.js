@@ -69,6 +69,28 @@ export default function AnalyticsDashboard() {
     const getMarginColor = (margin)=>margin>40?'#4CAF50':margin>30?'#FF9800':'#F44336';
     const formatNumber = (num)=>num.toLocaleString('ru-RU');
     const calculatePopularity = (rollSales,totalSales)=>totalSales===0?0:(rollSales/totalSales)*100;
+    const chartWidth = 760;
+    const chartHeight = 220;
+    const chartPad = 26;
+
+    const buildLinePoints = (data, key, maxValue) => {
+        if (!Array.isArray(data) || data.length === 0) return '';
+        const denom = Math.max(data.length - 1, 1);
+        return data.map((item, index) => {
+            const x = chartPad + (index / denom) * (chartWidth - chartPad * 2);
+            const y = chartHeight - chartPad - ((Number(item[key] || 0) / Math.max(maxValue, 1)) * (chartHeight - chartPad * 2));
+            return `${x},${y}`;
+        }).join(' ');
+    };
+
+    const trendMax = Math.max(
+        getMaxValue(analyticsData.salesTrend, 'sales'),
+        getMaxValue(analyticsData.salesTrend, 'predicted')
+    );
+    const revenueMax = getMaxValue(analyticsData.salesTrend, 'revenue');
+    const salesPoints = buildLinePoints(analyticsData.salesTrend, 'sales', trendMax);
+    const predictedPoints = buildLinePoints(analyticsData.salesTrend, 'predicted', trendMax);
+    const revenuePoints = buildLinePoints(analyticsData.salesTrend, 'revenue', revenueMax);
 
     if (loading) return <div className={styles.loadingContainer}><div className={styles.spinner}></div><p>Загрузка аналитики...</p></div>;
     if (error) return <div className={styles.errorContainer}><div className={styles.errorIcon}>⚠️</div><h3>Ошибка загрузки</h3><p>{error}</p><button className={styles.retryButton} onClick={()=>fetchAnalyticsData(timeRange)}>Повторить попытку</button></div>;
@@ -105,11 +127,70 @@ export default function AnalyticsDashboard() {
                 ))}
             </div>
 
-            {/* График продаж */}
+            {/* Графики продаж */}
+            <div className={styles.chartsGrid}>
+                <div className={styles.chartCard}>
+                    <div className={styles.chartHeader}>
+                        <h3 className={styles.chartTitle}>📈 Динамика продаж (линии)</h3>
+                        <span className={styles.timeRangeBadge}>{timeRange==='day'?'За день':timeRange==='week'?'За неделю':timeRange==='month'?'За месяц':'За квартал'}</span>
+                    </div>
+                    <div className={styles.lineChartWrap}>
+                        <svg className={styles.svgChart} viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
+                            <polyline className={styles.gridLine} points={`${chartPad},${chartHeight-chartPad} ${chartWidth-chartPad},${chartHeight-chartPad}`} />
+                            <polyline className={styles.gridLine} points={`${chartPad},${chartPad} ${chartPad},${chartHeight-chartPad}`} />
+                            <polyline className={styles.actualLine} points={salesPoints} />
+                            <polyline className={styles.predictedLine} points={predictedPoints} />
+                            {analyticsData.salesTrend.map((point, idx) => {
+                                const denom = Math.max(analyticsData.salesTrend.length - 1, 1);
+                                const x = chartPad + (idx / denom) * (chartWidth - chartPad * 2);
+                                const ySales = chartHeight - chartPad - ((Number(point.sales || 0) / Math.max(trendMax, 1)) * (chartHeight - chartPad * 2));
+                                const yPred = chartHeight - chartPad - ((Number(point.predicted || 0) / Math.max(trendMax, 1)) * (chartHeight - chartPad * 2));
+                                return (
+                                    <g key={`p-${idx}`}>
+                                        <circle className={styles.actualDot} cx={x} cy={ySales} r="4" />
+                                        <circle className={styles.predictedDot} cx={x} cy={yPred} r="3.5" />
+                                    </g>
+                                );
+                            })}
+                        </svg>
+                        <div className={styles.chartAxisLabels}>
+                            {analyticsData.salesTrend.map((d, i) => <span key={`lbl-${i}`}>{d.date || d.period}</span>)}
+                        </div>
+                        <div className={styles.chartLegend}>
+                            <div className={styles.legendItem}><div className={styles.legendColor} style={{backgroundColor:'#2f5bea'}}></div><span>Факт</span></div>
+                            <div className={styles.legendItem}><div className={styles.legendColor} style={{backgroundColor:'#16a34a'}}></div><span>Прогноз AI</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className={styles.chartCard}>
+                    <div className={styles.chartHeader}>
+                        <h3 className={styles.chartTitle}>💵 Динамика выручки</h3>
+                        <span className={styles.timeRangeBadge}>По периодам</span>
+                    </div>
+                    <div className={styles.lineChartWrap}>
+                        <svg className={styles.svgChart} viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
+                            <polyline className={styles.gridLine} points={`${chartPad},${chartHeight-chartPad} ${chartWidth-chartPad},${chartHeight-chartPad}`} />
+                            <polyline className={styles.gridLine} points={`${chartPad},${chartPad} ${chartPad},${chartHeight-chartPad}`} />
+                            <polyline className={styles.revenueLine} points={revenuePoints} />
+                            {analyticsData.salesTrend.map((point, idx) => {
+                                const denom = Math.max(analyticsData.salesTrend.length - 1, 1);
+                                const x = chartPad + (idx / denom) * (chartWidth - chartPad * 2);
+                                const y = chartHeight - chartPad - ((Number(point.revenue || 0) / Math.max(revenueMax, 1)) * (chartHeight - chartPad * 2));
+                                return <circle key={`r-${idx}`} className={styles.revenueDot} cx={x} cy={y} r="4" />;
+                            })}
+                        </svg>
+                        <div className={styles.chartAxisLabels}>
+                            {analyticsData.salesTrend.map((d, i) => <span key={`rev-lbl-${i}`}>{d.date || d.period}</span>)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div className={styles.chartCard}>
                 <div className={styles.chartHeader}>
-                    <h3 className={styles.chartTitle}>📈 Динамика продаж</h3>
-                    <span className={styles.timeRangeBadge}>{timeRange==='day'?'За день':timeRange==='week'?'За неделю':timeRange==='month'?'За месяц':'За квартал'}</span>
+                    <h3 className={styles.chartTitle}>📊 Динамика продаж (столбики)</h3>
+                    <span className={styles.timeRangeBadge}>Факт vs прогноз</span>
                 </div>
                 <div className={styles.simpleChart}>
                     <div className={styles.chartBars}>

@@ -23,16 +23,60 @@ body, html, #root {
    Навигация
    =============================== */
 .App-nav {
-  background-color: #282c34;
-  padding: 1rem;
+  padding: 0;
   display: flex;
   gap: 1rem;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   flex-wrap: wrap;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  flex: 1;
+  min-width: 0;
+}
+
+.App-header {
+  background-color: #282c34;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   position: relative;
   z-index: 5;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.user-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.user-chip {
+  background: #0b3b51;
+  color: #e5f8ff;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+.logout-btn {
+  border: none;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.burger-logout {
+  margin-top: auto;
+}
+
+.burger-menu {
+  display: block;
+  flex-shrink: 0;
 }
 
 .App-link {
@@ -54,9 +98,7 @@ body, html, #root {
    Бургер-меню
    =============================== */
 .burger-button {
-  position: fixed;
-  top: 20px;
-  right: 20px;
+  position: relative;
   width: 36px;
   height: 36px;
   display: flex;
@@ -78,12 +120,21 @@ body, html, #root {
 .burger-button.active span:nth-child(1) {
   transform: rotate(45deg) translate(6px, 6px);
 }
+.burger-button.open span:nth-child(1) {
+  transform: rotate(45deg) translate(6px, 6px);
+}
 
 .burger-button.active span:nth-child(2) {
   opacity: 0;
 }
+.burger-button.open span:nth-child(2) {
+  opacity: 0;
+}
 
 .burger-button.active span:nth-child(3) {
+  transform: rotate(-45deg) translate(6px, -6px);
+}
+.burger-button.open span:nth-child(3) {
   transform: rotate(-45deg) translate(6px, -6px);
 }
 
@@ -158,5 +209,15 @@ body, html, #root {
 @media (max-width: 768px) {
   .App-nav {
     display: none;
+  }
+  .user-bar {
+    margin-left: 0;
+  }
+  .user-chip {
+    display: none;
+  }
+  .logout-btn {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.85rem;
   }
 }

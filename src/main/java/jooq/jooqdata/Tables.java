@@ -23,6 +23,7 @@ import jooqdata.tables.StockMovements;
 import jooqdata.tables.Supplier;
 import jooqdata.tables.SupplierPriceHistory;
 import jooqdata.tables.Techproduct;
+import jooqdata.tables.UserAccount;
 import jooqdata.tables.Warehouse;
 
 
@@ -126,6 +127,11 @@ public class Tables {
      * The table <code>sales.techproduct</code>.
      */
     public static final Techproduct TECHPRODUCT = Techproduct.TECHPRODUCT;
+
+    /**
+     * The table <code>sales.user_account</code>.
+     */
+    public static final UserAccount USER_ACCOUNT = UserAccount.USER_ACCOUNT;
 
     /**
      * The table <code>sales.warehouse</code>.

@@ -12,12 +12,14 @@ import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Shift.ShiftPath;
 import jooqdata.tables.Shiftperson.ShiftpersonPath;
+import jooqdata.tables.UserAccount.UserAccountPath;
 import jooqdata.tables.records.PersonRecord;
 
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Function5;
+import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -62,11 +64,6 @@ public class Person extends TableImpl<PersonRecord> {
     }
 
     /**
-     * The column <code>sales.person.personid</code>.
-     */
-    public final TableField<PersonRecord, Integer> PERSONID = createField(DSL.name("personid"), SQLDataType.INTEGER.nullable(false), this, "");
-
-    /**
      * The column <code>sales.person.name</code>.
      */
     public final TableField<PersonRecord, String> NAME = createField(DSL.name("name"), SQLDataType.VARCHAR.nullable(false), this, "");
@@ -85,6 +82,11 @@ public class Person extends TableImpl<PersonRecord> {
      * The column <code>sales.person.salaryperday</code>.
      */
     public final TableField<PersonRecord, BigDecimal> SALARYPERDAY = createField(DSL.name("salaryperday"), SQLDataType.NUMERIC.nullable(false), this, "");
+
+    /**
+     * The column <code>sales.person.personid</code>.
+     */
+    public final TableField<PersonRecord, Integer> PERSONID = createField(DSL.name("personid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
 
     private Person(Name alias, Table<PersonRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -154,6 +156,11 @@ public class Person extends TableImpl<PersonRecord> {
     }
 
     @Override
+    public Identity<PersonRecord, Integer> getIdentity() {
+        return (Identity<PersonRecord, Integer>) super.getIdentity();
+    }
+
+    @Override
     public UniqueKey<PersonRecord> getPrimaryKey() {
         return Keys.PERSON_PK;
     }
@@ -181,6 +188,19 @@ public class Person extends TableImpl<PersonRecord> {
             _shiftperson = new ShiftpersonPath(this, null, Keys.SHIFTPERSON__SHIFTPERSON_PERSON_FK.getInverseKey());
 
         return _shiftperson;
+    }
+
+    private transient UserAccountPath _userAccount;
+
+    /**
+     * Get the implicit to-many join path to the <code>sales.user_account</code>
+     * table
+     */
+    public UserAccountPath userAccount() {
+        if (_userAccount == null)
+            _userAccount = new UserAccountPath(this, null, Keys.USER_ACCOUNT__USER_ACCOUNT_PERSON_FK.getInverseKey());
+
+        return _userAccount;
     }
 
     @Override
@@ -311,14 +331,14 @@ public class Person extends TableImpl<PersonRecord> {
     // -------------------------------------------------------------------------
 
     @Override
-    public Row5<Integer, String, BigDecimal, Integer, BigDecimal> fieldsRow() {
+    public Row5<String, BigDecimal, Integer, BigDecimal, Integer> fieldsRow() {
         return (Row5) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function5<? super Integer, ? super String, ? super BigDecimal, ? super Integer, ? super BigDecimal, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function5<? super String, ? super BigDecimal, ? super Integer, ? super BigDecimal, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -326,7 +346,7 @@ public class Person extends TableImpl<PersonRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function5<? super Integer, ? super String, ? super BigDecimal, ? super Integer, ? super BigDecimal, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function5<? super String, ? super BigDecimal, ? super Integer, ? super BigDecimal, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

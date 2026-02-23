@@ -1,10 +1,11 @@
 import logging
 import aiohttp
+import os
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-JAVA_API_URL = "http://localhost:8080"
+JAVA_API_URL = os.getenv("JAVA_API_URL", "http://localhost:8080")
 
 
 class JavaApiClient:
