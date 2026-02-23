@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: cafehelp-db
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "2002"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: cafehelp-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/postgres
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: "2002"
+    ports:
+      - "8080:8080"
+
+  pymodule:
+    build:
+      context: ./PyModule
+      dockerfile: Dockerfile
+    container_name: cafehelp-pymodule
+    depends_on:
+      - backend
+    environment:
+      JAVA_API_URL: http://backend:8080
+      DEFAULT_PRINTER: windows
+      WINDOWS_PRINT_MODE: auto
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cafehelp-frontend
+    depends_on:
+      - backend
+      - pymodule
+    ports:
+      - "3000:80"
+
+volumes:
+  pg_data:

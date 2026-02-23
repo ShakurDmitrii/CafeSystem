@@ -1,0 +1,7 @@
+.venv
+.idea
+__pycache__
+*.pyc
+models
+*.pkl
+app/script/ml_training_data.csv

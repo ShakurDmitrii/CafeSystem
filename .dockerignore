@@ -1,0 +1,8 @@
+.git
+.idea
+.gradle
+build
+out
+frontend
+PyModule
+__tmp_styles.js
