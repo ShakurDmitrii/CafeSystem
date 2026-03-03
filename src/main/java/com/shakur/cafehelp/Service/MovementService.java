@@ -28,10 +28,12 @@ public class MovementService {
 
     private final DSLContext dsl;
     private final WareHouseService wareHouseService;
+    private final UnitConversionService unitConversionService;
 
-    public MovementService(DSLContext dsl, WareHouseService wareHouseService) {
+    public MovementService(DSLContext dsl, WareHouseService wareHouseService, UnitConversionService unitConversionService) {
         this.dsl = dsl;
         this.wareHouseService = wareHouseService;
+        this.unitConversionService = unitConversionService;
     }
 
     private static final Table<?> INVENTORY_DOCUMENTS = DSL.table(DSL.name("sales", "inventory_documents"));
@@ -79,9 +81,9 @@ public class MovementService {
 
         String docType = dto.getDocType() == null ? "movement" : dto.getDocType().trim().toLowerCase();
         LocalDateTime now = dto.getDocDate() != null ? dto.getDocDate() : LocalDateTime.now();
-        BigDecimal qty = BigDecimal.valueOf(dto.getQuantity());
+        BigDecimal qtyBase = unitConversionService.toBaseQuantity(dto.getProductId(), dto.getQuantity());
         BigDecimal unitPrice = dto.getUnitPrice() != null ? BigDecimal.valueOf(dto.getUnitPrice()) : null;
-        BigDecimal total = unitPrice != null ? unitPrice.multiply(qty) : null;
+        BigDecimal total = unitPrice != null ? unitPrice.multiply(qtyBase) : null;
 
         Integer fromWarehouseId = dto.getFromWarehouseId();
         Integer toWarehouseId = dto.getToWarehouseId();
@@ -110,7 +112,7 @@ public class MovementService {
                     fromWarehouseId,
                     toWarehouseId,
                     dto.getProductId(),
-                    dto.getQuantity()
+                    qtyBase.doubleValue()
             );
             if (!moved) return null;
         } else if ("receipt".equals(docType)) {
@@ -118,10 +120,11 @@ public class MovementService {
                 return null;
             }
 
-            boolean adjusted = wareHouseService.adjustQuantity(toWarehouseId, dto.getProductId(), dto.getQuantity());
+            boolean adjusted = wareHouseService.adjustQuantity(toWarehouseId, dto.getProductId(), qtyBase.doubleValue());
             if (!adjusted) {
                 ProductWarehouseDTO pw = new ProductWarehouseDTO();
                 pw.setProductId(dto.getProductId());
+                // addProductsToWarehouse() itself converts to base quantity by product factor
                 pw.setQuantity(dto.getQuantity());
                 wareHouseService.addProductsToWarehouse(toWarehouseId, List.of(pw));
             }
@@ -129,7 +132,7 @@ public class MovementService {
             if (fromWarehouseId == null) {
                 return null;
             }
-            boolean adjusted = wareHouseService.adjustQuantity(fromWarehouseId, dto.getProductId(), -dto.getQuantity());
+            boolean adjusted = wareHouseService.adjustQuantity(fromWarehouseId, dto.getProductId(), -qtyBase.doubleValue());
             if (!adjusted) return null;
         } else {
             return null;
@@ -143,7 +146,7 @@ public class MovementService {
 
         dsl.insertInto(INVENTORY_DOCUMENT_LINES)
                 .columns(LINE_DOCUMENT_ID, LINE_PRODUCT_ID, LINE_QTY, LINE_UNIT_PRICE, LINE_TOTAL)
-                .values(documentId, dto.getProductId(), qty, unitPrice, total)
+                .values(documentId, dto.getProductId(), qtyBase, unitPrice, total)
                 .execute();
 
         dsl.insertInto(STOCK_MOVEMENTS)
@@ -153,8 +156,8 @@ public class MovementService {
                         documentId,
                         "movement".equals(docType) || "writeoff".equals(docType) ? fromWarehouseId : toWarehouseId,
                         dto.getProductId(),
-                        "receipt".equals(docType) ? qty : BigDecimal.ZERO,
-                        "receipt".equals(docType) ? BigDecimal.ZERO : qty,
+                        "receipt".equals(docType) ? qtyBase : BigDecimal.ZERO,
+                        "receipt".equals(docType) ? BigDecimal.ZERO : qtyBase,
                         unitPrice,
                         total,
                         now
@@ -164,7 +167,7 @@ public class MovementService {
         if ("movement".equals(docType)) {
             dsl.insertInto(STOCK_MOVEMENTS)
                     .columns(MOVEMENT_DATE, MOVEMENT_DOCUMENT_ID, MOVEMENT_WAREHOUSE_ID, MOVEMENT_PRODUCT_ID, MOVEMENT_QTY_IN, MOVEMENT_QTY_OUT, MOVEMENT_UNIT_COST, MOVEMENT_AMOUNT, MOVEMENT_CREATED_AT)
-                    .values(now, documentId, toWarehouseId, dto.getProductId(), qty, BigDecimal.ZERO, unitPrice, total, now)
+                    .values(now, documentId, toWarehouseId, dto.getProductId(), qtyBase, BigDecimal.ZERO, unitPrice, total, now)
                     .execute();
         }
 
@@ -176,7 +179,7 @@ public class MovementService {
         result.setFromWarehouseId(fromWarehouseId);
         result.setToWarehouseId(toWarehouseId);
         result.setProductId(dto.getProductId());
-        result.setQuantity(qty);
+        result.setQuantity(qtyBase);
         result.setUnitPrice(unitPrice);
         result.setLineTotal(total);
         result.setStatus("posted");

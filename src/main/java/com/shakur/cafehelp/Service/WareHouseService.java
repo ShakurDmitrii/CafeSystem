@@ -10,6 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 import jooqdata.tables.Productwarehouse;
 import java.util.List;
 import java.util.ArrayList;
+import java.math.BigDecimal;
+import org.jooq.Field;
+import org.jooq.impl.DSL;
 
 import static jooqdata.tables.Warehouse.WAREHOUSE;
 
@@ -94,12 +97,27 @@ public class WareHouseService {
     @Transactional
     public void addProductsToWarehouse(int warehouseId, List<ProductWarehouseDTO> products) {
         if (products == null || products.isEmpty()) return;
+        Field<BigDecimal> PRODUCT_UNIT_FACTOR = DSL.field(DSL.name("unit_factor"), BigDecimal.class);
+        var PRODUCT = DSL.table(DSL.name("sales", "product"));
+        var PRODUCT_ID = DSL.field(DSL.name("productid"), Integer.class);
 
         for (ProductWarehouseDTO pw : products) {
+            BigDecimal factor;
+            try {
+                factor = dsl.select(PRODUCT_UNIT_FACTOR)
+                        .from(PRODUCT)
+                        .where(PRODUCT_ID.eq(pw.getProductId()))
+                        .fetchOne(PRODUCT_UNIT_FACTOR);
+            } catch (Exception ignored) {
+                factor = BigDecimal.ONE;
+            }
+            if (factor == null || factor.compareTo(BigDecimal.ZERO) <= 0) factor = BigDecimal.ONE;
+            double qtyBase = (pw.getQuantity() != null ? pw.getQuantity() : 0.0) * factor.doubleValue();
+
             ProductwarehouseRecord record = dsl.newRecord(Productwarehouse.PRODUCTWAREHOUSE);
             record.setWarehouseid(warehouseId);
             record.setProductid(pw.getProductId());
-            record.setQuantity(pw.getQuantity());
+            record.setQuantity(qtyBase);
             record.store();
         }
     }

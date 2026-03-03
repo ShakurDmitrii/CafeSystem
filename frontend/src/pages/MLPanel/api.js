@@ -220,7 +220,67 @@ export const ApiClient = {
         }
     },
 
-    // 5. Получить популярные ингредиенты
+    // 5. Сгенерировать новое блюдо через генетический алгоритм
+    generateDish: async (params = {}) => {
+        try {
+            const response = await fetch(`${API_BASE}/predict/generate-dish`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    days: params.days ?? 90,
+                    minIngredients: params.minIngredients ?? 3,
+                    maxIngredients: params.maxIngredients ?? 6,
+                    populationSize: params.populationSize ?? 80,
+                    generations: params.generations ?? 40,
+                    markup: params.markup ?? 2.35,
+                    mustInclude: params.mustInclude ?? [],
+                    excludedIngredients: params.excludedIngredients ?? []
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.status === 'failed') {
+                throw new Error(data.errorMessage || `HTTP ${response.status}`);
+            }
+            return data;
+        } catch (error) {
+            console.error('Dish generation failed:', error.message);
+            return {
+                status: 'failed',
+                errorMessage: error.message
+            };
+        }
+    },
+
+    saveGeneratedDish: async (dish) => {
+        try {
+            const response = await fetch(`${API_BASE}/predict/generate-dish/save`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(dish)
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.status === 'failed') {
+                throw new Error(data.errorMessage || `HTTP ${response.status}`);
+            }
+            return data;
+        } catch (error) {
+            console.error('Save generated dish failed:', error.message);
+            return {
+                status: 'failed',
+                errorMessage: error.message
+            };
+        }
+    },
+
+    // 6. Получить популярные ингредиенты
     getPopularIngredients: async (days = 30) => {
         try {
             console.log('Fetching popular ingredients for', days, 'days');
@@ -268,7 +328,7 @@ export const ApiClient = {
         }
     },
 
-    // 6. Получить данные для аналитики
+    // 7. Получить данные для аналитики
     getAnalytics: async (timeRange = 'week') => {
         try {
             const response = await fetch(`${API_BASE}/data/analytics?timeRange=${timeRange}`, {
@@ -344,6 +404,8 @@ export const {
     getIngredients,
     predictSales,
     optimizeRoll,
+    generateDish,
+    saveGeneratedDish,
     getPopularIngredients,
     getAnalytics
 } = ApiClient;

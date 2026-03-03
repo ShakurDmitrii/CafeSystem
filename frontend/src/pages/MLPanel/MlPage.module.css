@@ -140,3 +140,156 @@
 }
 
 /* Остальные стили остаются прежними */
+
+.generateWrap {
+    max-width: 980px;
+    margin: 0 auto;
+}
+
+.generateTitle {
+    margin: 0 0 8px;
+    color: #1f2937;
+}
+
+.generateSubtitle {
+    margin: 0 0 18px;
+    color: #6b7280;
+}
+
+.formGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 14px;
+    color: #374151;
+}
+
+.field input {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+}
+
+.fieldWide {
+    grid-column: 1 / -1;
+}
+
+.generateButton {
+    border: none;
+    border-radius: 8px;
+    background: #0f766e;
+    color: #fff;
+    font-weight: 600;
+    padding: 10px 18px;
+    cursor: pointer;
+}
+
+.generateButton:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.errorBox {
+    margin-top: 14px;
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 10px 12px;
+    border-radius: 8px;
+}
+
+.resultCard {
+    margin-top: 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px 12px;
+    margin-bottom: 12px;
+}
+
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.tag {
+    background: #ecfeff;
+    color: #155e75;
+    border: 1px solid #a5f3fc;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 13px;
+}
+
+.techTableWrap {
+    overflow-x: auto;
+    margin-bottom: 12px;
+}
+
+.techTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.techTable th,
+.techTable td {
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+    padding: 8px 10px;
+}
+
+.reasonList {
+    margin: 0;
+    padding-left: 18px;
+    color: #374151;
+}
+
+.saveRow {
+    margin-top: 14px;
+}
+
+.saveButton {
+    border: none;
+    border-radius: 8px;
+    background: #1d4ed8;
+    color: #fff;
+    font-weight: 600;
+    padding: 10px 16px;
+    cursor: pointer;
+}
+
+.saveButton:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.saveOk {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #dcfce7;
+    color: #166534;
+}
+
+.saveError {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #fee2e2;
+    color: #991b1b;
+}

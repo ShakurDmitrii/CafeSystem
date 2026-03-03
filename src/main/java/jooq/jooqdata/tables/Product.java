@@ -20,10 +20,11 @@ import jooqdata.tables.Supplier.SupplierPath;
 import jooqdata.tables.Techproduct.TechproductPath;
 import jooqdata.tables.records.ProductRecord;
 
+import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function6;
+import org.jooq.Function9;
 import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
@@ -32,7 +33,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row6;
+import org.jooq.Row9;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -43,6 +44,7 @@ import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
+import org.jooq.impl.Internal;
 import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 
@@ -97,6 +99,21 @@ public class Product extends TableImpl<ProductRecord> {
      * The column <code>sales.product.productid</code>.
      */
     public final TableField<ProductRecord, Integer> PRODUCTID = createField(DSL.name("productid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
+
+    /**
+     * The column <code>sales.product.unit</code>.
+     */
+    public final TableField<ProductRecord, String> UNIT = createField(DSL.name("unit"), SQLDataType.VARCHAR(16).nullable(false), this, "");
+
+    /**
+     * The column <code>sales.product.base_unit</code>.
+     */
+    public final TableField<ProductRecord, String> BASE_UNIT = createField(DSL.name("base_unit"), SQLDataType.VARCHAR(16).nullable(false), this, "");
+
+    /**
+     * The column <code>sales.product.unit_factor</code>.
+     */
+    public final TableField<ProductRecord, BigDecimal> UNIT_FACTOR = createField(DSL.name("unit_factor"), SQLDataType.NUMERIC(18, 6).nullable(false), this, "");
 
     private Product(Name alias, Table<ProductRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -258,6 +275,13 @@ public class Product extends TableImpl<ProductRecord> {
     }
 
     @Override
+    public List<Check<ProductRecord>> getChecks() {
+        return Arrays.asList(
+            Internal.createCheck(this, DSL.name("product_unit_factor_positive_chk"), "((unit_factor > (0)::numeric))", true)
+        );
+    }
+
+    @Override
     public Product as(String alias) {
         return new Product(DSL.name(alias), this);
     }
@@ -381,18 +405,18 @@ public class Product extends TableImpl<ProductRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row6 type methods
+    // Row9 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row6<Integer, String, BigDecimal, Double, Boolean, Integer> fieldsRow() {
-        return (Row6) super.fieldsRow();
+    public Row9<Integer, String, BigDecimal, Double, Boolean, Integer, String, String, BigDecimal> fieldsRow() {
+        return (Row9) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function6<? super Integer, ? super String, ? super BigDecimal, ? super Double, ? super Boolean, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function9<? super Integer, ? super String, ? super BigDecimal, ? super Double, ? super Boolean, ? super Integer, ? super String, ? super String, ? super BigDecimal, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -400,7 +424,7 @@ public class Product extends TableImpl<ProductRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function6<? super Integer, ? super String, ? super BigDecimal, ? super Double, ? super Boolean, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function9<? super Integer, ? super String, ? super BigDecimal, ? super Double, ? super Boolean, ? super Integer, ? super String, ? super String, ? super BigDecimal, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

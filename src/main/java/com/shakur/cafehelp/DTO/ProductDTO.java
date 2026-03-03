@@ -9,6 +9,9 @@ public class ProductDTO {
     public BigDecimal productPrice;
     public Double waste;
     public Boolean isFavorite;
+    public String unit;
+    public String baseUnit;
+    public BigDecimal unitFactor;
 
     public int getProductId() {
         return productId;
@@ -56,5 +59,29 @@ public class ProductDTO {
 
     public void setWaste(Double waste) {
         this.waste = waste;
+    }
+
+    public String getUnit() {
+        return unit;
+    }
+
+    public void setUnit(String unit) {
+        this.unit = unit;
+    }
+
+    public String getBaseUnit() {
+        return baseUnit;
+    }
+
+    public void setBaseUnit(String baseUnit) {
+        this.baseUnit = baseUnit;
+    }
+
+    public BigDecimal getUnitFactor() {
+        return unitFactor;
+    }
+
+    public void setUnitFactor(BigDecimal unitFactor) {
+        this.unitFactor = unitFactor;
     }
 }

@@ -1,0 +1,142 @@
+.page {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.headerRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.reloadBtn {
+    border: 1px solid #0ea5e9;
+    background: #e0f2fe;
+    color: #075985;
+    border-radius: 8px;
+    padding: 0.5rem 0.8rem;
+    cursor: pointer;
+}
+
+.form {
+    background: #fff;
+    border: 1px solid #d6e4f0;
+    border-radius: 12px;
+    padding: 1rem;
+}
+
+.form h3 {
+    margin: 0 0 0.8rem 0;
+}
+
+.formGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+    gap: 0.7rem;
+    align-items: center;
+}
+
+.formGrid input,
+.formGrid select {
+    height: 38px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0 0.65rem;
+}
+
+.checkboxLabel {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.submitBtn {
+    height: 38px;
+    border: none;
+    border-radius: 8px;
+    background: #16a34a;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.hint {
+    font-size: 0.85rem;
+    color: #475467;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 0.5rem 0.65rem;
+}
+
+.controls {
+    display: flex;
+    gap: 0.7rem;
+}
+
+.controls input,
+.controls select {
+    height: 38px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0 0.65rem;
+}
+
+.controls input {
+    flex: 1;
+}
+
+.tableWrap {
+    overflow-x: auto;
+    background: #fff;
+    border: 1px solid #d6e4f0;
+    border-radius: 12px;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 760px;
+}
+
+.table th,
+.table td {
+    padding: 0.72rem;
+    border-bottom: 1px solid #edf2f7;
+    text-align: left;
+}
+
+.table th {
+    background: #f8fbff;
+    color: #334155;
+}
+
+.error {
+    color: #b42318;
+    font-weight: 500;
+}
+
+.info {
+    background: #fff;
+    border: 1px solid #d6e4f0;
+    border-radius: 10px;
+    padding: 0.9rem;
+}
+
+@media (max-width: 900px) {
+    .formGrid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .formGrid {
+        grid-template-columns: 1fr;
+    }
+    .controls {
+        flex-direction: column;
+    }
+}

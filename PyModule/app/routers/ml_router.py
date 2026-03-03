@@ -5,6 +5,7 @@ from typing import List
 from pydantic import BaseModel
 
 from app.services import service
+from app.services.dish_generator import generate_new_dish
 
 router = APIRouter(prefix="/api/ml", tags=["ML"])
 
@@ -13,6 +14,13 @@ class MLRequest(BaseModel):
 
 class BatchMLRequest(BaseModel):
     rolls: List[MLRequest]
+
+
+class GenerateDishRequest(BaseModel):
+    salesRecords: List[dict]
+    menuItems: List[dict]
+    ingredients: List[dict]
+    constraints: dict = {}
 
 @router.post("/predict")
 async def predict_single_endpoint(request: MLRequest):
@@ -62,3 +70,17 @@ async def health_endpoint():
         "status": "ready",
         "model_loaded": service.model is not None
     }
+
+
+@router.post("/generate-dish")
+async def generate_dish_endpoint(request: GenerateDishRequest):
+    """Генерация нового блюда на основе продаж и техкарт"""
+    try:
+        return generate_new_dish(
+            sales_records=request.salesRecords,
+            menu_items=request.menuItems,
+            ingredients=request.ingredients,
+            constraints=request.constraints,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -6,6 +6,19 @@ const API_MOVEMENTS = "http://localhost:8080/movements";
 const API_SUPPLIERS = "http://localhost:8080/api/supplier";
 const API_PRODUCTS = "http://localhost:8080/api/product";
 
+const getSafeUnitFactor = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+};
+
+const toDisplayQty = (qtyBase, unitFactor) => Number(qtyBase ?? 0) / getSafeUnitFactor(unitFactor);
+
+const formatQty = (value) => {
+    const n = Number(value ?? 0);
+    if (!Number.isFinite(n)) return "0";
+    return n.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
+};
+
 export default function WarehousePage() {
     const [warehouses, setWarehouses] = useState([]);
     const [warehouseName, setWarehouseName] = useState("");
@@ -159,6 +172,9 @@ export default function WarehousePage() {
                                 const supplier = suppliersList.find(s => (s.supplierId ?? s.supplierID ?? s.id) === supplierId);
                                 const supplierName = supplier ? (supplier.supplierName ?? supplier.name) : "—";
                                 const avgPrice = weightedReceiptPrice ?? product.productPrice;
+                                const unitFactor = getSafeUnitFactor(product.unitFactor);
+                                const quantityBase = Number(whQuantity ?? 0);
+                                const quantityDisplay = toDisplayQty(quantityBase, unitFactor);
 
                                 return {
                                     ...product,
@@ -166,7 +182,10 @@ export default function WarehousePage() {
                                     avgPrice,
                                     lastPurchasePrice: latestReceiptPrice ?? null,
                                     productWarehouseId: warehouseProduct.productWarehouseId,
-                                    quantity: whQuantity ?? 0,
+                                    quantityBase,
+                                    quantity: quantityDisplay,
+                                    unitFactor,
+                                    unit: product.unit ?? product.baseUnit ?? "pcs",
                                     supplierName
                                 };
                             } catch (err) {
@@ -179,7 +198,10 @@ export default function WarehousePage() {
                                     avgPrice: "-",
                                     lastPurchasePrice: "-",
                                     waste: "-",
-                                    quantity: whQuantity ?? 0,
+                                    quantityBase: Number(whQuantity ?? 0),
+                                    quantity: Number(whQuantity ?? 0),
+                                    unitFactor: 1,
+                                    unit: "pcs",
                                     supplierName: "—"
                                 };
                             }
@@ -220,17 +242,27 @@ export default function WarehousePage() {
 
                         const prodData = await prodRes.json();
                         const product = Array.isArray(prodData) ? prodData[0] : prodData;
+                        const unitFactor = getSafeUnitFactor(product?.unitFactor);
+                        const quantityBase = Number(item.quantity ?? 0);
                         return {
                             ...item,
                             productName: product?.productName ?? `Товар #${productId}`,
-                            productPrice: avgReceiptPriceByProductId[productId] ?? product?.productPrice ?? 0
+                            productPrice: avgReceiptPriceByProductId[productId] ?? product?.productPrice ?? 0,
+                            unit: product?.unit ?? product?.baseUnit ?? "pcs",
+                            unitFactor,
+                            quantityBase,
+                            quantity: toDisplayQty(quantityBase, unitFactor)
                         };
                     } catch (e) {
                         console.error("Ошибка загрузки продукта для перемещения:", productId, e);
                         return {
                             ...item,
                             productName: `Товар #${productId}`,
-                            productPrice: 0
+                            productPrice: 0,
+                            unit: "pcs",
+                            unitFactor: 1,
+                            quantityBase: Number(item.quantity ?? 0),
+                            quantity: Number(item.quantity ?? 0)
                         };
                     }
                 })
@@ -310,6 +342,8 @@ export default function WarehousePage() {
             })
             .catch(err => console.error(err));
     };
+    const selectedMovementProduct = productsFrom.find(p => String(p.productId) === String(movementProduct));
+    const movementUnit = selectedMovementProduct?.unit || "";
 
     // Функция для добавления продукта на склад
     const handleAddProductToWarehouse = async (warehouseId) => {
@@ -613,6 +647,7 @@ export default function WarehousePage() {
                                             <th>Последняя закупочная цена</th>
                                             <th>Waste</th>
                                             <th>Поставщик</th>
+                                            <th>Ед.</th>
                                             <th>Количество</th>
                                             <th>Добавить / Списать</th>
                                         </tr>
@@ -630,13 +665,14 @@ export default function WarehousePage() {
                                                     <td>{p.lastPurchasePrice ?? "—"}</td>
                                                     <td>{p.waste}</td>
                                                     <td>{p.supplierName ?? "—"}</td>
-                                                    <td>{p.quantity ?? 0}</td>
+                                                    <td>{p.unit ?? "pcs"}</td>
+                                                    <td>{formatQty(p.quantity)} {p.unit ?? "pcs"}</td>
                                                     <td>
                                                         <div className={styles.adjustQuantityCell}>
                                                             <input
                                                                 type="number"
                                                                 className={styles.adjustInput}
-                                                                placeholder="Кол-во"
+                                                                placeholder={`Кол-во${p.unit ? ` (${p.unit})` : ""}`}
                                                                 value={inputVal}
                                                                 onChange={e => setAdjustInput(adjustKey, e.target.value)}
                                                                 min="0"
@@ -716,12 +752,16 @@ export default function WarehousePage() {
                 </select>
                 <select className={styles.input} value={movementProduct} onChange={e => setMovementProduct(e.target.value)} disabled={!movementFrom}>
                     <option value="">Выберите продукт со склада отправителя</option>
-                    {productsFrom.map(p => <option key={p.productId} value={p.productId}>{p.productName}</option>)}
+                    {productsFrom.map(p => (
+                        <option key={p.productId} value={p.productId}>
+                            {p.productName} (остаток: {formatQty(p.quantity)} {p.unit ?? "pcs"})
+                        </option>
+                    ))}
                 </select>
                 <input
                     className={styles.input}
                     type="number"
-                    placeholder="Количество"
+                    placeholder={`Количество${movementUnit ? ` (${movementUnit})` : ""}`}
                     value={movementQuantity}
                     onChange={e => setMovementQuantity(e.target.value)}
                     min={0}
