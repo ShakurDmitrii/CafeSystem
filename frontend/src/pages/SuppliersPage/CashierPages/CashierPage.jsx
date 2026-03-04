@@ -26,15 +26,24 @@ export default function CashierPage() {
     const [orderType, setOrderType] = useState(false);
     const [allShifts, setAllShifts] = useState([]);
     const [preparationTime, setPreparationTime] = useState(30);
+    const [deliveryCost, setDeliveryCost] = useState(0);
+    const [paymentType, setPaymentType] = useState("cash"); // cash | transfer | unpaid
+    const [deliveryPhone, setDeliveryPhone] = useState("");
+    const [deliveryAddress, setDeliveryAddress] = useState("");
 
     const [clients, setClients] = useState([]);
     const [selectedClient, setSelectedClient] = useState(null);
     const [clientSearch, setClientSearch] = useState("");
     const [showClientModal, setShowClientModal] = useState(false);
+    const [showClientPickerModal, setShowClientPickerModal] = useState(false);
+    const [clientPickerSearch, setClientPickerSearch] = useState("");
     const [newClient, setNewClient] = useState({ fullName: "", number: "" });
 
     const [debtPaymentDate, setDebtPaymentDate] = useState("");
     const [showDatePicker, setShowDatePicker] = useState(false);
+    const [shiftReportOpen, setShiftReportOpen] = useState(false);
+    const [shiftReportLoading, setShiftReportLoading] = useState(false);
+    const [shiftReport, setShiftReport] = useState(null);
 
     // === ДОБАВЛЕНО: Состояния для долгов ===
     const [todayDebts, setTodayDebts] = useState([]);
@@ -200,8 +209,8 @@ export default function CashierPage() {
                         return b.orderId - a.orderId;
                     }
 
-                    // Для готовых сортируем по времени (последние готовые сверху)
-                    return new Date(b.date || 0) - new Date(a.date || 0);
+                    // Для готовых тоже новые заказы сверху
+                    return b.orderId - a.orderId;
                 });
 
                 setOrders(sortedOrders);
@@ -269,7 +278,8 @@ export default function CashierPage() {
                 income: 0,
                 profit: 0,
                 expenses: 0,
-                personCode: selectedPerson.personCode
+                // Shift.personcode references person.personid in DB
+                personCode: selectedPerson.personID
             })
         })
             .then(r => r.json())
@@ -289,7 +299,7 @@ export default function CashierPage() {
         setShiftOpen(true);
 
         // Устанавливаем выбранного сотрудника
-        const person = persons.find(p => p.personCode === shift.personCode);
+        const person = persons.find(p => p.personID === shift.personCode);
         setSelectedPerson(person || null);
 
         // Загружаем заказы для смены
@@ -306,8 +316,9 @@ export default function CashierPage() {
 
         const shiftOrders = orders.filter(o => o.shiftId === currentShift.shiftId);
 
+        // Orders from API usually don't contain nested items; use order.amount as source of truth.
         const income = shiftOrders.reduce(
-            (sum, o) => sum + (o.items || []).reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0),
+            (sum, o) => sum + Number(o.amount || 0),
             0
         );
 
@@ -351,6 +362,98 @@ export default function CashierPage() {
             .finally(() => setIsLoading(false));
     };
 
+    const printZReport = async () => {
+        if (!currentShift?.shiftId) {
+            alert("Сначала откройте смену");
+            return;
+        }
+
+        try {
+            const res = await fetch(`${API_SHIFTS}/${currentShift.shiftId}/z-report`);
+            const report = await res.json();
+            if (!res.ok) {
+                throw new Error(report?.message || `Ошибка Z-отчета (${res.status})`);
+            }
+
+            const workers = Array.isArray(report.workers) && report.workers.length > 0
+                ? report.workers.join(", ")
+                : "Не указаны";
+
+            const lines = [];
+            lines.push("Z-ОТЧЕТ");
+            lines.push(`Дата: ${report.date || "-"}`);
+            lines.push(`Смена №: ${report.shiftId}`);
+            lines.push(`Начало: ${report.startTime || "-"}`);
+            lines.push(`Конец: ${report.endTime || "-"}`);
+            lines.push(`Работники: ${workers}`);
+            lines.push("");
+            lines.push("ЗАКАЗЫ:");
+
+            (report.orders || []).forEach((order) => {
+                lines.push(
+                    `Заказ #${order.orderId} | ${order.isDelivery ? "Доставка" : "По месту"} | `
+                    + `Оплата: ${order.paymentType || "-"} | Сумма: ${Number(order.orderAmount || 0).toFixed(2)} ₽`
+                );
+                (order.items || []).forEach((item) => {
+                    lines.push(
+                        `  - ${item.dishName}: ${item.qty} x ${Number(item.price || 0).toFixed(2)} = ${Number(item.sum || 0).toFixed(2)} ₽`
+                    );
+                });
+                if (Number(order.deliveryExpense || 0) > 0) {
+                    lines.push(`    Доставка: ${Number(order.deliveryExpense).toFixed(2)} ₽`);
+                }
+                lines.push("");
+            });
+
+            lines.push("ИТОГИ:");
+            lines.push(`Заказов: ${report.totals?.ordersCount ?? 0}`);
+            lines.push(`Позиции блюд (шт): ${report.totals?.dishesCount ?? 0}`);
+            lines.push(`Сумма по блюдам: ${Number(report.totals?.itemsAmount || 0).toFixed(2)} ₽`);
+            lines.push(`Траты на доставку: ${Number(report.totals?.deliveryExpense || 0).toFixed(2)} ₽`);
+            lines.push(`Общая выручка: ${Number(report.totals?.revenue || 0).toFixed(2)} ₽`);
+
+            const reportText = lines.join("\n");
+
+            const w = window.open("", "_blank", "width=800,height=900");
+            if (!w) {
+                alert("Не удалось открыть окно печати. Разрешите всплывающие окна.");
+                return;
+            }
+            w.document.write(`
+                <html>
+                  <head><title>Z-Отчет смены ${report.shiftId}</title></head>
+                  <body style="font-family: Consolas, monospace; white-space: pre-wrap; padding: 16px;">
+${reportText}
+                  </body>
+                </html>
+            `);
+            w.document.close();
+            w.focus();
+            w.print();
+        } catch (e) {
+            console.error("Ошибка формирования Z-отчета:", e);
+            alert(e.message || "Не удалось сформировать Z-отчет");
+        }
+    };
+
+    const openShiftReport = async (shiftId) => {
+        setShiftReportLoading(true);
+        setShiftReportOpen(true);
+        try {
+            const res = await fetch(`${API_SHIFTS}/${shiftId}/z-report`);
+            const body = await res.json();
+            if (!res.ok) {
+                throw new Error(body?.message || `Ошибка загрузки отчета (${res.status})`);
+            }
+            setShiftReport(body);
+        } catch (e) {
+            console.error("Ошибка загрузки отчета смены:", e);
+            setShiftReport({ error: e.message || "Не удалось загрузить отчет" });
+        } finally {
+            setShiftReportLoading(false);
+        }
+    };
+
     const createOrder = async () => {
         if (currentOrderItems.length === 0 || !currentShift) {
             alert("Добавьте блюда в заказ!");
@@ -362,7 +465,18 @@ export default function CashierPage() {
             return;
         }
 
-        const total = currentOrderItems.reduce((s, i) => s + (i.qty || 1) * i.price, 0);
+        if (orderType) {
+            if (!deliveryPhone.trim()) {
+                alert("Введите номер телефона для доставки!");
+                return;
+            }
+            if (!deliveryAddress.trim()) {
+                alert("Введите адрес доставки!");
+                return;
+            }
+        }
+
+        const total = totalOrderAmount;
 
         try {
             let debtPayment = null;
@@ -379,6 +493,10 @@ export default function CashierPage() {
                 time: preparationTime,
                 duty: isDebt,
                 type: orderType,
+                deliveryPhone: orderType ? deliveryPhone.trim() : null,
+                deliveryAddress: orderType ? deliveryAddress.trim() : null,
+                paymentType,
+                paid: paymentType !== "unpaid",
                 debt_payment_date: debtPayment,
                 items: currentOrderItems.map(i => ({
                     dishID: i.dishId,
@@ -396,6 +514,11 @@ export default function CashierPage() {
 
             const order = await orderResponse.json();
             console.log("Создан заказ с orderId:", order.orderId);
+            order.paymentType = paymentType;
+            order.paid = paymentType !== "unpaid";
+            order.deliveryCost = orderType ? Number(deliveryCost || 0) : 0;
+            order.deliveryPhone = orderType ? deliveryPhone.trim() : "";
+            order.deliveryAddress = orderType ? deliveryAddress.trim() : "";
 
             // Обновляем список заказов (добавляем новый заказ в начало)
             setOrders(prev => [order, ...prev]);
@@ -403,6 +526,10 @@ export default function CashierPage() {
             // Очищаем форму
             setCurrentOrderItems([]);
             setOrderType(false);
+            setDeliveryCost(0);
+            setPaymentType("cash");
+            setDeliveryPhone("");
+            setDeliveryAddress("");
             setPreparationTime(30);
             setIsDebt(false);
             setShowDatePicker(false);
@@ -494,11 +621,90 @@ export default function CashierPage() {
             .catch(e => console.error("Ошибка обновления статуса заказа:", e));
     };
 
+    const updateOrderPayment = async (orderId, nextPaymentType) => {
+        const res = await fetch(`${API_ORDERS}/${orderId}/payment`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                paymentType: nextPaymentType,
+                paid: nextPaymentType !== "unpaid"
+            })
+        });
+
+        let body = null;
+        try {
+            body = await res.json();
+        } catch {
+            body = null;
+        }
+
+        if (!res.ok) {
+            throw new Error(body?.message || `Ошибка обновления оплаты (${res.status})`);
+        }
+
+        setOrders(prev => prev.map(o => (
+            o.orderId === orderId
+                ? {
+                    ...o,
+                    paymentType: body?.paymentType || nextPaymentType,
+                    paid: body?.paid ?? (nextPaymentType !== "unpaid")
+                }
+                : o
+        )));
+
+        return body;
+    };
+
+    const printKitchenOrder = async (order) => {
+        const hasExplicitDeliveryCost =
+            order.type &&
+            order.deliveryCost !== undefined &&
+            order.deliveryCost !== null &&
+            order.deliveryCost !== "";
+
+        const res = await fetch(`${API_ORDERS}/${order.orderId}/print-kitchen`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                paymentType: order.paymentType || "cash",
+                // If delivery cost is unknown on frontend (after reload), send null
+                // so backend computes it from order total - items total.
+                deliveryCost: hasExplicitDeliveryCost ? Number(order.deliveryCost) : null,
+                deliveryPhone: order.type ? (order.deliveryPhone || order.clientPhone || "") : "",
+                deliveryAddress: order.type ? (order.deliveryAddress || "") : ""
+            })
+        });
+
+        let body = null;
+        try {
+            body = await res.json();
+        } catch {
+            body = null;
+        }
+
+        if (!res.ok) {
+            throw new Error(body?.message || `Ошибка печати (${res.status})`);
+        }
+        return body;
+    };
+
     const filteredClients = clientSearch.trim()
         ? clients.filter(c =>
             c.fullName?.toLowerCase().includes(clientSearch.toLowerCase()) ||
             c.number?.includes(clientSearch))
         : clients;
+
+    const filteredPickerClients = clientPickerSearch.trim()
+        ? clients.filter(c =>
+            c.fullName?.toLowerCase().includes(clientPickerSearch.toLowerCase()) ||
+            c.number?.includes(clientPickerSearch))
+        : clients;
+
+    const orderItemsTotal = currentOrderItems.reduce(
+        (sum, i) => sum + (Number(i.qty || 1) * Number(i.price || 0)),
+        0
+    );
+    const totalOrderAmount = orderItemsTotal + (orderType ? Number(deliveryCost || 0) : 0);
 
     const formatDate = (dateString) => {
         const date = new Date(dateString);
@@ -525,8 +731,8 @@ export default function CashierPage() {
         const readyOrders = orders
             .filter(o => o.status)
             .sort((a, b) => {
-                // Последние готовые сверху
-                return new Date(b.date || 0) - new Date(a.date || 0);
+                // Новые заказы сверху
+                return b.orderId - a.orderId;
             });
 
         return { cookingOrders, readyOrders };
@@ -634,6 +840,7 @@ export default function CashierPage() {
     }
 
     const { cookingOrders, readyOrders } = getSortedOrders();
+    const sortedShifts = [...allShifts].sort((a, b) => (b.shiftId || 0) - (a.shiftId || 0));
 
     return (
         <div className={styles.page}>
@@ -643,15 +850,27 @@ export default function CashierPage() {
                     {shiftOpen ? `Смена открыта | ID: ${currentShift?.shiftId || ''}` : "Смена закрыта"}
                 </span>
 
-                {/* === ДОБАВЛЕНО: Индикатор долгов в хедере === */}
-                {shiftOpen && (todayDebts.length > 0 || overdueDebts.length > 0) && (
-                    <button
-                        className={styles.debtAlertBtn}
-                        onClick={() => setShowDebtNotification(true)}
-                        title="Показать уведомления о долгах"
-                    >
-                        ⚠️ Долги: {todayDebts.length + overdueDebts.length}
-                    </button>
+                {shiftOpen && (
+                    <div className={styles.headerActions}>
+                        {/* === ДОБАВЛЕНО: Индикатор долгов в хедере === */}
+                        {(todayDebts.length > 0 || overdueDebts.length > 0) && (
+                            <button
+                                className={styles.debtAlertBtn}
+                                onClick={() => setShowDebtNotification(true)}
+                                title="Показать уведомления о долгах"
+                            >
+                                ⚠️ Долги: {todayDebts.length + overdueDebts.length}
+                            </button>
+                        )}
+                        <button
+                            className={styles.zReportBtn}
+                            onClick={printZReport}
+                            disabled={!currentShift || isLoading}
+                            title="Печать Z-отчета по смене"
+                        >
+                            🧾 Z-отчет
+                        </button>
+                    </div>
                 )}
             </header>
 
@@ -693,13 +912,14 @@ export default function CashierPage() {
                     {allShifts.length === 0 ? (
                         <div className={styles.empty}>Нет доступных смен</div>
                     ) : (
-                        allShifts.map(s => (
+                        sortedShifts.map(s => (
                             <div key={s.shiftId} className={styles.orderCard}>
                                 <div>
                                     <b>Смена #{s.shiftId}</b>
                                     <div>Дата: {s.data || 'Не указана'}</div>
                                     <div>Время: {s.startTime || 'Не указано'}</div>
                                     <div>Статус: {!s.endTime ? "🟢 Открыта" : "🔴 Закрыта"}</div>
+                                    <div>Сумма заказов: {Number(s.income || 0).toFixed(2)} ₽</div>
                                     {s.personName && <div>Кассир: {s.personName}</div>}
                                 </div>
                                 {!s.endTime && (
@@ -708,6 +928,14 @@ export default function CashierPage() {
                                         onClick={() => openExistingShift(s)}
                                     >
                                         Войти
+                                    </button>
+                                )}
+                                {s.endTime && (
+                                    <button
+                                        className={`${styles.btn} ${styles.secondary}`}
+                                        onClick={() => openShiftReport(s.shiftId)}
+                                    >
+                                        Отчет
                                     </button>
                                 )}
                             </div>
@@ -794,6 +1022,17 @@ export default function CashierPage() {
                                     >
                                         ➕ Новый клиент
                                     </button>
+
+                                    <button
+                                        className={`${styles.btn} ${styles.secondary}`}
+                                        onClick={() => {
+                                            setClientPickerSearch("");
+                                            setShowClientPickerModal(true);
+                                        }}
+                                        disabled={isLoading}
+                                    >
+                                        📋 Выбрать из списка
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -855,12 +1094,93 @@ export default function CashierPage() {
                                 <input
                                     type="checkbox"
                                     checked={orderType}
-                                    onChange={() => setOrderType(!orderType)}
+                                    onChange={() => {
+                                        const next = !orderType;
+                                        setOrderType(next);
+                                        if (!next) {
+                                            setDeliveryCost(0);
+                                            setDeliveryPhone("");
+                                            setDeliveryAddress("");
+                                        }
+                                    }}
                                     disabled={isLoading}
                                 />
                                 <span className={styles.slider}></span>
                             </label>
                             <span>{orderType ? "Доставка" : "По месту"}</span>
+                        </div>
+
+                        {orderType && (
+                            <div className={styles.timeInput}>
+                                <label>Стоимость доставки (₽):</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="10"
+                                    value={deliveryCost}
+                                    onChange={(e) => setDeliveryCost(Math.max(0, Number(e.target.value || 0)))}
+                                    disabled={isLoading}
+                                />
+                            </div>
+                        )}
+
+                        {orderType && (
+                            <div className={styles.timeInput}>
+                                <label>Телефон доставки:</label>
+                                <input
+                                    type="text"
+                                    placeholder="+7..."
+                                    value={deliveryPhone}
+                                    onChange={(e) => setDeliveryPhone(e.target.value)}
+                                    disabled={isLoading}
+                                />
+                            </div>
+                        )}
+
+                        {orderType && (
+                            <div className={styles.timeInput}>
+                                <label>Адрес доставки:</label>
+                                <input
+                                    type="text"
+                                    placeholder="Улица, дом, квартира"
+                                    value={deliveryAddress}
+                                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                                    disabled={isLoading}
+                                />
+                            </div>
+                        )}
+
+                        <div className={styles.timeInput}>
+                            <label>Тип оплаты:</label>
+                            <div className={styles.paymentOptions}>
+                                <label className={`${styles.paymentOption} ${paymentType === "cash" ? styles.paymentOptionActive : ""}`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={paymentType === "cash"}
+                                        onChange={() => setPaymentType("cash")}
+                                        disabled={isLoading}
+                                    />
+                                    Наличка
+                                </label>
+                                <label className={`${styles.paymentOption} ${paymentType === "transfer" ? styles.paymentOptionActive : ""}`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={paymentType === "transfer"}
+                                        onChange={() => setPaymentType("transfer")}
+                                        disabled={isLoading}
+                                    />
+                                    Перевод
+                                </label>
+                                <label className={`${styles.paymentOption} ${paymentType === "unpaid" ? styles.paymentOptionWarning : ""}`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={paymentType === "unpaid"}
+                                        onChange={() => setPaymentType("unpaid")}
+                                        disabled={isLoading}
+                                    />
+                                    Не оплачен
+                                </label>
+                            </div>
                         </div>
 
                         {/* ДОЛГ С ВЫБОРОМ ДАТЫ ПОГАШЕНИЯ */}
@@ -918,14 +1238,24 @@ export default function CashierPage() {
                         {/* ИТОГО */}
                         <div className={styles.total}>
                             <span>ИТОГО</span>
-                            <span>{currentOrderItems.reduce((s, i) => s + (i.qty || 1) * i.price, 0)} ₽</span>
+                            <span>{totalOrderAmount} ₽</span>
                         </div>
+                        {orderType && (
+                            <div style={{ marginTop: "-4px", marginBottom: "10px", color: "#4b5563", fontSize: "13px" }}>
+                                Блюда: {orderItemsTotal} ₽ + Доставка: {Number(deliveryCost || 0)} ₽
+                            </div>
+                        )}
 
                         {/* КНОПКИ */}
                         <button
                             className={`${styles.btn} ${styles.primary}`}
                             onClick={createOrder}
-                            disabled={currentOrderItems.length === 0 || !selectedClient || isLoading}
+                            disabled={
+                                currentOrderItems.length === 0 ||
+                                !selectedClient ||
+                                isLoading ||
+                                (orderType && (!deliveryPhone.trim() || !deliveryAddress.trim()))
+                            }
                         >
                             {!selectedClient ? "Выберите клиента" : "Создать заказ"}
                         </button>
@@ -977,6 +1307,8 @@ export default function CashierPage() {
                                                 key={o.orderId}
                                                 order={o}
                                                 markOrderReady={markOrderReady}
+                                                onPrintKitchen={printKitchenOrder}
+                                                onUpdatePayment={updateOrderPayment}
                                             />
                                         ))}
                                     </div>
@@ -993,6 +1325,8 @@ export default function CashierPage() {
                                                 key={o.orderId}
                                                 order={o}
                                                 markOrderReady={markOrderReady}
+                                                onPrintKitchen={printKitchenOrder}
+                                                onUpdatePayment={updateOrderPayment}
                                             />
                                         ))}
                                     </div>
@@ -1045,6 +1379,156 @@ export default function CashierPage() {
                                 disabled={!newClient.fullName.trim() || isLoading}
                             >
                                 {isLoading ? "Создание..." : (isDebt ? "Создать и отметить как долг" : "Создать")}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* МОДАЛЬНОЕ ОКНО ВЫБОРА КЛИЕНТА ИЗ ПОЛНОГО СПИСКА */}
+            {showClientPickerModal && (
+                <div className={styles.modalOverlay}>
+                    <div className={styles.modal}>
+                        <h3>📋 Выбор клиента</h3>
+
+                        <div className={styles.modalContent}>
+                            <input
+                                type="text"
+                                placeholder="Поиск по имени или телефону..."
+                                value={clientPickerSearch}
+                                onChange={(e) => setClientPickerSearch(e.target.value)}
+                                className={styles.modalInput}
+                                disabled={isLoading}
+                            />
+
+                            <div className={styles.clientPickerList}>
+                                {filteredPickerClients.length === 0 ? (
+                                    <div className={styles.noResults}>Клиенты не найдены</div>
+                                ) : (
+                                    filteredPickerClients.map(client => (
+                                        <button
+                                            key={client.clientId}
+                                            type="button"
+                                            className={styles.clientPickerItem}
+                                            onClick={() => {
+                                                setSelectedClient(client);
+                                                setClientSearch("");
+                                                setShowClientPickerModal(false);
+                                            }}
+                                            disabled={isLoading}
+                                        >
+                                            <span>
+                                                <strong>{client.fullName}</strong>
+                                                {client.number ? ` · ${client.number}` : ""}
+                                            </span>
+                                            <span>Выбрать</span>
+                                        </button>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        <div className={styles.modalActions}>
+                            <button
+                                className={`${styles.btn} ${styles.secondary}`}
+                                onClick={() => setShowClientPickerModal(false)}
+                                disabled={isLoading}
+                            >
+                                Закрыть
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {shiftReportOpen && (
+                <div className={styles.modalOverlay}>
+                    <div className={styles.modal} style={{ maxWidth: "900px" }}>
+                        <h3>Отчет по смене</h3>
+                        {shiftReportLoading && <div style={{ marginTop: "10px" }}>Загрузка отчета...</div>}
+                        {!shiftReportLoading && shiftReport?.error && (
+                            <div style={{ marginTop: "10px", color: "#991b1b" }}>{shiftReport.error}</div>
+                        )}
+                        {!shiftReportLoading && shiftReport && !shiftReport.error && (
+                            <div style={{ marginTop: "10px", display: "grid", gap: "10px" }}>
+                                <div style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "10px" }}>
+                                    <div><b>Смена №{shiftReport.shiftId}</b></div>
+                                    <div>Дата: {shiftReport.date || "-"}</div>
+                                    <div>Открытие: {shiftReport.startTime || "-"}</div>
+                                    <div>Закрытие: {shiftReport.endTime || "-"}</div>
+                                    <div>Работники: {(shiftReport.workers || []).join(", ") || "Не указаны"}</div>
+                                </div>
+
+                                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "10px" }}>
+                                    <div><b>Итоги</b></div>
+                                    <div>Заказов: {shiftReport.totals?.ordersCount ?? 0}</div>
+                                    <div>Сумма заказов: {Number(shiftReport.totals?.revenue || 0).toFixed(2)} ₽</div>
+                                    <div style={{ color: "#92400e", fontWeight: 700 }}>
+                                        Сумма доставок: {Number(shiftReport.totals?.deliveryExpense || 0).toFixed(2)} ₽
+                                    </div>
+                                    <div style={{ color: "#b91c1c", fontWeight: 700 }}>
+                                        Заказов с задержкой: {shiftReport.totals?.delayedOrdersCount ?? 0}
+                                    </div>
+                                </div>
+
+                                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "10px" }}>
+                                    <div><b>Популярные позиции за смену</b></div>
+                                    {(shiftReport.topPositions || []).length === 0 ? (
+                                        <div style={{ color: "#6b7280" }}>Нет данных</div>
+                                    ) : (
+                                        (shiftReport.topPositions || []).slice(0, 10).map((p, idx) => (
+                                            <div key={`${p.dishName}-${idx}`}>
+                                                {idx + 1}. {p.dishName} — {p.qty} шт, {Number(p.amount || 0).toFixed(2)} ₽
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+
+                                <div style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "10px", maxHeight: "300px", overflowY: "auto" }}>
+                                    <div><b>Все заказы</b></div>
+                                    {(shiftReport.orders || []).length === 0 ? (
+                                        <div style={{ color: "#6b7280" }}>Нет заказов</div>
+                                    ) : (
+                                        (shiftReport.orders || []).map((o) => (
+                                            <div
+                                                key={o.orderId}
+                                                style={{
+                                                    marginTop: "10px",
+                                                    padding: "8px",
+                                                    borderTop: "1px dashed #d1d5db",
+                                                    borderRadius: "8px",
+                                                    background: Number(o.delayMinutes || 0) > 0 ? "#fffbeb" : "#ffffff",
+                                                    border: Number(o.delayMinutes || 0) > 0 ? "1px solid #fcd34d" : "1px solid #e5e7eb"
+                                                }}
+                                            >
+                                                <div>
+                                                    <b>Заказ #{o.orderId}</b> · {o.isDelivery ? "Доставка" : "По месту"} · Сумма: {Number(o.orderAmount || 0).toFixed(2)} ₽
+                                                </div>
+                                                <div>Клиент: {o.clientName || "—"} {o.clientPhone ? `(${o.clientPhone})` : ""}</div>
+                                                <div style={{ color: Number(o.delayMinutes || 0) > 0 ? "#b45309" : "#374151", fontWeight: Number(o.delayMinutes || 0) > 0 ? 700 : 500 }}>
+                                                    Задержка: {Number(o.delayMinutes || 0).toFixed(0)} мин
+                                                </div>
+                                                {(o.items || []).map((it, idx) => (
+                                                    <div key={`${o.orderId}-${idx}`} style={{ marginLeft: "12px", color: "#374151" }}>
+                                                        • {it.dishName} × {it.qty} = {Number(it.sum || 0).toFixed(2)} ₽
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className={styles.modalActions}>
+                            <button
+                                className={`${styles.btn} ${styles.secondary}`}
+                                onClick={() => {
+                                    setShiftReportOpen(false);
+                                    setShiftReport(null);
+                                }}
+                            >
+                                Закрыть
                             </button>
                         </div>
                     </div>

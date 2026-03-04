@@ -24,6 +24,10 @@ public class OrderDTO {
     public LocalDateTime created_at;
     public LocalDate debt_payment_date;
     public LocalDateTime date_issue;
+    public String deliveryPhone;
+    public String deliveryAddress;
+    public String paymentType;
+    public Boolean paid;
 
     public LocalDate getDebt_payment_date() {
         return debt_payment_date;
@@ -127,6 +131,38 @@ public class OrderDTO {
 
     public void setAmount(Double amount) {
         this.amount = amount;
+    }
+
+    public String getDeliveryPhone() {
+        return deliveryPhone;
+    }
+
+    public void setDeliveryPhone(String deliveryPhone) {
+        this.deliveryPhone = deliveryPhone;
+    }
+
+    public String getDeliveryAddress() {
+        return deliveryAddress;
+    }
+
+    public void setDeliveryAddress(String deliveryAddress) {
+        this.deliveryAddress = deliveryAddress;
+    }
+
+    public String getPaymentType() {
+        return paymentType;
+    }
+
+    public void setPaymentType(String paymentType) {
+        this.paymentType = paymentType;
+    }
+
+    public Boolean getPaid() {
+        return paid;
+    }
+
+    public void setPaid(Boolean paid) {
+        this.paid = paid;
     }
 
 }

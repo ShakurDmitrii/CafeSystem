@@ -1,8 +1,11 @@
 import { API_BASE_URL, clearAuth, getAccessToken } from "./auth";
 
+const PY_API_BASE_URL = "http://localhost:8000";
+
 function isBackendRequest(url) {
     if (typeof url !== "string") return false;
     if (url.startsWith(API_BASE_URL)) return true;
+    if (url.startsWith(PY_API_BASE_URL)) return true;
     return (
         url.startsWith("/api/") ||
         url.startsWith("/warehouses") ||
@@ -37,4 +40,3 @@ export function installAuthFetchInterceptor() {
         return response;
     };
 }
-

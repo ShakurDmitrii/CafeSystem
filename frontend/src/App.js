@@ -18,6 +18,7 @@ import ClientsPage from "./pages/SuppliersPage/ClientPages/ClientsPage";
 import MlPage from "./pages/MLPanel/MlPage";
 import LoginPage from "./pages/Auth/LoginPage";
 import ProductsPage from "./pages/Products/ProductsPage";
+import HomePage from "./pages/Home/HomePage";
 
 function ProtectedRoute({ auth, roles, element }) {
     if (!auth) return <Navigate to="/login" replace />;
@@ -104,7 +105,7 @@ function App() {
                         <Route path="/products" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<ProductsPage />} />} />
                         <Route path="/movements" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<MovementPage />} />} />
                         <Route path="/ml" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<MlPage />} />} />
-                        <Route path="/" element={<ProtectedRoute auth={auth} element={<div style={{ padding: '2rem' }}><h2>Домашняя страница</h2></div>} />} />
+                        <Route path="/" element={<ProtectedRoute auth={auth} element={<HomePage auth={auth} />} />} />
                         <Route path="*" element={<Navigate to={auth ? "/" : "/login"} replace />} />
                     </Routes>
                 </main>

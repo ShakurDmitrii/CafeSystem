@@ -12,6 +12,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
 
+import jooqdata.Indexes;
 import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Person.PersonPath;
@@ -22,6 +23,7 @@ import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Function8;
 import org.jooq.Identity;
+import org.jooq.Index;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -173,6 +175,11 @@ public class Shift extends TableImpl<ShiftRecord> {
     }
 
     @Override
+    public List<Index> getIndexes() {
+        return Arrays.asList(Indexes.SHIFT_OPEN_UNIQUE_PERSON_IDX);
+    }
+
+    @Override
     public Identity<ShiftRecord, Integer> getIdentity() {
         return (Identity<ShiftRecord, Integer>) super.getIdentity();
     }
@@ -180,11 +187,6 @@ public class Shift extends TableImpl<ShiftRecord> {
     @Override
     public UniqueKey<ShiftRecord> getPrimaryKey() {
         return Keys.SHIFT_PK;
-    }
-
-    @Override
-    public List<UniqueKey<ShiftRecord>> getUniqueKeys() {
-        return Arrays.asList(Keys.SHIFT_UNIQUE);
     }
 
     @Override

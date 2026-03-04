@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header
 from datetime import datetime
 import logging
 
@@ -29,18 +29,22 @@ def get_java_client() -> JavaApiClient:
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
     timeRange: str = "week",
-    java_client: JavaApiClient = Depends(get_java_client)
+    java_client: JavaApiClient = Depends(get_java_client),
+    authorization: str | None = Header(default=None)
 ):
     logger.info(f"Dashboard request started, timeRange={timeRange}")
 
     # --- Запрос в Java API ---
+    forward_headers = {"Authorization": authorization} if authorization else None
+
     sales_data = await java_client.get(
         "/api/ml/data/sales",
         {
             "startDate": "2024-01-01",
             "endDate": datetime.now().date().isoformat(),
             "limit": 1000
-        }
+        },
+        headers=forward_headers
     )
 
     # --- ЛОГИ ДЛЯ ДЕБАГА (ВАЖНО) ---

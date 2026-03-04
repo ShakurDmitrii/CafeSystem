@@ -12,6 +12,7 @@ public class ProductDTO {
     public String unit;
     public String baseUnit;
     public BigDecimal unitFactor;
+    public BigDecimal averageStockPrice;
 
     public int getProductId() {
         return productId;
@@ -83,5 +84,13 @@ public class ProductDTO {
 
     public void setUnitFactor(BigDecimal unitFactor) {
         this.unitFactor = unitFactor;
+    }
+
+    public BigDecimal getAverageStockPrice() {
+        return averageStockPrice;
+    }
+
+    public void setAverageStockPrice(BigDecimal averageStockPrice) {
+        this.averageStockPrice = averageStockPrice;
     }
 }

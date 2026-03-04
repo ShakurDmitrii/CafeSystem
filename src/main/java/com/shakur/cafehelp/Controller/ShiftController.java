@@ -4,9 +4,12 @@ import com.shakur.cafehelp.DTO.DishDTO;
 import com.shakur.cafehelp.DTO.ShiftDTO;
 import com.shakur.cafehelp.Service.ShiftService;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/shifts")
@@ -29,8 +32,12 @@ public class ShiftController {
     }
 
     @PostMapping("/create")
-    public ShiftDTO createShift(@RequestBody ShiftDTO shiftDTO) {
-        return shiftService.createShift(shiftDTO);
+    public ResponseEntity<?> createShift(@RequestBody ShiftDTO shiftDTO) {
+        try {
+            return ResponseEntity.ok(shiftService.createShift(shiftDTO));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
+        }
     }
 
     @PostMapping("/{id}/update")
@@ -78,5 +85,10 @@ public class ShiftController {
     public List<DishDTO> getDish(@PathVariable int id) {
         return shiftService.getDishesByOrderId(id);
 }
+
+    @GetMapping("/{id}/z-report")
+    public Map<String, Object> getZReport(@PathVariable int id) {
+        return shiftService.buildZReport(id);
+    }
 
 }

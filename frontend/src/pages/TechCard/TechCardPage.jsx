@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import styles from "./TechCardPage.module.css";
 
 const API_TECH = "http://localhost:8080/api/tech-products";
@@ -19,6 +19,67 @@ export default function TechCardPage() {
 
     // Текущий редактируемый ингредиент (null - режим добавления)
     const [editingTechProductId, setEditingTechProductId] = useState(null);
+
+    const normalizeName = (name) => String(name || "").trim().toLowerCase();
+
+    const productsById = useMemo(() => {
+        const map = new Map();
+        products.forEach(p => map.set(p.productId, p));
+        return map;
+    }, [products]);
+
+    // Объединяем продукты по названию: в UI показываем 1 ингредиент = 1 имя.
+    const groupedProducts = useMemo(() => {
+        const groups = new Map();
+
+        products.forEach((p) => {
+            const key = normalizeName(p.productName);
+            if (!key) return;
+
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    key,
+                    name: p.productName,
+                    representativeId: p.productId,
+                    prices: []
+                });
+            }
+
+            const g = groups.get(key);
+            const price = Number(p?.averageStockPrice ?? p?.productPrice ?? 0);
+            if (Number.isFinite(price) && price >= 0) {
+                g.prices.push(price);
+            }
+        });
+
+        return Array.from(groups.values())
+            .map((g) => ({
+                ...g,
+                averagePrice: g.prices.length
+                    ? g.prices.reduce((sum, v) => sum + v, 0) / g.prices.length
+                    : 0
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    }, [products]);
+
+    const averagePriceByName = useMemo(() => {
+        const map = new Map();
+        groupedProducts.forEach(g => map.set(g.key, g.averagePrice));
+        return map;
+    }, [groupedProducts]);
+
+    const representativeIdByName = useMemo(() => {
+        const map = new Map();
+        groupedProducts.forEach(g => map.set(g.key, g.representativeId));
+        return map;
+    }, [groupedProducts]);
+
+    const getAveragePriceForProductId = (id) => {
+        const p = productsById.get(id);
+        if (!p) return 0;
+        const key = normalizeName(p.productName);
+        return Number(averagePriceByName.get(key) ?? p?.averageStockPrice ?? p?.productPrice ?? 0);
+    };
 
     useEffect(() => {
         loadDish();
@@ -62,9 +123,13 @@ export default function TechCardPage() {
     const addOrUpdateItem = () => {
         if (!productId || !weight) return;
 
+        const selectedProduct = productsById.get(parseInt(productId, 10));
+        const selectedNameKey = normalizeName(selectedProduct?.productName);
+        const representativeId = representativeIdByName.get(selectedNameKey) ?? parseInt(productId, 10);
+
         const payload = {
             dishId: parseInt(dishId),
-            productId: parseInt(productId),
+            productId: representativeId,
             weight: parseFloat(weight),
             waste: waste ? parseFloat(waste) : 0
         };
@@ -94,7 +159,10 @@ export default function TechCardPage() {
 
     const startEditItem = (item) => {
         setEditingTechProductId(item.techProductId);
-        setProductId(String(item.productId));
+        const currentProduct = productsById.get(item.productId);
+        const nameKey = normalizeName(currentProduct?.productName);
+        const representativeId = representativeIdByName.get(nameKey) ?? item.productId;
+        setProductId(String(representativeId));
         setWeight(String(item.weight));
         setWaste(item.waste !== undefined && item.waste !== null ? String(item.waste) : "");
     };
@@ -146,8 +214,7 @@ export default function TechCardPage() {
 
     // Расчёт себестоимости блюда (без учета отходов)
     const totalCost = items.reduce((sum, i) => {
-        const product = products.find(p => p.productId === i.productId);
-        const price = product?.productPrice || 0; // цена за кг
+        const price = getAveragePriceForProductId(i.productId); // средняя цена по названию, ₽/кг
         const weightGr = i.weight || 0;
         const weightKg = weightGr / 1000; // вес в кг
         const cost = weightKg * price;
@@ -165,9 +232,9 @@ export default function TechCardPage() {
                     className={styles.select}
                 >
                     <option value="">Выберите ингредиент</option>
-                    {products.map(p => (
-                        <option key={p.productId} value={p.productId}>
-                            {p.productName}
+                    {groupedProducts.map(p => (
+                        <option key={p.key} value={p.representativeId}>
+                            {p.name}
                         </option>
                     ))}
                 </select>
@@ -206,8 +273,8 @@ export default function TechCardPage() {
             <ul className={styles.ingredientsList}>
                 {items.length > 0 ? (
                     items.map(i => {
-                        const product = products.find(p => p.productId === i.productId);
-                        const price = product?.productPrice || 0;
+                        const product = productsById.get(i.productId);
+                        const price = getAveragePriceForProductId(i.productId);
                         const weightGr = i.weight || 0;
                         const weightKg = weightGr / 1000; // вес в кг
                         const cost = weightKg * price;

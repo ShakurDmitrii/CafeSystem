@@ -2,6 +2,8 @@ import random
 from dataclasses import dataclass
 from typing import Any
 
+DEFAULT_TOTAL_WEIGHT_GRAMS = 140.0
+
 
 @dataclass
 class Candidate:
@@ -50,22 +52,54 @@ def _normalize_ingredients(raw: Any) -> list[str]:
     return list(dict.fromkeys(result))
 
 
-def _ingredient_pool(ingredients: list[dict]) -> tuple[list[str], dict[str, float]]:
+def _normalize_unit(value: Any) -> str:
+    if value is None:
+        return "kg"
+    unit = str(value).strip().lower()
+    return unit
+
+
+def _grams_per_unit(unit: str) -> float:
+    kg_aliases = {"kg", "кг", "kilogram", "kilograms", "килограмм", "килограммы"}
+    g_aliases = {"g", "гр", "г", "gram", "grams", "грамм", "граммы"}
+    l_aliases = {"l", "л", "liter", "liters", "литр", "литры"}
+    ml_aliases = {"ml", "мл", "milliliter", "milliliters"}
+    piece_aliases = {"pc", "pcs", "piece", "pieces", "шт", "штука", "штук"}
+
+    if unit in kg_aliases:
+        return 1000.0
+    if unit in g_aliases:
+        return 1.0
+    if unit in l_aliases:
+        return 1000.0
+    if unit in ml_aliases:
+        return 1.0
+    if unit in piece_aliases:
+        return 1.0
+    return 1000.0
+
+
+def _ingredient_pool(ingredients: list[dict]) -> tuple[list[str], dict[str, float], dict[str, float], dict[str, str]]:
     names: list[str] = []
     costs: dict[str, float] = {}
+    grams_per_unit: dict[str, float] = {}
+    units: dict[str, str] = {}
     for item in ingredients or []:
         if not isinstance(item, dict):
             continue
         name = str(item.get("name", "")).strip().lower()
         if not name:
             continue
+        unit = _normalize_unit(item.get("unit"))
         cost = _safe_float(item.get("costPerUnit"), 0.0)
         if cost <= 0:
             cost = 10.0
         names.append(name)
         costs[name] = cost
+        units[name] = unit
+        grams_per_unit[name] = _grams_per_unit(unit)
     unique_names = list(dict.fromkeys(names))
-    return unique_names, costs
+    return unique_names, costs, grams_per_unit, units
 
 
 def _build_sales_weights(sales_records: list[dict]) -> dict[str, float]:
@@ -104,15 +138,21 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 def _evaluate_candidate(
     ingredients: list[str],
     ingredient_costs: dict[str, float],
+    ingredient_grams_per_unit: dict[str, float],
     sales_weights: dict[str, float],
     existing_dishes: list[set[str]],
     markup: float,
     generation_idx: int,
+    total_weight_grams: float,
 ) -> Candidate:
     unique_ingredients = list(dict.fromkeys(ingredients))
     current_set = set(unique_ingredients)
 
-    estimated_cost = sum(ingredient_costs.get(ing, 10.0) for ing in unique_ingredients)
+    per_ingredient_grams = total_weight_grams / max(1, len(unique_ingredients))
+    estimated_cost = sum(
+        ingredient_costs.get(ing, 10.0) * (per_ingredient_grams / max(1.0, ingredient_grams_per_unit.get(ing, 1000.0)))
+        for ing in unique_ingredients
+    )
     recommended_price = round(max(estimated_cost * markup, estimated_cost + 20.0), 2)
     margin = max(recommended_price - estimated_cost, 0.0)
 
@@ -205,6 +245,44 @@ def _mutate(
     return list(dict.fromkeys(result))
 
 
+def _enforce_constraints(
+    candidate: list[str],
+    ingredient_names: list[str],
+    min_ingredients: int,
+    max_ingredients: int,
+    must_include: list[str],
+    excluded: set[str],
+) -> list[str]:
+    allowed = [n for n in ingredient_names if n not in excluded]
+    allowed_set = set(allowed)
+    if not allowed:
+        return []
+
+    # Keep only allowed ingredients.
+    result = [x for x in candidate if x in allowed_set]
+
+    # Force required ingredients.
+    for req in must_include:
+        if req in allowed_set and req not in result:
+            result.append(req)
+
+    # Grow to min size if needed.
+    if len(result) < min_ingredients:
+        pool = [x for x in allowed if x not in result]
+        random.shuffle(pool)
+        need = min_ingredients - len(result)
+        result.extend(pool[:need])
+
+    # Trim to max size, but never drop required ingredients.
+    while len(result) > max_ingredients:
+        removable = [x for x in result if x not in must_include]
+        if not removable:
+            break
+        result.remove(random.choice(removable))
+
+    return list(dict.fromkeys(result))
+
+
 def _crossover(parent_a: list[str], parent_b: list[str], min_ingredients: int, max_ingredients: int) -> list[str]:
     union = list(dict.fromkeys(parent_a + parent_b))
     random.shuffle(union)
@@ -212,20 +290,28 @@ def _crossover(parent_a: list[str], parent_b: list[str], min_ingredients: int, m
     return union[:target_len]
 
 
-def _build_tech_card(ingredients: list[str], ingredient_costs: dict[str, float]) -> list[dict[str, Any]]:
+def _build_tech_card(
+    ingredients: list[str],
+    ingredient_costs: dict[str, float],
+    ingredient_grams_per_unit: dict[str, float],
+    ingredient_units: dict[str, str],
+    total_weight_grams: float,
+) -> list[dict[str, Any]]:
     if not ingredients:
         return []
-    base_gram = 140.0 / len(ingredients)
+    base_gram = total_weight_grams / len(ingredients)
     rows: list[dict[str, Any]] = []
     for ingredient in ingredients:
         qty = round(base_gram, 1)
         unit_cost = round(ingredient_costs.get(ingredient, 10.0), 2)
-        total = round(unit_cost * (qty / 100.0), 2)
+        grams_in_unit = max(1.0, ingredient_grams_per_unit.get(ingredient, 1000.0))
+        total = round(unit_cost * (qty / grams_in_unit), 2)
         rows.append(
             {
                 "ingredientName": ingredient,
                 "quantityGrams": qty,
                 "unitCost": unit_cost,
+                "unit": ingredient_units.get(ingredient, "kg"),
                 "totalCost": total,
             }
         )
@@ -248,7 +334,7 @@ def generate_new_dish(
     must_include = _normalize_ingredients(constraints.get("mustInclude") or [])
     excluded = set(_normalize_ingredients(constraints.get("excludedIngredients") or []))
 
-    ingredient_names, ingredient_costs = _ingredient_pool(ingredients)
+    ingredient_names, ingredient_costs, ingredient_grams_per_unit, ingredient_units = _ingredient_pool(ingredients)
     if not ingredient_names:
         return {"status": "failed", "errorMessage": "Нет данных по ингредиентам"}
 
@@ -258,6 +344,9 @@ def generate_new_dish(
     markup = _safe_float(constraints.get("markup"), 2.35)
     if markup < 1.3:
         markup = 1.3
+    total_weight_grams = _safe_float(constraints.get("totalWeightGrams"), DEFAULT_TOTAL_WEIGHT_GRAMS)
+    if total_weight_grams <= 0:
+        total_weight_grams = DEFAULT_TOTAL_WEIGHT_GRAMS
 
     population: list[list[str]] = []
     while len(population) < population_size:
@@ -277,12 +366,21 @@ def generate_new_dish(
     for generation_idx in range(generations):
         scored = [
             _evaluate_candidate(
-                candidate,
+                _enforce_constraints(
+                    candidate,
+                    ingredient_names,
+                    min_ingredients,
+                    max_ingredients,
+                    must_include,
+                    excluded,
+                ),
                 ingredient_costs,
+                ingredient_grams_per_unit,
                 sales_weights,
                 existing_dishes,
                 markup,
                 generation_idx + 1,
+                total_weight_grams,
             )
             for candidate in population
         ]
@@ -308,6 +406,14 @@ def generate_new_dish(
                     must_include,
                     excluded,
                 )
+            child = _enforce_constraints(
+                child,
+                ingredient_names,
+                min_ingredients,
+                max_ingredients,
+                must_include,
+                excluded,
+            )
             if child:
                 next_population.append(child)
         population = next_population[:population_size]
@@ -336,8 +442,15 @@ def generate_new_dish(
             "noveltyScore": best.novelty_score,
             "fitnessScore": best.fitness,
             "generationFound": best.generation_found,
+            "totalWeightGrams": total_weight_grams,
             "reasoning": reasoning,
-            "techCard": _build_tech_card(best.ingredients, ingredient_costs),
+            "techCard": _build_tech_card(
+                best.ingredients,
+                ingredient_costs,
+                ingredient_grams_per_unit,
+                ingredient_units,
+                total_weight_grams,
+            ),
         },
         "stats": {
             "populationSize": population_size,

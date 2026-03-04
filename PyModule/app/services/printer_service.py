@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 from datetime import datetime
 from typing import Any, Dict
 
@@ -7,6 +8,11 @@ from app.config import settings
 from app.printers.escpos_printer import EscposPrinter
 from app.printers.generate_consignment_docx import generate_consignment_docx
 from app.templates.consignment_ticket import build_ticket
+from app.templates.order_ticket import (
+    build_kitchen_ticket,
+    build_order_number_ticket,
+)
+from app.schemas.order_print import OrderPrintRequest
 
 logger = logging.getLogger(__name__)
 
@@ -99,4 +105,24 @@ def print_consignment(data) -> Dict[str, Any]:
         "message": print_message,
         "printer_name": settings.PRINTER_NAME,
         "windows_print_mode": settings.WINDOWS_PRINT_MODE,
+    }
+
+
+def print_order_ticket(data: OrderPrintRequest) -> Dict[str, Any]:
+    timestamp = datetime.now().isoformat()
+
+    order_lines = build_order_number_ticket(data)
+    kitchen_lines = build_kitchen_ticket(data)
+
+    printer = EscposPrinter()
+    printer.print_lines(order_lines)
+    time.sleep(5)
+    printer.print_lines(kitchen_lines)
+
+    return {
+        "status": "printed",
+        "printer_mode": "escpos",
+        "order_id": data.orderId,
+        "timestamp": timestamp,
+        "copies": 2,
     }

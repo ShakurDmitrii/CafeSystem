@@ -9,7 +9,10 @@ import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ProductService {
@@ -18,13 +21,17 @@ public class ProductService {
     private static final Field<String> PRODUCT_BASE_UNIT = DSL.field(DSL.name("base_unit"), String.class);
     private static final Field<BigDecimal> PRODUCT_UNIT_FACTOR = DSL.field(DSL.name("unit_factor"), BigDecimal.class);
     private volatile Boolean unitColumnsPresent = null;
+    private static final Field<Integer> MOVEMENT_PRODUCT_ID = DSL.field(DSL.name("product_id"), Integer.class);
+    private static final Field<BigDecimal> MOVEMENT_QTY_IN = DSL.field(DSL.name("qty_in"), BigDecimal.class);
+    private static final Field<BigDecimal> MOVEMENT_AMOUNT = DSL.field(DSL.name("amount"), BigDecimal.class);
+    private static final org.jooq.Table<?> STOCK_MOVEMENTS = DSL.table(DSL.name("sales", "stock_movements"));
 
     public ProductService(DSLContext dsl){this.dsl = dsl;}
 
 
     public List<ProductDTO> getProducts() {
         if (!hasUnitColumns()) {
-            return dsl.selectFrom(Product.PRODUCT)
+            List<ProductDTO> result = dsl.selectFrom(Product.PRODUCT)
                     .fetch()
                     .stream()
                     .map(record -> {
@@ -40,8 +47,9 @@ public class ProductService {
                         dto.unitFactor = BigDecimal.ONE;
                         return dto;
                     }).toList();
+            return enrichWithAverageStockPrice(result);
         }
-        return dsl.select(
+        List<ProductDTO> result = dsl.select(
                         Product.PRODUCT.PRODUCTID,
                         Product.PRODUCT.SUPPLIERID,
                         Product.PRODUCT.PRODUCTNAME,
@@ -57,10 +65,11 @@ public class ProductService {
                 .stream()
                 .map(this::toDto)
                 .toList();
+        return enrichWithAverageStockPrice(result);
     }
     public List<ProductDTO> getAllFavoriteSupplierProduct(int supplierId){
         if (!hasUnitColumns()) {
-            return dsl.selectFrom(Product.PRODUCT)
+            List<ProductDTO> result = dsl.selectFrom(Product.PRODUCT)
                     .where(Product.PRODUCT.SUPPLIERID.eq(supplierId))
                     .and(Product.PRODUCT.ISFAVOURITE.eq(true))
                     .fetch()
@@ -78,8 +87,9 @@ public class ProductService {
                         dto.unitFactor = BigDecimal.ONE;
                         return dto;
                     }).toList();
+            return enrichWithAverageStockPrice(result);
         }
-        return dsl.select(
+        List<ProductDTO> result = dsl.select(
                         Product.PRODUCT.PRODUCTID,
                         Product.PRODUCT.SUPPLIERID,
                         Product.PRODUCT.PRODUCTNAME,
@@ -97,11 +107,12 @@ public class ProductService {
                 .stream()
                 .map(this::toDto)
                 .toList();
+        return enrichWithAverageStockPrice(result);
 
     }
     public List<ProductDTO> getAllSupplierProducts(int id){
         if (!hasUnitColumns()) {
-            return dsl.selectFrom(Product.PRODUCT)
+            List<ProductDTO> result = dsl.selectFrom(Product.PRODUCT)
                     .where(Product.PRODUCT.SUPPLIERID.eq(id))
                     .fetch()
                     .stream()
@@ -118,8 +129,9 @@ public class ProductService {
                         dto.unitFactor = BigDecimal.ONE;
                         return dto;
                     }).toList();
+            return enrichWithAverageStockPrice(result);
         }
-        return dsl.select(
+        List<ProductDTO> result = dsl.select(
                         Product.PRODUCT.PRODUCTID,
                         Product.PRODUCT.SUPPLIERID,
                         Product.PRODUCT.PRODUCTNAME,
@@ -136,27 +148,30 @@ public class ProductService {
                 .stream()
                 .map(this::toDto)
                 .toList();
+        return enrichWithAverageStockPrice(result);
     }
     public ProductDTO getProductById(int id) {
         if (!hasUnitColumns()) {
-            return dsl.selectFrom(Product.PRODUCT)
+            ProductDTO dto = dsl.selectFrom(Product.PRODUCT)
                     .where(Product.PRODUCT.PRODUCTID.eq(id))
                     .fetchOptional()
                     .map(record -> {
-                        ProductDTO dto = new ProductDTO();
-                        dto.productId = record.getProductid();
-                        dto.productName = record.getProductname();
-                        dto.productPrice = record.getProductprice();
-                        dto.supplierId = record.getSupplierid();
-                        dto.waste = record.getWaste();
-                        dto.isFavorite = record.getIsfavourite();
-                        dto.unit = "g";
-                        dto.baseUnit = "g";
-                        dto.unitFactor = BigDecimal.ONE;
-                        return dto;
+                        ProductDTO mappedDto = new ProductDTO();
+                        mappedDto.productId = record.getProductid();
+                        mappedDto.productName = record.getProductname();
+                        mappedDto.productPrice = record.getProductprice();
+                        mappedDto.supplierId = record.getSupplierid();
+                        mappedDto.waste = record.getWaste();
+                        mappedDto.isFavorite = record.getIsfavourite();
+                        mappedDto.unit = "g";
+                        mappedDto.baseUnit = "g";
+                        mappedDto.unitFactor = BigDecimal.ONE;
+                        return mappedDto;
                     }).orElseThrow();
+            dto.setAverageStockPrice(loadAverageStockPriceMap().get(dto.getProductId()));
+            return dto;
         }
-        return dsl.select(
+        ProductDTO dto = dsl.select(
                         Product.PRODUCT.PRODUCTID,
                         Product.PRODUCT.SUPPLIERID,
                         Product.PRODUCT.PRODUCTNAME,
@@ -171,6 +186,8 @@ public class ProductService {
                 .where(Product.PRODUCT.PRODUCTID.eq(id))
                 .fetchOptional()
                 .map(this::toDto).orElseThrow();
+        dto.setAverageStockPrice(loadAverageStockPriceMap().get(dto.getProductId()));
+        return dto;
     }
     public ProductDTO createProduct(ProductDTO dto) {
         String unit = dto.unit != null && !dto.unit.isBlank() ? dto.unit.trim().toLowerCase() : "g";
@@ -234,6 +251,34 @@ public class ProductService {
         dto.baseUnit = record.get(PRODUCT_BASE_UNIT) != null ? record.get(PRODUCT_BASE_UNIT) : dto.unit;
         dto.unitFactor = record.get(PRODUCT_UNIT_FACTOR) != null ? record.get(PRODUCT_UNIT_FACTOR) : BigDecimal.ONE;
         return dto;
+    }
+
+    private List<ProductDTO> enrichWithAverageStockPrice(List<ProductDTO> products) {
+        Map<Integer, BigDecimal> avgByProduct = loadAverageStockPriceMap();
+        for (ProductDTO dto : products) {
+            dto.setAverageStockPrice(avgByProduct.get(dto.getProductId()));
+        }
+        return products;
+    }
+
+    private Map<Integer, BigDecimal> loadAverageStockPriceMap() {
+        var rows = dsl.select(MOVEMENT_PRODUCT_ID, DSL.sum(MOVEMENT_QTY_IN), DSL.sum(MOVEMENT_AMOUNT))
+                .from(STOCK_MOVEMENTS)
+                .where(MOVEMENT_QTY_IN.gt(BigDecimal.ZERO))
+                .groupBy(MOVEMENT_PRODUCT_ID)
+                .fetch();
+
+        Map<Integer, BigDecimal> result = new HashMap<>();
+        for (var r : rows) {
+            Integer productId = r.get(MOVEMENT_PRODUCT_ID);
+            BigDecimal qtyIn = r.get(DSL.sum(MOVEMENT_QTY_IN));
+            BigDecimal amount = r.get(DSL.sum(MOVEMENT_AMOUNT));
+            if (productId == null || qtyIn == null || amount == null || qtyIn.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            result.put(productId, amount.divide(qtyIn, 4, RoundingMode.HALF_UP));
+        }
+        return result;
     }
 
 }

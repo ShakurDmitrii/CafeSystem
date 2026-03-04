@@ -25,6 +25,7 @@ class JavaApiClient:
         self,
         endpoint: str,
         params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
         timeout: int = 10
     ) -> Optional[Any]:
         if not self.session:
@@ -33,7 +34,12 @@ class JavaApiClient:
         url = f"{self.base_url}{endpoint}"
 
         try:
-            async with self.session.get(url, params=params, timeout=timeout) as response:
+            async with self.session.get(
+                url,
+                params=params,
+                headers=headers,
+                timeout=timeout
+            ) as response:
                 if response.status == 200:
                     return await response.json()
 

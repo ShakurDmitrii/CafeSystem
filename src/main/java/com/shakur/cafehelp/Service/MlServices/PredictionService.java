@@ -7,8 +7,14 @@ import com.shakur.cafehelp.DTO.TechProductDTO;
 import com.shakur.cafehelp.Service.DishService;
 import com.shakur.cafehelp.Service.ProductService;
 import com.shakur.cafehelp.Service.TechProductService;
+import jooqdata.tables.Dish;
+import jooqdata.tables.Product;
+import jooqdata.tables.Techproduct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jooq.DSLContext;
+import org.jooq.Field;
+import org.jooq.Record4;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -20,12 +26,19 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.Locale;
+
+import static org.jooq.impl.DSL.countDistinct;
+import static org.jooq.impl.DSL.lower;
+import static org.jooq.impl.DSL.when;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class PredictionService {
+    private static final double DUPLICATE_SIMILARITY_THRESHOLD = 0.90;
 
     private final RestTemplate restTemplate;
     private final SalesService salesService;
@@ -34,6 +47,7 @@ public class PredictionService {
     private final DishService dishService;
     private final ProductService productService;
     private final TechProductService techProductService;
+    private final DSLContext dsl;
 
     @Value("${ml.service.url:http://localhost:8000}")
     private String mlServiceUrl;
@@ -201,6 +215,22 @@ public class PredictionService {
             throw new IllegalArgumentException("techCard обязателен");
         }
 
+        Set<String> requestedIngredients = new HashSet<>();
+        for (SaveGeneratedDishRequestDTO.TechCardItemDTO row : rows) {
+            if (row == null || row.getIngredientName() == null) continue;
+            String normalized = row.getIngredientName().trim().toLowerCase(Locale.ROOT);
+            if (!normalized.isBlank()) requestedIngredients.add(normalized);
+        }
+
+        DuplicateCheckResult duplicate = findDuplicateDishByIngredients(requestedIngredients);
+        if (duplicate != null) {
+            throw new IllegalArgumentException(
+                    "Состав слишком похож на существующее блюдо: ID=" + duplicate.dishId()
+                            + ", name=\"" + duplicate.dishName() + "\""
+                            + ", similarity=" + String.format(Locale.ROOT, "%.3f", duplicate.similarity())
+            );
+        }
+
         Map<String, ProductDTO> productByName = new HashMap<>();
         for (ProductDTO product : productService.getProducts()) {
             if (product.getProductName() == null) continue;
@@ -256,5 +286,57 @@ public class PredictionService {
                 .missingIngredients(missingIngredients)
                 .status(createdRows > 0 ? "saved" : "saved_without_tech_rows")
                 .build();
+    }
+
+    private DuplicateCheckResult findDuplicateDishByIngredients(Set<String> requestedIngredients) {
+        if (requestedIngredients == null || requestedIngredients.isEmpty()) {
+            return null;
+        }
+
+        Dish dish = Dish.DISH;
+        Techproduct tech = Techproduct.TECHPRODUCT;
+        Product product = Product.PRODUCT;
+
+        Field<String> productNameLower = lower(product.PRODUCTNAME);
+        Field<Integer> dishIngredientsCount = countDistinct(productNameLower).as("dish_ingredients_count");
+        Field<Integer> intersectionCount = countDistinct(
+                when(productNameLower.in(requestedIngredients), productNameLower)
+        ).as("intersection_count");
+
+        List<Record4<Integer, String, Integer, Integer>> rows = dsl
+                .select(dish.DISHID, dish.DISHNAME, dishIngredientsCount, intersectionCount)
+                .from(dish)
+                .join(tech).on(tech.DISHID.eq(dish.DISHID))
+                .join(product).on(product.PRODUCTID.eq(tech.PRODUCTID))
+                .groupBy(dish.DISHID, dish.DISHNAME)
+                .having(intersectionCount.gt(0))
+                .fetch();
+
+        int requestedCount = requestedIngredients.size();
+        DuplicateCheckResult best = null;
+
+        for (Record4<Integer, String, Integer, Integer> row : rows) {
+            int dishCount = row.get(dishIngredientsCount) != null ? row.get(dishIngredientsCount) : 0;
+            int intersection = row.get(intersectionCount) != null ? row.get(intersectionCount) : 0;
+            int union = requestedCount + dishCount - intersection;
+            if (union <= 0) continue;
+
+            double similarity = (double) intersection / union;
+            if (similarity >= DUPLICATE_SIMILARITY_THRESHOLD) {
+                DuplicateCheckResult candidate = new DuplicateCheckResult(
+                        row.get(dish.DISHID),
+                        row.get(dish.DISHNAME),
+                        similarity
+                );
+                if (best == null || candidate.similarity() > best.similarity()) {
+                    best = candidate;
+                }
+            }
+        }
+
+        return best;
+    }
+
+    private record DuplicateCheckResult(Integer dishId, String dishName, double similarity) {
     }
 }

@@ -55,11 +55,14 @@ const getDebtStatus = (debtPaymentDate) => {
     }
 };
 
-export default function OrderCard({ order, markOrderReady }) {
+export default function OrderCard({ order, markOrderReady, onPrintKitchen, onUpdatePayment }) {
     const [items, setItems] = useState([]);
     const [secondsPassed, setSecondsPassed] = useState(0);
     const [isDelayed, setIsDelayed] = useState(false);
     const [delayMinutes, setDelayMinutes] = useState(order.timeDelay || 0);
+    const [isPrinting, setIsPrinting] = useState(false);
+    const [printMessage, setPrintMessage] = useState(null);
+    const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
     const timerRef = useRef(null);
     const startTimeRef = useRef(Date.now());
 
@@ -81,16 +84,30 @@ export default function OrderCard({ order, markOrderReady }) {
     // Функция обновления задержки на сервере
     const updateDelayTime = async (orderId, delayMinutes) => {
         try {
-            await fetch(`http://localhost:8080/api/orders/${orderId}/timeDelay`, {
+            const response = await fetch(`http://localhost:8080/api/orders/${orderId}/timeDelay`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ delayMinutes })
             });
-            console.log(`Обновлена задержка для заказа ${orderId}: ${delayMinutes} мин`);
+            if (!response.ok) {
+                let details = "";
+                try {
+                    details = await response.text();
+                } catch {
+                    details = "";
+                }
+                throw new Error(`HTTP ${response.status}${details ? `: ${details}` : ""}`);
+            }
+            console.log(`Задержка сохранена для заказа ${orderId}: ${delayMinutes} мин`);
         } catch (error) {
-            console.error("Ошибка при обновлении задержки:", error);
+            console.error("Ошибка при сохранении задержки на сервере:", error);
         }
     };
+
+    // Держим локальное состояние в синхронизации с тем, что приходит с сервера.
+    useEffect(() => {
+        setDelayMinutes(Number(order.timeDelay || 0));
+    }, [order.orderId, order.timeDelay]);
 
     // Таймер приготовления
     useEffect(() => {
@@ -166,14 +183,30 @@ export default function OrderCard({ order, markOrderReady }) {
         };
     };
 
+    const getDisplayDelayParts = () => {
+        const storedMinutes = Math.max(0, Math.floor(Number(delayMinutes || 0)));
+        const live = getDelayParts();
+        if (isDelayed && !order.status) {
+            return {
+                minutes: Math.max(storedMinutes, live.minutes),
+                seconds: live.seconds
+            };
+        }
+        return {
+            minutes: storedMinutes,
+            seconds: storedMinutes > 0 ? 0 : live.seconds
+        };
+    };
+
     const formatTime = () => {
         if (!order.time) return null;
 
         const elapsedMinutes = Math.floor(secondsPassed / 60);
         const elapsedSeconds = secondsPassed % 60;
+        const delay = getDisplayDelayParts();
 
-        if (isDelayed) {
-            const { minutes, seconds } = getDelayParts();
+        if (isDelayed || delay.minutes > 0) {
+            const { minutes, seconds } = delay;
             return (
                 <div style={{
                     color: "#ff0000",
@@ -223,7 +256,17 @@ export default function OrderCard({ order, markOrderReady }) {
 
     // Определяем стиль карточки
     const getCardStyle = () => {
+        const paymentType = (order.paymentType || "").toLowerCase();
+        const unpaid = !(order.paid === true || paymentType === "cash" || paymentType === "transfer");
+
         if (order.status) {
+            if (unpaid) {
+                return {
+                    borderLeft: "4px solid #f59e0b",
+                    backgroundColor: "#fffbeb",
+                    position: "relative"
+                };
+            }
             return {
                 borderLeft: "4px solid #4caf50",
                 backgroundColor: "#e8f5e9",
@@ -235,6 +278,13 @@ export default function OrderCard({ order, markOrderReady }) {
                 borderLeft: "4px solid #f44336",
                 backgroundColor: "#ffebee",
                 animation: "pulse 1.5s infinite",
+                position: "relative"
+            };
+        }
+        if (unpaid) {
+            return {
+                borderLeft: "4px solid #f59e0b",
+                backgroundColor: "#fffbeb",
                 position: "relative"
             };
         }
@@ -269,6 +319,42 @@ export default function OrderCard({ order, markOrderReady }) {
                 };
             default:
                 return {};
+        }
+    };
+
+    const handlePrintKitchen = async () => {
+        if (!onPrintKitchen || isPrinting) return;
+        setIsPrinting(true);
+        setPrintMessage(null);
+        try {
+            await onPrintKitchen(order);
+            setPrintMessage({ type: "success", text: "Чек отправлен на печать" });
+        } catch (e) {
+            setPrintMessage({ type: "error", text: e.message || "Ошибка печати чека" });
+        } finally {
+            setIsPrinting(false);
+        }
+    };
+
+    const paymentType = (order.paymentType || "").toLowerCase();
+    const isPaid = order.paid === true || paymentType === "cash" || paymentType === "transfer";
+    const paymentText = paymentType === "cash"
+        ? "Наличка"
+        : paymentType === "transfer"
+            ? "Перевод"
+            : "Не оплачен";
+
+    const handleMarkPaid = async (nextType) => {
+        if (!onUpdatePayment || isUpdatingPayment) return;
+        setIsUpdatingPayment(true);
+        setPrintMessage(null);
+        try {
+            await onUpdatePayment(order.orderId, nextType);
+            setPrintMessage({ type: "success", text: `Оплата отмечена: ${nextType === "cash" ? "наличка" : "перевод"}` });
+        } catch (e) {
+            setPrintMessage({ type: "error", text: e.message || "Ошибка обновления оплаты" });
+        } finally {
+            setIsUpdatingPayment(false);
         }
     };
 
@@ -343,8 +429,8 @@ export default function OrderCard({ order, markOrderReady }) {
                 {/* Информация о времени */}
                 <div style={{ fontSize: "0.9em", color: "#666", marginBottom: "10px" }}>
                     Время приготовления: {order.time || 0} мин
-                    {delayMinutes > 0 && (() => {
-                        const { minutes, seconds } = getDelayParts();
+                    {Number(delayMinutes || 0) > 0 && (() => {
+                        const { minutes, seconds } = getDisplayDelayParts();
                         return ` | Задержка: ${minutes.toString().padStart(2, "0")}:${seconds
                             .toString()
                             .padStart(2, "0")} (${minutes} мин)`;
@@ -391,6 +477,7 @@ export default function OrderCard({ order, markOrderReady }) {
                 }}>
                     <span>Тип: {order.type ? "🚚 Доставка" : "🏠 По месту"}</span>
                     <span>Статус: {order.status ? "✅ ГОТОВ" : "👨‍🍳 ГОТОВИТСЯ"}</span>
+                    <span>Оплата: {isPaid ? `✅ ${paymentText}` : "❗ Не оплачен"}</span>
                 </div>
 
                 {/* Информация о клиенте если есть */}
@@ -408,17 +495,62 @@ export default function OrderCard({ order, markOrderReady }) {
                 )}
             </div>
 
-            {!order.status && (
+            <div style={{ display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
                 <button
-                    className={`${styles.btn} ${styles.primary}`}
-                    onClick={() => markOrderReady(order.orderId)}
+                    className={`${styles.btn} ${styles.secondary}`}
+                    onClick={handlePrintKitchen}
+                    disabled={isPrinting}
+                    style={{ minWidth: "140px" }}
+                >
+                    {isPrinting ? "Печать..." : "Печать чека"}
+                </button>
+
+                {!order.status && (
+                    <button
+                        className={`${styles.btn} ${styles.primary}`}
+                        onClick={() => markOrderReady(order.orderId)}
+                        style={{ minWidth: "120px" }}
+                    >
+                        ГОТОВО
+                    </button>
+                )}
+
+                {!isPaid && (
+                    <>
+                        <button
+                            className={`${styles.btn} ${styles.primary}`}
+                            onClick={() => handleMarkPaid("cash")}
+                            disabled={isUpdatingPayment}
+                            style={{ minWidth: "150px" }}
+                        >
+                            {isUpdatingPayment ? "Обновление..." : "Оплатил наличкой"}
+                        </button>
+                        <button
+                            className={`${styles.btn} ${styles.secondary}`}
+                            onClick={() => handleMarkPaid("transfer")}
+                            disabled={isUpdatingPayment}
+                            style={{ minWidth: "150px" }}
+                        >
+                            {isUpdatingPayment ? "Обновление..." : "Оплатил переводом"}
+                        </button>
+                    </>
+                )}
+            </div>
+
+            {printMessage && (
+                <div
                     style={{
-                        marginTop: "10px",
-                        alignSelf: "flex-end"
+                        marginTop: "8px",
+                        fontSize: "12px",
+                        color: printMessage.type === "success" ? "#166534" : "#991b1b",
+                        background: printMessage.type === "success" ? "#dcfce7" : "#fee2e2",
+                        border: `1px solid ${printMessage.type === "success" ? "#bbf7d0" : "#fecaca"}`,
+                        borderRadius: "6px",
+                        padding: "6px 8px"
                     }}
                 >
-                    ГОТОВО
-                </button>
+                    {printMessage.text}
+                </div>
             )}
 
             {/* Добавить CSS анимацию в стили */}

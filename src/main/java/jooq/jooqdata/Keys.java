@@ -79,7 +79,6 @@ public class Keys {
     public static final UniqueKey<ProductRecord> PRODUCT_PK = Internal.createUniqueKey(Product.PRODUCT, DSL.name("product_pk"), new TableField[] { Product.PRODUCT.PRODUCTID }, true);
     public static final UniqueKey<ProductwarehouseRecord> PRODUCTWAREHOUSE_PK = Internal.createUniqueKey(Productwarehouse.PRODUCTWAREHOUSE, DSL.name("productwarehouse_pk"), new TableField[] { Productwarehouse.PRODUCTWAREHOUSE.PRODUCTWAREHOUSEID }, true);
     public static final UniqueKey<ShiftRecord> SHIFT_PK = Internal.createUniqueKey(Shift.SHIFT, DSL.name("shift_pk"), new TableField[] { Shift.SHIFT.ID }, true);
-    public static final UniqueKey<ShiftRecord> SHIFT_UNIQUE = Internal.createUniqueKey(Shift.SHIFT, DSL.name("shift_unique"), new TableField[] { Shift.SHIFT.PERSONCODE }, true);
     public static final UniqueKey<ShiftpersonRecord> SHIFTPERSON_PK = Internal.createUniqueKey(Shiftperson.SHIFTPERSON, DSL.name("shiftperson_pk"), new TableField[] { Shiftperson.SHIFTPERSON.SHIFTPERSONID }, true);
     public static final UniqueKey<StockMovementsRecord> STOCK_MOVEMENTS_PK = Internal.createUniqueKey(StockMovements.STOCK_MOVEMENTS, DSL.name("stock_movements_pk"), new TableField[] { StockMovements.STOCK_MOVEMENTS.ID }, true);
     public static final UniqueKey<SupplierRecord> SUPPLIER_PK = Internal.createUniqueKey(Supplier.SUPPLIER, DSL.name("supplier_pk"), new TableField[] { Supplier.SUPPLIER.SUPPLIERID }, true);
