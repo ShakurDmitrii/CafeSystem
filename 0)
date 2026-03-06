@@ -1,0 +1,1 @@
+do $$ begin if not exists (select 1 from pg_constraint where conname='product_unit_factor_positive_chk') then alter table sales.product add constraint product_unit_factor_positive_chk check (unit_factor ; end if; end $$; 
