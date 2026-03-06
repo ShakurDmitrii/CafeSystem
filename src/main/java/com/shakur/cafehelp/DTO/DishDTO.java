@@ -9,6 +9,7 @@ public class DishDTO {
     public Double price;
     public Integer techProduct;
     public int qty;
+    public String imageUrl;
 
     public String getCategory() {
         return category;
@@ -72,6 +73,14 @@ public class DishDTO {
 
     public void setPrice(Double price) {
         this.price = price;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
     }
 
 }

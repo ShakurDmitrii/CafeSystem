@@ -55,12 +55,19 @@ const getDebtStatus = (debtPaymentDate) => {
     }
 };
 
-export default function OrderCard({ order, markOrderReady, onPrintKitchen, onUpdatePayment }) {
+export default function OrderCard({
+    order,
+    markOrderReady,
+    onPrintOrderNumber,
+    onPrintOrderDetails,
+    onUpdatePayment
+}) {
     const [items, setItems] = useState([]);
     const [secondsPassed, setSecondsPassed] = useState(0);
     const [isDelayed, setIsDelayed] = useState(false);
     const [delayMinutes, setDelayMinutes] = useState(order.timeDelay || 0);
-    const [isPrinting, setIsPrinting] = useState(false);
+    const [isPrintingNumber, setIsPrintingNumber] = useState(false);
+    const [isPrintingDetails, setIsPrintingDetails] = useState(false);
     const [printMessage, setPrintMessage] = useState(null);
     const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
     const timerRef = useRef(null);
@@ -109,18 +116,32 @@ export default function OrderCard({ order, markOrderReady, onPrintKitchen, onUpd
         setDelayMinutes(Number(order.timeDelay || 0));
     }, [order.orderId, order.timeDelay]);
 
+    const getOrderStartTimestamp = () => {
+        const rawDate = order.created_at || order.createdAt || null;
+        if (!rawDate) return Date.now();
+
+        // Backend sends LocalDateTime (no timezone) from Docker/UTC.
+        // Treat no-zone timestamps as UTC to avoid +3h false delay in browser.
+        const raw = String(rawDate).trim();
+        const hasTimezone = /[zZ]|[+\-]\d{2}:\d{2}$/.test(raw);
+        const normalized = raw
+            .replace(/\.(\d{3})\d+/, ".$1")
+            .replace(" ", "T");
+        const iso = hasTimezone ? normalized : `${normalized}Z`;
+        const parsed = new Date(iso).getTime();
+        return Number.isFinite(parsed) ? parsed : Date.now();
+    };
+
     // Таймер приготовления
     useEffect(() => {
-        if (order.status) return; // если заказ готов, останавливаем таймер
-
-        // Пытаемся восстановить время из localStorage
-        const savedTime = localStorage.getItem(`order_${order.orderId}_start`);
-        if (savedTime) {
-            startTimeRef.current = parseInt(savedTime);
-        } else {
-            startTimeRef.current = Date.now();
-            localStorage.setItem(`order_${order.orderId}_start`, startTimeRef.current.toString());
+        if (order.status) {
+            setSecondsPassed(0);
+            setIsDelayed(false);
+            return; // если заказ готов, останавливаем таймер
         }
+
+        // Берем старт строго из даты создания заказа на сервере
+        startTimeRef.current = getOrderStartTimestamp();
 
         // Рассчитываем сколько секунд уже прошло
         const initialElapsedSeconds = Math.floor((Date.now() - startTimeRef.current) / 1000);
@@ -130,11 +151,13 @@ export default function OrderCard({ order, markOrderReady, onPrintKitchen, onUpd
         const initialMinutes = Math.floor(initialElapsedSeconds / 60);
         if (order.time && initialMinutes >= order.time) {
             setIsDelayed(true);
-            const initialDelay = initialMinutes - order.time;
+            const initialDelay = Math.max(0, initialMinutes - Math.floor(order.time));
             setDelayMinutes(initialDelay);
 
             // Обновляем задержку на сервере
             updateDelayTime(order.orderId, initialDelay);
+        } else {
+            setIsDelayed(false);
         }
 
         // Запуск таймера
@@ -148,7 +171,7 @@ export default function OrderCard({ order, markOrderReady, onPrintKitchen, onUpd
                 clearInterval(timerRef.current);
             }
         };
-    }, [order.status]);
+    }, [order.orderId, order.status, order.time, order.created_at, order.createdAt]);
 
     // Проверка задержки
     useEffect(() => {
@@ -163,7 +186,7 @@ export default function OrderCard({ order, markOrderReady, onPrintKitchen, onUpd
 
         // Расчет задержки
         if (isDelayed) {
-            const currentDelay = elapsedMinutes - order.time;
+            const currentDelay = Math.max(0, elapsedMinutes - Math.floor(order.time));
             if (currentDelay > delayMinutes) {
                 setDelayMinutes(currentDelay);
 
@@ -186,26 +209,20 @@ export default function OrderCard({ order, markOrderReady, onPrintKitchen, onUpd
     const getDisplayDelayParts = () => {
         const storedMinutes = Math.max(0, Math.floor(Number(delayMinutes || 0)));
         const live = getDelayParts();
-        if (isDelayed && !order.status) {
-            return {
-                minutes: Math.max(storedMinutes, live.minutes),
-                seconds: live.seconds
-            };
+        // Для активного заказа всегда показываем "живую" задержку,
+        // чтобы старые/битые сохраненные значения не ломали отображение.
+        if (!order.status) {
+            return live;
         }
-        return {
-            minutes: storedMinutes,
-            seconds: storedMinutes > 0 ? 0 : live.seconds
-        };
+        return { minutes: storedMinutes, seconds: storedMinutes > 0 ? 0 : live.seconds };
     };
 
     const formatTime = () => {
         if (!order.time) return null;
 
-        const elapsedMinutes = Math.floor(secondsPassed / 60);
-        const elapsedSeconds = secondsPassed % 60;
         const delay = getDisplayDelayParts();
 
-        if (isDelayed || delay.minutes > 0) {
+        if (delay.minutes > 0 || (isDelayed && !order.status)) {
             const { minutes, seconds } = delay;
             return (
                 <div style={{
@@ -221,8 +238,10 @@ export default function OrderCard({ order, markOrderReady, onPrintKitchen, onUpd
                 </div>
             );
         } else {
-            const remainingMinutes = Math.max(0, order.time - elapsedMinutes - (elapsedSeconds > 0 ? 1 : 0));
-            const remainingSeconds = 60 - elapsedSeconds;
+            const totalCookSeconds = Math.max(0, Math.floor(Number(order.time || 0) * 60));
+            const remainingTotalSeconds = Math.max(0, totalCookSeconds - secondsPassed);
+            const remainingMinutes = Math.floor(remainingTotalSeconds / 60);
+            const remainingSeconds = remainingTotalSeconds % 60;
 
             return (
                 <div style={{
@@ -322,17 +341,41 @@ export default function OrderCard({ order, markOrderReady, onPrintKitchen, onUpd
         }
     };
 
-    const handlePrintKitchen = async () => {
-        if (!onPrintKitchen || isPrinting) return;
-        setIsPrinting(true);
+    // Чиним старое некорректное значение задержки, если заказ еще не просрочен.
+    useEffect(() => {
+        if (!order.time || order.status) return;
+        const elapsedMinutes = Math.floor(secondsPassed / 60);
+        if (elapsedMinutes < order.time && Number(delayMinutes || 0) > 0) {
+            setDelayMinutes(0);
+            updateDelayTime(order.orderId, 0);
+        }
+    }, [secondsPassed, order.time, order.status, delayMinutes, order.orderId]);
+
+    const handlePrintNumber = async () => {
+        if (!onPrintOrderNumber || isPrintingNumber) return;
+        setIsPrintingNumber(true);
         setPrintMessage(null);
         try {
-            await onPrintKitchen(order);
-            setPrintMessage({ type: "success", text: "Чек отправлен на печать" });
+            await onPrintOrderNumber(order);
+            setPrintMessage({ type: "success", text: "Номер заказа отправлен на печать" });
         } catch (e) {
-            setPrintMessage({ type: "error", text: e.message || "Ошибка печати чека" });
+            setPrintMessage({ type: "error", text: e.message || "Ошибка печати номера заказа" });
         } finally {
-            setIsPrinting(false);
+            setIsPrintingNumber(false);
+        }
+    };
+
+    const handlePrintDetails = async () => {
+        if (!onPrintOrderDetails || isPrintingDetails) return;
+        setIsPrintingDetails(true);
+        setPrintMessage(null);
+        try {
+            await onPrintOrderDetails(order);
+            setPrintMessage({ type: "success", text: "Чек заказа отправлен на печать" });
+        } catch (e) {
+            setPrintMessage({ type: "error", text: e.message || "Ошибка печати чека заказа" });
+        } finally {
+            setIsPrintingDetails(false);
         }
     };
 
@@ -429,7 +472,7 @@ export default function OrderCard({ order, markOrderReady, onPrintKitchen, onUpd
                 {/* Информация о времени */}
                 <div style={{ fontSize: "0.9em", color: "#666", marginBottom: "10px" }}>
                     Время приготовления: {order.time || 0} мин
-                    {Number(delayMinutes || 0) > 0 && (() => {
+                    {getDisplayDelayParts().minutes > 0 && (() => {
                         const { minutes, seconds } = getDisplayDelayParts();
                         return ` | Задержка: ${minutes.toString().padStart(2, "0")}:${seconds
                             .toString()
@@ -498,11 +541,18 @@ export default function OrderCard({ order, markOrderReady, onPrintKitchen, onUpd
             <div style={{ display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
                 <button
                     className={`${styles.btn} ${styles.secondary}`}
-                    onClick={handlePrintKitchen}
-                    disabled={isPrinting}
+                    onClick={handlePrintNumber}
                     style={{ minWidth: "140px" }}
                 >
-                    {isPrinting ? "Печать..." : "Печать чека"}
+                    {isPrintingNumber ? "Печать..." : "Печать номера"}
+                </button>
+
+                <button
+                    className={`${styles.btn} ${styles.secondary}`}
+                    onClick={handlePrintDetails}
+                    style={{ minWidth: "140px" }}
+                >
+                    {isPrintingDetails ? "Печать..." : "Печать заказа"}
                 </button>
 
                 {!order.status && (

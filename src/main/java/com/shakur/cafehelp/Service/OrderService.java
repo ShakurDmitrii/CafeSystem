@@ -122,6 +122,7 @@ public class OrderService {
                     order.type = record.get(ORDER.TYPE);
                     order.time = record.get(ORDER.TIME);
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
+                    order.created_at = record.get(ORDER.CREATED_AT);
                     order.deliveryPhone = record.get(DELIVERY_PHONE_FIELD);
                     order.deliveryAddress = record.get(DELIVERY_ADDRESS_FIELD);
                     order.paymentType = record.get(PAYMENT_TYPE_FIELD);
@@ -145,6 +146,7 @@ public class OrderService {
                     order.setType(record.get(ORDER.TYPE));
                     order.setTime(record.get(ORDER.TIME));
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
+                    order.setCreated_at(record.get(ORDER.CREATED_AT));
                     return order;
                 });
     }
@@ -162,6 +164,7 @@ public class OrderService {
                     order.setType(record.get(ORDER.TYPE));
                     order.setTime(record.get(ORDER.TIME));
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
+                    order.setCreated_at(record.get(ORDER.CREATED_AT));
                     return order;
                 });
     }
@@ -180,6 +183,7 @@ public class OrderService {
                     order.setShiftId(record.get(ORDER.SHIFTID));
                     order.setTime(record.get(ORDER.TIME));
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
+                    order.setCreated_at(record.get(ORDER.CREATED_AT));
                     return order;
                 });
     }
@@ -197,6 +201,7 @@ public class OrderService {
                     order.setShiftId(record.get(ORDER.SHIFTID));
                     order.setTime(record.get(ORDER.TIME));
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
+                    order.setCreated_at(record.get(ORDER.CREATED_AT));
                     return order;
                 });
     }
@@ -213,6 +218,7 @@ public class OrderService {
                     order.setShiftId(record.get(ORDER.SHIFTID));
                     order.setTime(record.get(ORDER.TIME));
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
+                    order.setCreated_at(record.get(ORDER.CREATED_AT));
                     return order;
                 });
     }
@@ -233,6 +239,7 @@ public List<OrderDTO> getOrders() {
                     order.setType(record.get(ORDER.TYPE));
                     order.setTime(record.get(ORDER.TIME));
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
+                    order.setCreated_at(record.get(ORDER.CREATED_AT));
                     order.setDeliveryPhone(record.get(DELIVERY_PHONE_FIELD));
                     order.setDeliveryAddress(record.get(DELIVERY_ADDRESS_FIELD));
                     order.setPaymentType(record.get(PAYMENT_TYPE_FIELD));
@@ -250,6 +257,7 @@ public List<OrderDTO> getOrders() {
         order.setShiftId(record.get(ORDER.SHIFTID));
         order.setTime(record.get(ORDER.TIME));
         order.setTimeDelay(record.get(ORDER.TIMEDELAY));
+        order.setCreated_at(record.get(ORDER.CREATED_AT));
         return order;
     }
     public OrderDTO addTimeDelay(int orderId, Double delayMinutes) {

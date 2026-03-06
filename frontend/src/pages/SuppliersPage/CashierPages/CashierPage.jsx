@@ -70,7 +70,13 @@ export default function CashierPage() {
             .catch(e => console.error("Ошибка загрузки сотрудников:", e));
 
         fetch(API_DISHES)
-            .then(r => r.json())
+            .then(async (r) => {
+                if (!r.ok) {
+                    throw new Error(`Не удалось загрузить блюда (${r.status})`);
+                }
+                const text = await r.text();
+                return text ? JSON.parse(text) : [];
+            })
             .then(d => setAllDishes(Array.isArray(d) ? d : []))
             .catch(e => console.error("Ошибка загрузки блюд:", e));
 
@@ -165,7 +171,11 @@ export default function CashierPage() {
     const fetchShifts = async () => {
         try {
             const response = await fetch(API_SHIFTS);
-            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(`Не удалось загрузить смены (${response.status})`);
+            }
+            const text = await response.text();
+            const data = text ? JSON.parse(text) : [];
             setAllShifts(Array.isArray(data) ? data : []);
             return data;
         } catch (e) {
@@ -176,7 +186,13 @@ export default function CashierPage() {
 
     const loadClients = () => {
         fetch(API_CLIENTS)
-            .then(r => r.json())
+            .then(async (r) => {
+                if (!r.ok) {
+                    throw new Error(`Не удалось загрузить клиентов (${r.status})`);
+                }
+                const text = await r.text();
+                return text ? JSON.parse(text) : [];
+            })
             .then(d => setClients(Array.isArray(d) ? d : []))
             .catch(e => console.error("Ошибка загрузки клиентов:", e));
     };
@@ -655,37 +671,120 @@ ${reportText}
         return body;
     };
 
-    const printKitchenOrder = async (order) => {
-        const hasExplicitDeliveryCost =
-            order.type &&
-            order.deliveryCost !== undefined &&
-            order.deliveryCost !== null &&
-            order.deliveryCost !== "";
+    const formatTicketMoney = (value) => {
+        const num = Number(value || 0);
+        const rounded = Math.round((Number.isFinite(num) ? num : 0) * 100) / 100;
+        if (Math.abs(rounded) < 0.005) return "0";
+        return rounded.toFixed(2).replace(/\.?0+$/, "");
+    };
 
-        const res = await fetch(`${API_ORDERS}/${order.orderId}/print-kitchen`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                paymentType: order.paymentType || "cash",
-                // If delivery cost is unknown on frontend (after reload), send null
-                // so backend computes it from order total - items total.
-                deliveryCost: hasExplicitDeliveryCost ? Number(order.deliveryCost) : null,
-                deliveryPhone: order.type ? (order.deliveryPhone || order.clientPhone || "") : "",
-                deliveryAddress: order.type ? (order.deliveryAddress || "") : ""
-            })
+    const escapeHtml = (value) => String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
+    const buildOrderNumberTicketLines = (orderId) => ([
+        `ЗАКАЗ №${orderId}`,
+        "",
+        "",
+        "",
+        "",
+        ""
+    ]);
+
+    const buildKitchenTicketLines = (order, items) => {
+        const lines = [];
+        lines.push(`ЗАКАЗ НА КУХНЮ №${order.orderId}`);
+        if (order.created_at || order.createdAt) {
+            lines.push(`Время: ${String(order.created_at || order.createdAt)}`);
+        }
+        lines.push("-".repeat(32));
+
+        items.forEach((item) => {
+            const qty = Number(item.qty || 0);
+            const price = Number(item.price || 0);
+            const sum = qty * price;
+            lines.push(String(item.dishName || "Позиция"));
+            lines.push(`${qty} x ${formatTicketMoney(price)} = ${formatTicketMoney(sum)} ₽`);
         });
 
-        let body = null;
-        try {
-            body = await res.json();
-        } catch {
-            body = null;
+        lines.push("-".repeat(32));
+        lines.push(`ИТОГО: ${formatTicketMoney(order.amount)} ₽`);
+        lines.push(order.type ? "ТИП: ДОСТАВКА" : "ТИП: В ЗАЛЕ");
+        if (order.type) {
+            lines.push(`ДОСТАВКА: ${formatTicketMoney(order.deliveryCost || 0)} ₽`);
+            if (order.deliveryPhone || order.clientPhone) lines.push(`ТЕЛЕФОН: ${order.deliveryPhone || order.clientPhone}`);
+            if (order.deliveryAddress) lines.push(`АДРЕС: ${order.deliveryAddress}`);
         }
+        const paymentRaw = (order.paymentType || "").toLowerCase();
+        const paymentLabel = paymentRaw === "cash"
+            ? "НАЛИЧКА"
+            : paymentRaw === "transfer"
+                ? "ПЕРЕВОД"
+                : "НЕ ОПЛАЧЕНО";
+        lines.push(`ОПЛАТА: ${paymentLabel}`);
+        return lines;
+    };
 
-        if (!res.ok) {
-            throw new Error(body?.message || `Ошибка печати (${res.status})`);
+    const printLinesInWindow = (title, lines, style = {}) => {
+        const fontSize = style.fontSize || 18;
+        const fontWeight = style.fontWeight || 700;
+        const align = style.align || "left";
+        const lineHeight = style.lineHeight || 1.35;
+        const padding = style.padding || 12;
+
+        const html = `
+            <html>
+                <head>
+                    <meta charset="UTF-8" />
+                    <title>${escapeHtml(title)}</title>
+                </head>
+                <body style="font-family:'Courier New', monospace; padding:${padding}px; max-width:420px;">
+                    <pre style="margin:0; white-space:pre-wrap; font-size:${fontSize}px; font-weight:${fontWeight}; line-height:${lineHeight}; text-align:${align};">${escapeHtml(lines.join("\n"))}</pre>
+                </body>
+            </html>
+        `;
+
+        const w = window.open("", "_blank", "width=500,height=800");
+        if (!w) {
+            throw new Error("Не удалось открыть окно печати");
         }
-        return body;
+        w.document.write(html);
+        w.document.close();
+        w.focus();
+        w.print();
+    };
+
+    const printOrderNumberTicket = async (order) => {
+        const title = `Чек заказа №${order.orderId}`;
+        const numberLines = buildOrderNumberTicketLines(order.orderId);
+        printLinesInWindow(`${title} - Номер`, numberLines, {
+            fontSize: 44,
+            fontWeight: 800,
+            align: "center",
+            lineHeight: 1.1,
+            padding: 10
+        });
+        return { status: "order_number_printed_only" };
+    };
+
+    const printOrderDetailsTicket = async (order) => {
+        const dishesRes = await fetch(`http://localhost:8080/api/shifts/getDish/${order.orderId}`);
+        const dishes = dishesRes.ok ? await dishesRes.json() : [];
+        const items = Array.isArray(dishes) ? dishes : [];
+
+        const kitchenLines = buildKitchenTicketLines(order, items).concat(["", ""]);
+        const title = `Чек заказа №${order.orderId}`;
+        printLinesInWindow(`${title} - Кухня`, kitchenLines, {
+            fontSize: 20,
+            fontWeight: 700,
+            align: "left",
+            lineHeight: 1.4,
+            padding: 12
+        });
+        return { status: "order_details_printed_only" };
     };
 
     const filteredClients = clientSearch.trim()
@@ -1307,7 +1406,8 @@ ${reportText}
                                                 key={o.orderId}
                                                 order={o}
                                                 markOrderReady={markOrderReady}
-                                                onPrintKitchen={printKitchenOrder}
+                                                onPrintOrderNumber={printOrderNumberTicket}
+                                                onPrintOrderDetails={printOrderDetailsTicket}
                                                 onUpdatePayment={updateOrderPayment}
                                             />
                                         ))}
@@ -1325,7 +1425,8 @@ ${reportText}
                                                 key={o.orderId}
                                                 order={o}
                                                 markOrderReady={markOrderReady}
-                                                onPrintKitchen={printKitchenOrder}
+                                                onPrintOrderNumber={printOrderNumberTicket}
+                                                onPrintOrderDetails={printOrderDetailsTicket}
                                                 onUpdatePayment={updateOrderPayment}
                                             />
                                         ))}

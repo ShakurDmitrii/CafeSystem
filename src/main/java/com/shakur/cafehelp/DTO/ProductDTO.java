@@ -13,6 +13,7 @@ public class ProductDTO {
     public String baseUnit;
     public BigDecimal unitFactor;
     public BigDecimal averageStockPrice;
+    public String imageUrl;
 
     public int getProductId() {
         return productId;
@@ -92,5 +93,13 @@ public class ProductDTO {
 
     public void setAverageStockPrice(BigDecimal averageStockPrice) {
         this.averageStockPrice = averageStockPrice;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
     }
 }

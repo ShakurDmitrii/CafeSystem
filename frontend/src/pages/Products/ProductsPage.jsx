@@ -3,6 +3,7 @@ import styles from "./ProductsPage.module.css";
 
 const API_PRODUCTS = "http://localhost:8080/api/product";
 const API_SUPPLIERS = "http://localhost:8080/api/supplier";
+const API_UPLOAD = "http://localhost:8080/api/files/upload-image";
 const UNIT_PRESETS = {
     g: { baseUnit: "g", unitFactor: "1" },
     kg: { baseUnit: "g", unitFactor: "1000" },
@@ -16,6 +17,7 @@ export default function ProductsPage() {
     const [suppliers, setSuppliers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [uploadingImage, setUploadingImage] = useState(false);
 
     const [search, setSearch] = useState("");
     const [sortBy, setSortBy] = useState("name_asc");
@@ -28,7 +30,8 @@ export default function ProductsPage() {
         isFavorite: false,
         unit: "g",
         baseUnit: "g",
-        unitFactor: "1"
+        unitFactor: "1",
+        imageUrl: ""
     });
 
     const loadData = async () => {
@@ -123,7 +126,8 @@ export default function ProductsPage() {
             isFavorite: !!form.isFavorite,
             unit: form.unit,
             baseUnit: form.baseUnit,
-            unitFactor: Number(form.unitFactor)
+            unitFactor: Number(form.unitFactor),
+            imageUrl: form.imageUrl || null
         };
 
         try {
@@ -145,11 +149,38 @@ export default function ProductsPage() {
                 isFavorite: false,
                 unit: "g",
                 baseUnit: "g",
-                unitFactor: "1"
+                unitFactor: "1",
+                imageUrl: ""
             });
             await loadData();
         } catch (e2) {
             setError(e2.message || "Ошибка при создании продукта");
+        }
+    };
+
+    const handleUploadImage = async (file) => {
+        if (!file) return;
+        setError("");
+        setUploadingImage(true);
+        try {
+            const body = new FormData();
+            body.append("file", file);
+            body.append("folder", "products");
+
+            const res = await fetch(API_UPLOAD, {
+                method: "POST",
+                body
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data?.message || `Ошибка загрузки изображения (${res.status})`);
+            }
+            const data = await res.json();
+            handleChange("imageUrl", data.url || "");
+        } catch (e) {
+            setError(e.message || "Ошибка загрузки изображения");
+        } finally {
+            setUploadingImage(false);
         }
     };
 
@@ -229,9 +260,20 @@ export default function ProductsPage() {
                         onChange={(e) => handleChange("unitFactor", e.target.value)}
                         required
                     />
+                    <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleUploadImage(e.target.files?.[0])}
+                    />
+                    <div className={styles.uploadStatus}>
+                        {uploadingImage ? "Загрузка изображения..." : (form.imageUrl ? "Изображение загружено" : "Изображение не выбрано")}
+                    </div>
                     <div className={styles.hint}>
                         Подсказка: для `kg` и `l` коэффициент обычно `1000`, для `g`, `ml`, `pcs` — `1`.
                     </div>
+                    {form.imageUrl && (
+                        <img src={form.imageUrl} alt="Превью продукта" className={styles.previewImage} />
+                    )}
                     <label className={styles.checkboxLabel}>
                         <input
                             type="checkbox"
@@ -278,6 +320,7 @@ export default function ProductsPage() {
                             <th>Ед.</th>
                             <th>Base</th>
                             <th>Коэф.</th>
+                            <th>Фото</th>
                             <th>Избранный</th>
                         </tr>
                         </thead>
@@ -292,6 +335,11 @@ export default function ProductsPage() {
                                 <td>{p.unit ?? "-"}</td>
                                 <td>{p.baseUnit ?? "-"}</td>
                                 <td>{Number(p.unitFactor ?? 1).toFixed(4)}</td>
+                                <td>
+                                    {p.imageUrl ? (
+                                        <img src={p.imageUrl} alt={p.productName} className={styles.tableThumb} />
+                                    ) : "—"}
+                                </td>
                                 <td>{p.isFavorite ? "Да" : "Нет"}</td>
                             </tr>
                         ))}

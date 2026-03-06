@@ -20,7 +20,9 @@ public class ProductService {
     private static final Field<String> PRODUCT_UNIT = DSL.field(DSL.name("unit"), String.class);
     private static final Field<String> PRODUCT_BASE_UNIT = DSL.field(DSL.name("base_unit"), String.class);
     private static final Field<BigDecimal> PRODUCT_UNIT_FACTOR = DSL.field(DSL.name("unit_factor"), BigDecimal.class);
+    private static final Field<String> PRODUCT_IMAGE_URL = DSL.field(DSL.name("image_url"), String.class);
     private volatile Boolean unitColumnsPresent = null;
+    private volatile Boolean imageColumnPresent = null;
     private static final Field<Integer> MOVEMENT_PRODUCT_ID = DSL.field(DSL.name("product_id"), Integer.class);
     private static final Field<BigDecimal> MOVEMENT_QTY_IN = DSL.field(DSL.name("qty_in"), BigDecimal.class);
     private static final Field<BigDecimal> MOVEMENT_AMOUNT = DSL.field(DSL.name("amount"), BigDecimal.class);
@@ -45,8 +47,28 @@ public class ProductService {
                         dto.unit = "g";
                         dto.baseUnit = "g";
                         dto.unitFactor = BigDecimal.ONE;
+                        dto.imageUrl = null;
                         return dto;
                     }).toList();
+            return enrichWithAverageStockPrice(result);
+        }
+        if (!hasImageColumn()) {
+            List<ProductDTO> result = dsl.select(
+                            Product.PRODUCT.PRODUCTID,
+                            Product.PRODUCT.SUPPLIERID,
+                            Product.PRODUCT.PRODUCTNAME,
+                            Product.PRODUCT.PRODUCTPRICE,
+                            Product.PRODUCT.WASTE,
+                            Product.PRODUCT.ISFAVOURITE,
+                            PRODUCT_UNIT,
+                            PRODUCT_BASE_UNIT,
+                            PRODUCT_UNIT_FACTOR
+                    )
+                    .from(Product.PRODUCT)
+                    .fetch()
+                    .stream()
+                    .map(this::toDto)
+                    .toList();
             return enrichWithAverageStockPrice(result);
         }
         List<ProductDTO> result = dsl.select(
@@ -58,7 +80,8 @@ public class ProductService {
                         Product.PRODUCT.ISFAVOURITE,
                         PRODUCT_UNIT,
                         PRODUCT_BASE_UNIT,
-                        PRODUCT_UNIT_FACTOR
+                        PRODUCT_UNIT_FACTOR,
+                        PRODUCT_IMAGE_URL
                 )
                 .from(Product.PRODUCT)
                 .fetch()
@@ -85,8 +108,30 @@ public class ProductService {
                         dto.unit = "g";
                         dto.baseUnit = "g";
                         dto.unitFactor = BigDecimal.ONE;
+                        dto.imageUrl = null;
                         return dto;
                     }).toList();
+            return enrichWithAverageStockPrice(result);
+        }
+        if (!hasImageColumn()) {
+            List<ProductDTO> result = dsl.select(
+                            Product.PRODUCT.PRODUCTID,
+                            Product.PRODUCT.SUPPLIERID,
+                            Product.PRODUCT.PRODUCTNAME,
+                            Product.PRODUCT.PRODUCTPRICE,
+                            Product.PRODUCT.WASTE,
+                            Product.PRODUCT.ISFAVOURITE,
+                            PRODUCT_UNIT,
+                            PRODUCT_BASE_UNIT,
+                            PRODUCT_UNIT_FACTOR
+                    )
+                    .from(Product.PRODUCT)
+                    .where(Product.PRODUCT.SUPPLIERID.eq(supplierId))
+                    .and(Product.PRODUCT.ISFAVOURITE.eq(true))
+                    .fetch()
+                    .stream()
+                    .map(this::toDto)
+                    .toList();
             return enrichWithAverageStockPrice(result);
         }
         List<ProductDTO> result = dsl.select(
@@ -98,7 +143,8 @@ public class ProductService {
                         Product.PRODUCT.ISFAVOURITE,
                         PRODUCT_UNIT,
                         PRODUCT_BASE_UNIT,
-                        PRODUCT_UNIT_FACTOR
+                        PRODUCT_UNIT_FACTOR,
+                        PRODUCT_IMAGE_URL
                 )
                 .from(Product.PRODUCT)
                 .where(Product.PRODUCT.SUPPLIERID.eq(supplierId))
@@ -127,8 +173,29 @@ public class ProductService {
                         dto.unit = "g";
                         dto.baseUnit = "g";
                         dto.unitFactor = BigDecimal.ONE;
+                        dto.imageUrl = null;
                         return dto;
                     }).toList();
+            return enrichWithAverageStockPrice(result);
+        }
+        if (!hasImageColumn()) {
+            List<ProductDTO> result = dsl.select(
+                            Product.PRODUCT.PRODUCTID,
+                            Product.PRODUCT.SUPPLIERID,
+                            Product.PRODUCT.PRODUCTNAME,
+                            Product.PRODUCT.PRODUCTPRICE,
+                            Product.PRODUCT.WASTE,
+                            Product.PRODUCT.ISFAVOURITE,
+                            PRODUCT_UNIT,
+                            PRODUCT_BASE_UNIT,
+                            PRODUCT_UNIT_FACTOR
+                    )
+                    .from(Product.PRODUCT)
+                    .where(Product.PRODUCT.SUPPLIERID.eq(id))
+                    .fetch()
+                    .stream()
+                    .map(this::toDto)
+                    .toList();
             return enrichWithAverageStockPrice(result);
         }
         List<ProductDTO> result = dsl.select(
@@ -140,7 +207,8 @@ public class ProductService {
                         Product.PRODUCT.ISFAVOURITE,
                         PRODUCT_UNIT,
                         PRODUCT_BASE_UNIT,
-                        PRODUCT_UNIT_FACTOR
+                        PRODUCT_UNIT_FACTOR,
+                        PRODUCT_IMAGE_URL
                 )
                 .from(Product.PRODUCT)
                 .where(Product.PRODUCT.SUPPLIERID.eq(id))
@@ -166,8 +234,28 @@ public class ProductService {
                         mappedDto.unit = "g";
                         mappedDto.baseUnit = "g";
                         mappedDto.unitFactor = BigDecimal.ONE;
+                        mappedDto.imageUrl = null;
                         return mappedDto;
                     }).orElseThrow();
+            dto.setAverageStockPrice(loadAverageStockPriceMap().get(dto.getProductId()));
+            return dto;
+        }
+        if (!hasImageColumn()) {
+            ProductDTO dto = dsl.select(
+                            Product.PRODUCT.PRODUCTID,
+                            Product.PRODUCT.SUPPLIERID,
+                            Product.PRODUCT.PRODUCTNAME,
+                            Product.PRODUCT.PRODUCTPRICE,
+                            Product.PRODUCT.WASTE,
+                            Product.PRODUCT.ISFAVOURITE,
+                            PRODUCT_UNIT,
+                            PRODUCT_BASE_UNIT,
+                            PRODUCT_UNIT_FACTOR
+                    )
+                    .from(Product.PRODUCT)
+                    .where(Product.PRODUCT.PRODUCTID.eq(id))
+                    .fetchOptional()
+                    .map(this::toDto).orElseThrow();
             dto.setAverageStockPrice(loadAverageStockPriceMap().get(dto.getProductId()));
             return dto;
         }
@@ -180,7 +268,8 @@ public class ProductService {
                         Product.PRODUCT.ISFAVOURITE,
                         PRODUCT_UNIT,
                         PRODUCT_BASE_UNIT,
-                        PRODUCT_UNIT_FACTOR
+                        PRODUCT_UNIT_FACTOR,
+                        PRODUCT_IMAGE_URL
                 )
                 .from(Product.PRODUCT)
                 .where(Product.PRODUCT.PRODUCTID.eq(id))
@@ -198,7 +287,7 @@ public class ProductService {
 
         Integer id;
         if (hasUnitColumns()) {
-            id = dsl.insertInto(Product.PRODUCT)
+            var insert = dsl.insertInto(Product.PRODUCT)
                     .set(Product.PRODUCT.SUPPLIERID, dto.supplierId)
                     .set(Product.PRODUCT.PRODUCTNAME, dto.productName)
                     .set(Product.PRODUCT.PRODUCTPRICE, dto.productPrice)
@@ -206,8 +295,11 @@ public class ProductService {
                     .set(Product.PRODUCT.ISFAVOURITE, dto.isFavorite)
                     .set(PRODUCT_UNIT, unit)
                     .set(PRODUCT_BASE_UNIT, baseUnit)
-                    .set(PRODUCT_UNIT_FACTOR, unitFactor)
-                    .returning(Product.PRODUCT.PRODUCTID)
+                    .set(PRODUCT_UNIT_FACTOR, unitFactor);
+            if (hasImageColumn()) {
+                insert.set(PRODUCT_IMAGE_URL, dto.imageUrl);
+            }
+            id = insert.returning(Product.PRODUCT.PRODUCTID)
                     .fetchOne(Product.PRODUCT.PRODUCTID);
         } else {
             id = dsl.insertInto(Product.PRODUCT)
@@ -224,6 +316,7 @@ public class ProductService {
         dto.unit = unit;
         dto.baseUnit = baseUnit;
         dto.unitFactor = unitFactor;
+        if (!hasImageColumn()) dto.imageUrl = null;
         return dto;
     }
 
@@ -239,6 +332,18 @@ public class ProductService {
         return unitColumnsPresent;
     }
 
+    private boolean hasImageColumn() {
+        if (imageColumnPresent != null) return imageColumnPresent;
+        Integer cnt = dsl.selectCount()
+                .from(DSL.table(DSL.name("information_schema", "columns")))
+                .where(DSL.field(DSL.name("table_schema"), String.class).eq("sales"))
+                .and(DSL.field(DSL.name("table_name"), String.class).eq("product"))
+                .and(DSL.field(DSL.name("column_name"), String.class).eq("image_url"))
+                .fetchOne(0, Integer.class);
+        imageColumnPresent = cnt != null && cnt > 0;
+        return imageColumnPresent;
+    }
+
     private ProductDTO toDto(Record record) {
         ProductDTO dto = new ProductDTO();
         dto.productId = record.get(Product.PRODUCT.PRODUCTID);
@@ -250,6 +355,7 @@ public class ProductService {
         dto.unit = record.get(PRODUCT_UNIT) != null ? record.get(PRODUCT_UNIT) : "g";
         dto.baseUnit = record.get(PRODUCT_BASE_UNIT) != null ? record.get(PRODUCT_BASE_UNIT) : dto.unit;
         dto.unitFactor = record.get(PRODUCT_UNIT_FACTOR) != null ? record.get(PRODUCT_UNIT_FACTOR) : BigDecimal.ONE;
+        dto.imageUrl = hasImageColumn() ? record.get(PRODUCT_IMAGE_URL) : null;
         return dto;
     }
 

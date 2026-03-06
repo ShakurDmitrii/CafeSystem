@@ -7,6 +7,7 @@
     display: flex;
     gap: 10px;
     margin-bottom: 20px;
+    flex-wrap: wrap;
 }
 
 .createDish input {
@@ -14,6 +15,21 @@
     border-radius: 6px;
     border: 1px solid #ccc;
     font-size: 14px;
+}
+
+.uploadInfo {
+    font-size: 13px;
+    color: #475467;
+    display: flex;
+    align-items: center;
+}
+
+.previewImage {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid #d1d5db;
 }
 
 .btn {
@@ -49,6 +65,14 @@
     gap: 15px;
     align-items: center;
     flex-wrap: wrap;
+}
+
+.dishThumb {
+    width: 52px;
+    height: 52px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid #d1d5db;
 }
 
 .dishName {
