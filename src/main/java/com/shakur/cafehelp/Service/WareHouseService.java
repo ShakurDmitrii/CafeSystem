@@ -5,6 +5,7 @@ import com.shakur.cafehelp.DTO.WareHouseDTO;
 import jooqdata.tables.records.ProductwarehouseRecord;
 import jooqdata.tables.records.WarehouseRecord;
 import org.jooq.DSLContext;
+import org.jooq.Record1;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import jooqdata.tables.Productwarehouse;
@@ -20,6 +21,7 @@ import static jooqdata.tables.Warehouse.WAREHOUSE;
 public class WareHouseService {
 
     private final DSLContext dsl;
+    private static final Field<Boolean> WAREHOUSE_IS_MAIN = DSL.field(DSL.name("is_main"), Boolean.class);
 
     public WareHouseService(DSLContext dsl) {
         this.dsl = dsl;
@@ -34,18 +36,21 @@ public class WareHouseService {
         record.store();
 
         dto.setWarehouseId(record.getWarehouseid());
+        dto.setMain(false);
         return dto;
     }
 
     // Получить все склады
     public List<WareHouseDTO> getAll() {
-        return dsl.selectFrom(WAREHOUSE)
+        return dsl.select(WAREHOUSE.WAREHOUSEID, WAREHOUSE.WAREHOUSENAME, WAREHOUSE_IS_MAIN)
+                .from(WAREHOUSE)
                 .fetch()
                 .stream()
                 .map(record -> {
                     WareHouseDTO wh = new WareHouseDTO();
-                    wh.setWarehouseId(record.getWarehouseid());
-                    wh.setWarehouseName(record.getWarehousename());
+                    wh.setWarehouseId(record.get(WAREHOUSE.WAREHOUSEID));
+                    wh.setWarehouseName(record.get(WAREHOUSE.WAREHOUSENAME));
+                    wh.setMain(Boolean.TRUE.equals(record.get(WAREHOUSE_IS_MAIN)));
 
                     return wh;
                 }).toList();
@@ -53,15 +58,17 @@ public class WareHouseService {
 
     // Получить склад по ID
     public WareHouseDTO getById(int id) {
-        WarehouseRecord record = dsl.selectFrom(WAREHOUSE)
+        var record = dsl.select(WAREHOUSE.WAREHOUSEID, WAREHOUSE.WAREHOUSENAME, WAREHOUSE_IS_MAIN)
+                .from(WAREHOUSE)
                 .where(WAREHOUSE.WAREHOUSEID.eq(id))
                 .fetchOne();
 
         if (record == null) return null;
 
         WareHouseDTO wh = new WareHouseDTO();
-        wh.setWarehouseId(record.getWarehouseid());
-        wh.setWarehouseName(record.getWarehousename());
+        wh.setWarehouseId(record.get(WAREHOUSE.WAREHOUSEID));
+        wh.setWarehouseName(record.get(WAREHOUSE.WAREHOUSENAME));
+        wh.setMain(Boolean.TRUE.equals(record.get(WAREHOUSE_IS_MAIN)));
 
         return wh;
     }
@@ -81,6 +88,11 @@ public class WareHouseService {
         record.store();
 
         dto.setWarehouseId(record.getWarehouseid());
+        Boolean isMain = dsl.select(WAREHOUSE_IS_MAIN)
+                .from(WAREHOUSE)
+                .where(WAREHOUSE.WAREHOUSEID.eq(id))
+                .fetchOne(WAREHOUSE_IS_MAIN);
+        dto.setMain(Boolean.TRUE.equals(isMain));
         return dto;
     }
 
@@ -90,6 +102,41 @@ public class WareHouseService {
                 .where(WAREHOUSE.WAREHOUSEID.eq(id))
                 .execute();
         return deleted > 0;
+    }
+
+    public Integer getMainWarehouseId() {
+        Record1<Integer> main = dsl.select(WAREHOUSE.WAREHOUSEID)
+                .from(WAREHOUSE)
+                .where(WAREHOUSE_IS_MAIN.eq(true))
+                .orderBy(WAREHOUSE.WAREHOUSEID.asc())
+                .limit(1)
+                .fetchOne();
+        if (main != null && main.value1() != null) {
+            return main.value1();
+        }
+        return dsl.select(WAREHOUSE.WAREHOUSEID)
+                .from(WAREHOUSE)
+                .orderBy(WAREHOUSE.WAREHOUSEID.asc())
+                .limit(1)
+                .fetchOne(WAREHOUSE.WAREHOUSEID);
+    }
+
+    @Transactional
+    public boolean setMainWarehouse(int warehouseId) {
+        int exists = dsl.selectCount()
+                .from(WAREHOUSE)
+                .where(WAREHOUSE.WAREHOUSEID.eq(warehouseId))
+                .fetchOne(0, Integer.class);
+        if (exists == 0) return false;
+
+        dsl.update(WAREHOUSE)
+                .set(WAREHOUSE_IS_MAIN, false)
+                .execute();
+        dsl.update(WAREHOUSE)
+                .set(WAREHOUSE_IS_MAIN, true)
+                .where(WAREHOUSE.WAREHOUSEID.eq(warehouseId))
+                .execute();
+        return true;
     }
 
 
@@ -179,6 +226,16 @@ public class WareHouseService {
         }
 
         return true;
+    }
+
+    /** Доступное количество продукта на складе (в базовой единице) */
+    public double getAvailableQuantity(int warehouseId, int productId) {
+        Double sum = dsl.select(DSL.sum(Productwarehouse.PRODUCTWAREHOUSE.QUANTITY))
+                .from(Productwarehouse.PRODUCTWAREHOUSE)
+                .where(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID.eq(warehouseId))
+                .and(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID.eq(productId))
+                .fetchOne(0, Double.class);
+        return sum != null ? sum : 0.0;
     }
 
     /** Перемещение количества товара между складами */

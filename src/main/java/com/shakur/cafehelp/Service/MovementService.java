@@ -69,6 +69,10 @@ public class MovementService {
     private static final Field<LocalDateTime> MOVEMENT_CREATED_AT = DSL.field(DSL.name("created_at"), LocalDateTime.class);
     private static final Field<Integer> PRODUCT_PRODUCT_ID = DSL.field(DSL.name("productid"), Integer.class);
     private static final Field<Integer> PRODUCT_SUPPLIER_ID = DSL.field(DSL.name("supplierid"), Integer.class);
+    private static final Table<?> PRODUCT_SUPPLIER = DSL.table(DSL.name("sales", "product_supplier"));
+    private static final Field<Integer> PS_PRODUCT_ID = DSL.field(DSL.name("product_id"), Integer.class);
+    private static final Field<Integer> PS_SUPPLIER_ID = DSL.field(DSL.name("supplier_id"), Integer.class);
+    private static final Field<Double> PRODUCT_WASTE = DSL.field(DSL.name("waste"), Double.class);
 
     @Transactional
     public MovementDTO createMovement(MovementRequestDTO dto) {
@@ -82,6 +86,7 @@ public class MovementService {
         String docType = dto.getDocType() == null ? "movement" : dto.getDocType().trim().toLowerCase();
         LocalDateTime now = dto.getDocDate() != null ? dto.getDocDate() : LocalDateTime.now();
         BigDecimal qtyBase = unitConversionService.toBaseQuantity(dto.getProductId(), dto.getQuantity());
+        BigDecimal netQtyBase = qtyBase;
         BigDecimal unitPrice = dto.getUnitPrice() != null ? BigDecimal.valueOf(dto.getUnitPrice()) : null;
         BigDecimal total = unitPrice != null ? unitPrice.multiply(qtyBase) : null;
 
@@ -92,6 +97,13 @@ public class MovementService {
         // inventory_documents.supplier_id is NOT NULL in current DB schema.
         // If supplier is not explicitly provided, resolve it from product.
         if (supplierId == null) {
+            supplierId = dsl.select(PS_SUPPLIER_ID)
+                    .from(PRODUCT_SUPPLIER)
+                    .where(PS_PRODUCT_ID.eq(dto.getProductId()))
+                    .limit(1)
+                    .fetchOne(PS_SUPPLIER_ID);
+        }
+        if (supplierId == null) {
             supplierId = dsl.select(PRODUCT_SUPPLIER_ID)
                     .from(PRODUCT)
                     .where(PRODUCT_PRODUCT_ID.eq(dto.getProductId()))
@@ -99,6 +111,18 @@ public class MovementService {
         }
         if (supplierId == null) {
             return null;
+        }
+
+        if ("receipt".equals(docType)) {
+            Double wastePercentRaw = dsl.select(PRODUCT_WASTE)
+                    .from(PRODUCT)
+                    .where(PRODUCT_PRODUCT_ID.eq(dto.getProductId()))
+                    .fetchOne(PRODUCT_WASTE);
+            double wastePercent = wastePercentRaw == null ? 0.0 : wastePercentRaw;
+            if (wastePercent < 0) wastePercent = 0;
+            if (wastePercent > 100) wastePercent = 100;
+            BigDecimal factor = BigDecimal.valueOf(1 - (wastePercent / 100.0));
+            netQtyBase = qtyBase.multiply(factor);
         }
 
         if ("movement".equals(docType)) {
@@ -120,12 +144,19 @@ public class MovementService {
                 return null;
             }
 
-            boolean adjusted = wareHouseService.adjustQuantity(toWarehouseId, dto.getProductId(), qtyBase.doubleValue());
+            boolean adjusted = wareHouseService.adjustQuantity(toWarehouseId, dto.getProductId(), netQtyBase.doubleValue());
             if (!adjusted) {
                 ProductWarehouseDTO pw = new ProductWarehouseDTO();
                 pw.setProductId(dto.getProductId());
                 // addProductsToWarehouse() itself converts to base quantity by product factor
-                pw.setQuantity(dto.getQuantity());
+                Double netQtyDisplay = dto.getQuantity();
+                if (dto.getQuantity() != null && qtyBase.compareTo(BigDecimal.ZERO) > 0) {
+                    netQtyDisplay = netQtyBase
+                            .divide(qtyBase, 6, java.math.RoundingMode.HALF_UP)
+                            .multiply(BigDecimal.valueOf(dto.getQuantity()))
+                            .doubleValue();
+                }
+                pw.setQuantity(netQtyDisplay);
                 wareHouseService.addProductsToWarehouse(toWarehouseId, List.of(pw));
             }
         } else if ("writeoff".equals(docType)) {
@@ -156,7 +187,7 @@ public class MovementService {
                         documentId,
                         "movement".equals(docType) || "writeoff".equals(docType) ? fromWarehouseId : toWarehouseId,
                         dto.getProductId(),
-                        "receipt".equals(docType) ? qtyBase : BigDecimal.ZERO,
+                        "receipt".equals(docType) ? netQtyBase : BigDecimal.ZERO,
                         "receipt".equals(docType) ? BigDecimal.ZERO : qtyBase,
                         unitPrice,
                         total,

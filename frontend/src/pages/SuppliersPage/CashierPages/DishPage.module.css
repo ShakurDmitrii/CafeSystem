@@ -17,6 +17,29 @@
     font-size: 14px;
 }
 
+.fileInput {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px dashed #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+}
+
+.fileInput::file-selector-button {
+    margin-right: 10px;
+    border: 1px solid #0284c7;
+    background: #e0f2fe;
+    color: #075985;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.fileInput::file-selector-button:hover {
+    background: #bae6fd;
+}
+
 .uploadInfo {
     font-size: 13px;
     color: #475467;
@@ -25,8 +48,8 @@
 }
 
 .previewImage {
-    width: 72px;
-    height: 72px;
+    width: 90px;
+    height: 90px;
     object-fit: cover;
     border-radius: 10px;
     border: 1px solid #d1d5db;
@@ -67,9 +90,87 @@
     flex-wrap: wrap;
 }
 
+.dishCategory {
+    color: #475467;
+    font-weight: 500;
+}
+
+.missingThumb {
+    width: 72px;
+    height: 72px;
+    border-radius: 10px;
+    border: 1px dashed #cbd5e1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: #64748b;
+    background: #f8fafc;
+}
+
+.inlineAction {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.addBtn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #0ea5e9;
+    background: #e0f2fe;
+    color: #075985;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.addBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.fileInputInline {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px dashed #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+}
+
+.fileInputInline::file-selector-button {
+    margin-right: 8px;
+    border: 1px solid #0284c7;
+    background: #e0f2fe;
+    color: #075985;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.categoryInput {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    font-size: 14px;
+}
+
+.categorySelect {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    font-size: 14px;
+    background: #fff;
+}
+
+.muted {
+    color: #64748b;
+    font-size: 12px;
+}
+
 .dishThumb {
-    width: 52px;
-    height: 52px;
+    width: 72px;
+    height: 72px;
     object-fit: cover;
     border-radius: 10px;
     border: 1px solid #d1d5db;

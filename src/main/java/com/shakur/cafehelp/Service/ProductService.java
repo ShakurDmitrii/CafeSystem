@@ -21,6 +21,9 @@ public class ProductService {
     private static final Field<String> PRODUCT_BASE_UNIT = DSL.field(DSL.name("base_unit"), String.class);
     private static final Field<BigDecimal> PRODUCT_UNIT_FACTOR = DSL.field(DSL.name("unit_factor"), BigDecimal.class);
     private static final Field<String> PRODUCT_IMAGE_URL = DSL.field(DSL.name("image_url"), String.class);
+    private static final org.jooq.Table<?> PRODUCT_SUPPLIER = DSL.table(DSL.name("sales", "product_supplier"));
+    private static final Field<Integer> PS_PRODUCT_ID = DSL.field(DSL.name("product_id"), Integer.class);
+    private static final Field<Integer> PS_SUPPLIER_ID = DSL.field(DSL.name("supplier_id"), Integer.class);
     private volatile Boolean unitColumnsPresent = null;
     private volatile Boolean imageColumnPresent = null;
     private static final Field<Integer> MOVEMENT_PRODUCT_ID = DSL.field(DSL.name("product_id"), Integer.class);
@@ -92,19 +95,21 @@ public class ProductService {
     }
     public List<ProductDTO> getAllFavoriteSupplierProduct(int supplierId){
         if (!hasUnitColumns()) {
-            List<ProductDTO> result = dsl.selectFrom(Product.PRODUCT)
-                    .where(Product.PRODUCT.SUPPLIERID.eq(supplierId))
+            List<ProductDTO> result = dsl.select(Product.PRODUCT.fields())
+                    .from(Product.PRODUCT)
+                    .join(PRODUCT_SUPPLIER).on(PS_PRODUCT_ID.eq(Product.PRODUCT.PRODUCTID))
+                    .where(PS_SUPPLIER_ID.eq(supplierId))
                     .and(Product.PRODUCT.ISFAVOURITE.eq(true))
                     .fetch()
                     .stream()
                     .map(record -> {
                         ProductDTO dto = new ProductDTO();
-                        dto.productId = record.getProductid();
-                        dto.productName = record.getProductname();
-                        dto.productPrice = record.getProductprice();
-                        dto.supplierId = record.getSupplierid();
-                        dto.waste = record.getWaste();
-                        dto.isFavorite = record.getIsfavourite();
+                        dto.productId = record.get(Product.PRODUCT.PRODUCTID);
+                        dto.productName = record.get(Product.PRODUCT.PRODUCTNAME);
+                        dto.productPrice = record.get(Product.PRODUCT.PRODUCTPRICE);
+                        dto.supplierId = record.get(Product.PRODUCT.SUPPLIERID);
+                        dto.waste = record.get(Product.PRODUCT.WASTE);
+                        dto.isFavorite = record.get(Product.PRODUCT.ISFAVOURITE);
                         dto.unit = "g";
                         dto.baseUnit = "g";
                         dto.unitFactor = BigDecimal.ONE;
@@ -126,7 +131,8 @@ public class ProductService {
                             PRODUCT_UNIT_FACTOR
                     )
                     .from(Product.PRODUCT)
-                    .where(Product.PRODUCT.SUPPLIERID.eq(supplierId))
+                    .join(PRODUCT_SUPPLIER).on(PS_PRODUCT_ID.eq(Product.PRODUCT.PRODUCTID))
+                    .where(PS_SUPPLIER_ID.eq(supplierId))
                     .and(Product.PRODUCT.ISFAVOURITE.eq(true))
                     .fetch()
                     .stream()
@@ -147,7 +153,8 @@ public class ProductService {
                         PRODUCT_IMAGE_URL
                 )
                 .from(Product.PRODUCT)
-                .where(Product.PRODUCT.SUPPLIERID.eq(supplierId))
+                .join(PRODUCT_SUPPLIER).on(PS_PRODUCT_ID.eq(Product.PRODUCT.PRODUCTID))
+                .where(PS_SUPPLIER_ID.eq(supplierId))
                 .and(Product.PRODUCT.ISFAVOURITE.eq(true))
                 .fetch()
                 .stream()
@@ -158,18 +165,20 @@ public class ProductService {
     }
     public List<ProductDTO> getAllSupplierProducts(int id){
         if (!hasUnitColumns()) {
-            List<ProductDTO> result = dsl.selectFrom(Product.PRODUCT)
-                    .where(Product.PRODUCT.SUPPLIERID.eq(id))
+            List<ProductDTO> result = dsl.select(Product.PRODUCT.fields())
+                    .from(Product.PRODUCT)
+                    .join(PRODUCT_SUPPLIER).on(PS_PRODUCT_ID.eq(Product.PRODUCT.PRODUCTID))
+                    .where(PS_SUPPLIER_ID.eq(id))
                     .fetch()
                     .stream()
                     .map(record -> {
                         ProductDTO dto = new ProductDTO();
-                        dto.productId = record.getProductid();
-                        dto.productName = record.getProductname();
-                        dto.productPrice = record.getProductprice();
-                        dto.supplierId = record.getSupplierid();
-                        dto.waste = record.getWaste();
-                        dto.isFavorite = record.getIsfavourite();
+                        dto.productId = record.get(Product.PRODUCT.PRODUCTID);
+                        dto.productName = record.get(Product.PRODUCT.PRODUCTNAME);
+                        dto.productPrice = record.get(Product.PRODUCT.PRODUCTPRICE);
+                        dto.supplierId = record.get(Product.PRODUCT.SUPPLIERID);
+                        dto.waste = record.get(Product.PRODUCT.WASTE);
+                        dto.isFavorite = record.get(Product.PRODUCT.ISFAVOURITE);
                         dto.unit = "g";
                         dto.baseUnit = "g";
                         dto.unitFactor = BigDecimal.ONE;
@@ -191,7 +200,8 @@ public class ProductService {
                             PRODUCT_UNIT_FACTOR
                     )
                     .from(Product.PRODUCT)
-                    .where(Product.PRODUCT.SUPPLIERID.eq(id))
+                    .join(PRODUCT_SUPPLIER).on(PS_PRODUCT_ID.eq(Product.PRODUCT.PRODUCTID))
+                    .where(PS_SUPPLIER_ID.eq(id))
                     .fetch()
                     .stream()
                     .map(this::toDto)
@@ -211,7 +221,8 @@ public class ProductService {
                         PRODUCT_IMAGE_URL
                 )
                 .from(Product.PRODUCT)
-                .where(Product.PRODUCT.SUPPLIERID.eq(id))
+                .join(PRODUCT_SUPPLIER).on(PS_PRODUCT_ID.eq(Product.PRODUCT.PRODUCTID))
+                .where(PS_SUPPLIER_ID.eq(id))
                 .fetch()
                 .stream()
                 .map(this::toDto)
@@ -285,6 +296,26 @@ public class ProductService {
                 ? dto.unitFactor
                 : BigDecimal.ONE;
 
+        Integer supplierId = dto.supplierId;
+        String normalizedName = dto.productName != null ? dto.productName.trim() : "";
+        if (!normalizedName.isEmpty()) {
+            Integer existingId = dsl.select(Product.PRODUCT.PRODUCTID)
+                    .from(Product.PRODUCT)
+                    .where(DSL.lower(Product.PRODUCT.PRODUCTNAME).eq(normalizedName.toLowerCase()))
+                    .limit(1)
+                    .fetchOne(Product.PRODUCT.PRODUCTID);
+            if (existingId != null) {
+                if (supplierId != null) {
+                    linkProductToSupplier(existingId, supplierId);
+                }
+                ProductDTO existing = getProductById(existingId);
+                if (supplierId != null) {
+                    existing.supplierId = supplierId;
+                }
+                return existing;
+            }
+        }
+
         Integer id;
         if (hasUnitColumns()) {
             var insert = dsl.insertInto(Product.PRODUCT)
@@ -317,7 +348,19 @@ public class ProductService {
         dto.baseUnit = baseUnit;
         dto.unitFactor = unitFactor;
         if (!hasImageColumn()) dto.imageUrl = null;
+        if (supplierId != null && dto.productId != 0) {
+            linkProductToSupplier(dto.productId, supplierId);
+        }
         return dto;
+    }
+
+    private void linkProductToSupplier(int productId, int supplierId) {
+        dsl.insertInto(PRODUCT_SUPPLIER)
+                .columns(PS_PRODUCT_ID, PS_SUPPLIER_ID)
+                .values(productId, supplierId)
+                .onConflict(PS_PRODUCT_ID, PS_SUPPLIER_ID)
+                .doNothing()
+                .execute();
     }
 
     private boolean hasUnitColumns() {

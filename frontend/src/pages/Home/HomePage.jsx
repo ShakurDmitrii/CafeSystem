@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { API_BASE_URL, hasRole } from "../../auth";
 import styles from "./HomePage.module.css";
 
-const API_ORDERS = "http://localhost:8080/api/orders";
-const API_SHIFTS = "http://localhost:8080/api/shifts";
-const API_PERSONS = "http://localhost:8080/api/persons";
-const API_PRODUCTS = "http://localhost:8080/api/product";
-const API_WAREHOUSES = "http://localhost:8080/warehouses";
+const API_ORDERS = `${API_BASE_URL}/api/orders`;
+const API_SHIFTS = `${API_BASE_URL}/api/shifts`;
+const API_PERSONS = `${API_BASE_URL}/api/persons`;
+const API_PRODUCTS = `${API_BASE_URL}/api/product`;
+const API_WAREHOUSES = `${API_BASE_URL}/warehouses`;
 
 const toNum = (v) => {
     const n = Number(v);
@@ -49,6 +50,7 @@ export default function HomePage({ auth }) {
 
     useEffect(() => {
         let cancelled = false;
+        const isOwner = hasRole(auth, ["OWNER"]);
 
         const fetchJson = async (url) => {
             const res = await fetch(url);
@@ -66,7 +68,7 @@ export default function HomePage({ auth }) {
                     fetchJson(API_SHIFTS),
                     fetchJson(API_PERSONS),
                     fetchJson(API_PRODUCTS),
-                    fetchJson(API_WAREHOUSES)
+                    isOwner ? fetchJson(API_WAREHOUSES) : Promise.resolve([])
                 ]);
 
                 const orders = Array.isArray(ordersRaw) ? ordersRaw : [];
@@ -92,8 +94,12 @@ export default function HomePage({ auth }) {
                 const dishRowsByOrderId = new Map();
                 await Promise.all(
                     todayOrders.map(async (o) => {
+                        if (!o?.orderId) {
+                            dishRowsByOrderId.set(o?.orderId, []);
+                            return;
+                        }
                         try {
-                            const rows = await fetchJson(`http://localhost:8080/api/shifts/getDish/${o.orderId}`);
+                            const rows = await fetchJson(`${API_BASE_URL}/api/shifts/getDish/${o.orderId}`);
                             dishRowsByOrderId.set(o.orderId, Array.isArray(rows) ? rows : []);
                         } catch {
                             dishRowsByOrderId.set(o.orderId, []);
@@ -141,47 +147,50 @@ export default function HomePage({ auth }) {
                     .sort((a, b) => b.qty - a.qty)
                     .slice(0, 5);
 
-                const whRows = await Promise.all(
-                    warehouses.map(async (w) => {
-                        try {
-                            const list = await fetchJson(`${API_WAREHOUSES}/${w.warehouseId}/products`);
-                            return Array.isArray(list) ? list : [];
-                        } catch {
-                            return [];
-                        }
-                    })
-                );
-                const allWhProducts = whRows.flat();
+                let criticalStocks = [];
+                if (isOwner) {
+                    const whRows = await Promise.all(
+                        warehouses.map(async (w) => {
+                            try {
+                                const list = await fetchJson(`${API_WAREHOUSES}/${w.warehouseId}/products`);
+                                return Array.isArray(list) ? list : [];
+                            } catch {
+                                return [];
+                            }
+                        })
+                    );
+                    const allWhProducts = whRows.flat();
 
-                const qtyByProduct = new Map();
-                allWhProducts.forEach((row) => {
-                    const pid = Number(row.productId);
-                    qtyByProduct.set(pid, (qtyByProduct.get(pid) || 0) + toNum(row.quantity));
-                });
+                    const qtyByProduct = new Map();
+                    allWhProducts.forEach((row) => {
+                        const pid = Number(row.productId);
+                        qtyByProduct.set(pid, (qtyByProduct.get(pid) || 0) + toNum(row.quantity));
+                    });
 
-                const criticalStocks = products
-                    .map((p) => {
-                        const pid = Number(p.productId);
-                        const qty = toNum(qtyByProduct.get(pid));
-                        const unit = p.unit || p.baseUnit || "pcs";
-                        const threshold = getStockThreshold(unit);
-                        const level = qty <= threshold ? "critical" : (qty <= threshold * 2 ? "warning" : "normal");
-                        return {
-                            productId: pid,
-                            productName: p.productName || `Товар #${pid}`,
-                            qty,
-                            unit,
-                            threshold,
-                            level
-                        };
-                    })
-                    .filter((x) => x.level !== "normal")
-                    .sort((a, b) => {
-                        const rank = { critical: 0, warning: 1 };
-                        if (rank[a.level] !== rank[b.level]) return rank[a.level] - rank[b.level];
-                        return a.qty - b.qty;
-                    })
-                    .slice(0, 8);
+                    criticalStocks = products
+                        .map((p) => {
+                            const pid = Number(p.productId);
+                            const qty = toNum(qtyByProduct.get(pid));
+                            const unit = p.unit || p.baseUnit || "pcs";
+                            const threshold = getStockThreshold(unit);
+                            const level = qty <= threshold ? "critical" : (qty <= threshold * 2 ? "warning" : "normal");
+                            return {
+                                productId: pid,
+                                productName: p.productName || `Товар #${pid}`,
+                                qty,
+                                unit,
+                                threshold,
+                                level
+                            };
+                        })
+                        .filter((x) => x.level !== "normal")
+                        .sort((a, b) => {
+                            const rank = { critical: 0, warning: 1 };
+                            if (rank[a.level] !== rank[b.level]) return rank[a.level] - rank[b.level];
+                            return a.qty - b.qty;
+                        })
+                        .slice(0, 8);
+                }
 
                 if (!cancelled) {
                     setData({
@@ -210,7 +219,7 @@ export default function HomePage({ auth }) {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [auth]);
 
     const greeting = useMemo(() => {
         const name = auth?.personName || auth?.username || "Команда";

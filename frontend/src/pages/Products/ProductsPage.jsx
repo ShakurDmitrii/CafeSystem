@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { API_BASE_URL } from "../../auth";
 import styles from "./ProductsPage.module.css";
 
-const API_PRODUCTS = "http://localhost:8080/api/product";
-const API_SUPPLIERS = "http://localhost:8080/api/supplier";
-const API_UPLOAD = "http://localhost:8080/api/files/upload-image";
+const API_PRODUCTS = `${API_BASE_URL}/api/product`;
+const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
+const API_UPLOAD = `${API_BASE_URL}/api/files/upload-image`;
 const UNIT_PRESETS = {
     g: { baseUnit: "g", unitFactor: "1" },
     kg: { baseUnit: "g", unitFactor: "1000" },
@@ -263,6 +264,7 @@ export default function ProductsPage() {
                     <input
                         type="file"
                         accept="image/*"
+                        className={styles.fileInput}
                         onChange={(e) => handleUploadImage(e.target.files?.[0])}
                     />
                     <div className={styles.uploadStatus}>

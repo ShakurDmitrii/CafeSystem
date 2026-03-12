@@ -4,6 +4,8 @@ public class DishDTO {
     public int dishId;
     public String dishName;
     public String category;
+    public Integer categoryId;
+    public String categoryName;
     public Double weight;
     public Double firstCost;
     public Double price;
@@ -17,6 +19,22 @@ public class DishDTO {
 
     public void setCategory(String category) {
         this.category = category;
+    }
+
+    public Integer getCategoryId() {
+        return categoryId;
+    }
+
+    public void setCategoryId(Integer categoryId) {
+        this.categoryId = categoryId;
+    }
+
+    public String getCategoryName() {
+        return categoryName;
+    }
+
+    public void setCategoryName(String categoryName) {
+        this.categoryName = categoryName;
     }
 
     public int getQty() {

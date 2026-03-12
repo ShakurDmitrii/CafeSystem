@@ -14,7 +14,7 @@ public class OrderDTO {
     @JsonFormat(pattern = "yyyy-MM-dd")
     public LocalDate date;
 
-    public int clientId;
+    public Integer clientId;
     public Double amount;
     public Boolean status;
     public Boolean type;
@@ -28,6 +28,7 @@ public class OrderDTO {
     public String deliveryAddress;
     public String paymentType;
     public Boolean paid;
+    public List<OrderDishDTO> items;
 
     public LocalDate getDebt_payment_date() {
         return debt_payment_date;
@@ -117,11 +118,11 @@ public class OrderDTO {
         this.date = date;
     }
 
-    public int getClientId() {
+    public Integer getClientId() {
         return clientId;
     }
 
-    public void setClientId(int clientId) {
+    public void setClientId(Integer clientId) {
         this.clientId = clientId;
     }
 
@@ -163,6 +164,14 @@ public class OrderDTO {
 
     public void setPaid(Boolean paid) {
         this.paid = paid;
+    }
+
+    public List<OrderDishDTO> getItems() {
+        return items;
+    }
+
+    public void setItems(List<OrderDishDTO> items) {
+        this.items = items;
     }
 
 }

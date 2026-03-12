@@ -159,11 +159,19 @@ public class OrderController {
     }
 
     @PostMapping("/orderToDish")
-    public Map<String, String> addDishesToOrder(@RequestBody List<OrderDishDTO> items, @RequestParam int orderId) {
-        for (OrderDishDTO d : items) {
-            orderService.addDishToOrder(orderId, d.getDishID(), d.getQty());
+    public ResponseEntity<?> addDishesToOrder(@RequestBody List<OrderDishDTO> items, @RequestParam int orderId) {
+        try {
+            for (OrderDishDTO d : items) {
+                orderService.addDishToOrder(orderId, d.getDishID(), d.getQty());
+            }
+            return ResponseEntity.ok(Map.of("status", "ok"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Ошибка добавления блюд: " + e.getMessage()));
         }
-        return Map.of("status", "ok");
     }
 
     @PostMapping("/{orderId}/print-kitchen")

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import './App.css';
-import { clearAuth, getAuth, hasRole } from "./auth";
+import { API_BASE_URL, clearAuth, getAuth, hasRole } from "./auth";
 
 // Страницы
 import SuppliersPage from './pages/SuppliersPage/SuppliersPage';
@@ -39,6 +39,25 @@ function App() {
         window.addEventListener("auth:unauthorized", onUnauthorized);
         return () => window.removeEventListener("auth:unauthorized", onUnauthorized);
     }, []);
+
+    React.useEffect(() => {
+        const verifyAuth = async () => {
+            if (!auth?.accessToken) return;
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+                    headers: { Authorization: `Bearer ${auth.accessToken}` }
+                });
+                if (!res.ok) {
+                    clearAuth();
+                    setAuth(null);
+                }
+            } catch {
+                clearAuth();
+                setAuth(null);
+            }
+        };
+        verifyAuth();
+    }, [auth]);
 
     const handleLogout = () => {
         clearAuth();

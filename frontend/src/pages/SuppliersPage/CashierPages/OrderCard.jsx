@@ -1,13 +1,18 @@
 // OrderCard.jsx
 import React, { useState, useEffect, useRef } from "react";
+import { API_BASE_URL } from "../../../auth";
 import styles from "./CashierPage.module.css";
 
 async function loadOrderDishes(orderId) {
+    if (!orderId) {
+        return [];
+    }
     try {
         console.log("Загружаем блюда для orderId:", orderId);
-        const res = await fetch(`http://localhost:8080/api/shifts/getDish/${orderId}`);
+        const res = await fetch(`${API_BASE_URL}/api/shifts/getDish/${orderId}`);
         if (!res.ok) throw new Error(`Ошибка загрузки блюд ${res.status}`);
-        const dishes = await res.json();
+        const text = await res.text();
+        const dishes = text ? JSON.parse(text) : [];
         console.log("Получили блюда с сервера:", dishes);
         return Array.isArray(dishes) ? dishes : [];
     } catch (e) {
@@ -62,7 +67,10 @@ export default function OrderCard({
     onPrintOrderDetails,
     onUpdatePayment
 }) {
-    const [items, setItems] = useState([]);
+    const [items, setItems] = useState(() => (Array.isArray(order.items) ? order.items : []));
+    const [itemsLoaded, setItemsLoaded] = useState(
+        Array.isArray(order.items) && order.items.length > 0
+    );
     const [secondsPassed, setSecondsPassed] = useState(0);
     const [isDelayed, setIsDelayed] = useState(false);
     const [delayMinutes, setDelayMinutes] = useState(order.timeDelay || 0);
@@ -78,20 +86,22 @@ export default function OrderCard({
 
     // Загрузка блюд
     useEffect(() => {
+        if (itemsLoaded) return;
         let cancelled = false;
         loadOrderDishes(order.orderId).then(dishes => {
             if (!cancelled) {
                 console.log(`Устанавливаем items для orderId=${order.orderId}:`, dishes);
                 setItems(dishes);
+                setItemsLoaded(true);
             }
         });
         return () => { cancelled = true; };
-    }, [order.orderId]);
+    }, [order.orderId, itemsLoaded]);
 
     // Функция обновления задержки на сервере
     const updateDelayTime = async (orderId, delayMinutes) => {
         try {
-            const response = await fetch(`http://localhost:8080/api/orders/${orderId}/timeDelay`, {
+            const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/timeDelay`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ delayMinutes })
@@ -275,8 +285,7 @@ export default function OrderCard({
 
     // Определяем стиль карточки
     const getCardStyle = () => {
-        const paymentType = (order.paymentType || "").toLowerCase();
-        const unpaid = !(order.paid === true || paymentType === "cash" || paymentType === "transfer");
+        const unpaid = order.paid !== true;
 
         if (order.status) {
             if (unpaid) {
@@ -370,7 +379,7 @@ export default function OrderCard({
         setIsPrintingDetails(true);
         setPrintMessage(null);
         try {
-            await onPrintOrderDetails(order);
+            await onPrintOrderDetails(order, items);
             setPrintMessage({ type: "success", text: "Чек заказа отправлен на печать" });
         } catch (e) {
             setPrintMessage({ type: "error", text: e.message || "Ошибка печати чека заказа" });
@@ -380,7 +389,7 @@ export default function OrderCard({
     };
 
     const paymentType = (order.paymentType || "").toLowerCase();
-    const isPaid = order.paid === true || paymentType === "cash" || paymentType === "transfer";
+    const isPaid = order.paid === true;
     const paymentText = paymentType === "cash"
         ? "Наличка"
         : paymentType === "transfer"
@@ -481,8 +490,8 @@ export default function OrderCard({
                 </div>
 
                 <div>
-                    {items.length > 0
-                        ? items.map((i, idx) => (
+                    {items.length > 0 ? (
+                        items.map((i, idx) => (
                             <div key={idx} style={{
                                 fontSize: "0.9em",
                                 marginBottom: "3px",
@@ -496,7 +505,9 @@ export default function OrderCard({
                                 </span>
                             </div>
                         ))
-                        : "Загрузка блюд..."}
+                    ) : (
+                        <span>{itemsLoaded ? "Нет позиций" : "Загрузка блюд..."}</span>
+                    )}
                 </div>
 
                 <div style={{

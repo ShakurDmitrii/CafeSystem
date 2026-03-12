@@ -1,10 +1,11 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
+import { API_BASE_URL } from "../../auth";
 import styles from "./TechCardPage.module.css";
 
-const API_TECH = "http://localhost:8080/api/tech-products";
-const API_PRODUCTS = "http://localhost:8080/api/product";
-const API_DISHES = "http://localhost:8080/api/dishes";
+const API_TECH = `${API_BASE_URL}/api/tech-products`;
+const API_PRODUCTS = `${API_BASE_URL}/api/product`;
+const API_DISHES = `${API_BASE_URL}/api/dishes`;
 
 export default function TechCardPage() {
     const { dishId } = useParams();

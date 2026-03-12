@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { API_BASE_URL } from "../../auth";
 import styles from "./Movement.module.css";
 
-const API_MOVEMENTS = "http://localhost:8080/movements";
-const API_WAREHOUSES = "http://localhost:8080/warehouses";
-const API_PRODUCTS = "http://localhost:8080/api/product";
+const API_MOVEMENTS = `${API_BASE_URL}/movements`;
+const API_WAREHOUSES = `${API_BASE_URL}/warehouses`;
+const API_PRODUCTS = `${API_BASE_URL}/api/product`;
 
 const formatNumber = (value) => {
     const num = Number(value ?? 0);

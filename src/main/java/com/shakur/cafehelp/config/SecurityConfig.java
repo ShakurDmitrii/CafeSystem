@@ -10,6 +10,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 @Configuration
 public class SecurityConfig {
@@ -34,7 +35,8 @@ public class SecurityConfig {
                                 "/api/auth/bootstrap",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
-                                "/swagger-ui.html"
+                                "/swagger-ui.html",
+                                "/error"
                         ).permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
 
@@ -47,13 +49,18 @@ public class SecurityConfig {
                         .requestMatchers("/api/consProduct/**").hasRole("OWNER")
                         .requestMatchers("/api/ml/**").hasRole("OWNER")
                         .requestMatchers("/api/analytics/**").hasRole("OWNER")
-                        .requestMatchers("/warehouses/**").hasRole("OWNER")
+                        .requestMatchers(
+                                new AntPathRequestMatcher("/warehouses"),
+                                new AntPathRequestMatcher("/warehouses/**")
+                        ).permitAll()
                         .requestMatchers("/movements/**").hasRole("OWNER")
 
                         // WORKER + OWNER: касса и операционная работа
                         .requestMatchers("/api/orders/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers("/api/clients/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers(HttpMethod.GET, "/api/dishes/**").hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers(HttpMethod.GET, "/api/dish-categories/**").hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers("/api/dish-categories/**").hasRole("OWNER")
                         .requestMatchers(HttpMethod.GET, "/api/product/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers(HttpMethod.GET, "/api/shifts/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers(HttpMethod.POST, "/api/shifts/open", "/api/shifts/*/close").hasAnyRole("WORKER", "OWNER")

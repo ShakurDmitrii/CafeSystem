@@ -48,6 +48,13 @@ public class WareHouseController {
         return ResponseEntity.ok(updated);
     }
 
+    @PutMapping("/{id}/main")
+    public ResponseEntity<Void> setMainWarehouse(@PathVariable int id) {
+        boolean ok = wareHouseService.setMainWarehouse(id);
+        if (!ok) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok().build();
+    }
+
     // Удаление склада
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteWarehouse(@PathVariable int id) {

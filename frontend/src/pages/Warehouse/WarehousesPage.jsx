@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import styles from './WarehousePage.module.css';
+import { API_BASE_URL } from "../../auth";
+import styles from "./WarehousePage.module.css";
 
-const API_WAREHOUSES = "http://localhost:8080/warehouses";
-const API_MOVEMENTS = "http://localhost:8080/movements";
-const API_SUPPLIERS = "http://localhost:8080/api/supplier";
-const API_PRODUCTS = "http://localhost:8080/api/product";
+const API_WAREHOUSES = `${API_BASE_URL}/warehouses`;
+const API_MOVEMENTS = `${API_BASE_URL}/movements`;
+const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
+const API_PRODUCTS = `${API_BASE_URL}/api/product`;
 
 const getSafeUnitFactor = (value) => {
     const n = Number(value);
@@ -23,6 +24,7 @@ export default function WarehousePage() {
     const [warehouses, setWarehouses] = useState([]);
     const [warehouseName, setWarehouseName] = useState("");
     const [editingId, setEditingId] = useState(null);
+    const [showZeroStock, setShowZeroStock] = useState(false);
 
     const [movementFrom, setMovementFrom] = useState("");
     const [movementTo, setMovementTo] = useState("");
@@ -89,11 +91,11 @@ export default function WarehousePage() {
                 fetch(API_SUPPLIERS),
                 fetch(API_MOVEMENTS)
             ]);
-            const whData = await whRes.json();
+            const whData = whRes.ok ? await whRes.json().catch(() => []) : [];
             const warehousesArray = Array.isArray(whData) ? whData : [];
             setWarehouses(warehousesArray);
 
-            const supData = await supRes.json().catch(() => []);
+            const supData = supRes.ok ? await supRes.json().catch(() => []) : [];
             const suppliersList = Array.isArray(supData) ? supData : [];
             setSuppliers(suppliersList);
 
@@ -126,6 +128,17 @@ export default function WarehousePage() {
         }
     };
 
+    const setMainWarehouse = async (warehouseId) => {
+        try {
+            const res = await fetch(`${API_WAREHOUSES}/${warehouseId}/main`, { method: "PUT" });
+            if (!res.ok) throw new Error("Не удалось установить главный склад");
+            await loadWarehouses();
+        } catch (err) {
+            console.error(err);
+            alert("Не удалось установить главный склад");
+        }
+    };
+
     const loadAllWarehouseProducts = async (
         warehousesList,
         suppliersList = [],
@@ -149,7 +162,7 @@ export default function WarehousePage() {
                             if (!productId) return null;
 
                             try {
-                                const resProd = await fetch(`http://localhost:8080/api/product/${productId}`);
+                                const resProd = await fetch(`${API_BASE_URL}/api/product/${productId}`);
                                 if (!resProd.ok) {
                                     return {
                                         ...warehouseProduct,
@@ -232,7 +245,7 @@ export default function WarehousePage() {
                     if (!productId) return null;
 
                     try {
-                        const prodRes = await fetch(`http://localhost:8080/api/product/${productId}`);
+                        const prodRes = await fetch(`${API_BASE_URL}/api/product/${productId}`);
                         if (!prodRes.ok) {
                             return {
                                 ...item,
@@ -268,7 +281,7 @@ export default function WarehousePage() {
                 })
             );
 
-            setProductsFrom(enriched.filter(Boolean));
+            setProductsFrom(enriched.filter(p => p && Number(p.quantityBase ?? 0) > 0));
         } catch (err) {
             console.error(err);
             setProductsFrom([]);
@@ -518,6 +531,14 @@ export default function WarehousePage() {
                     value={warehouseName}
                     onChange={e => setWarehouseName(e.target.value)}
                 />
+                <label className={styles.checkboxLabel} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <input
+                        type="checkbox"
+                        checked={showZeroStock}
+                        onChange={(e) => setShowZeroStock(e.target.checked)}
+                    />
+                    Показывать нулевые
+                </label>
                 <button className={styles.button} onClick={handleSave}>
                     {editingId ? "Сохранить" : "Добавить"}
                 </button>
@@ -541,11 +562,22 @@ export default function WarehousePage() {
                             <div className={styles.warehouseHeader}>
                                 <h3 className={styles.warehouseTitle}>
                                     {wh.warehouseName}
+                                    {wh.isMain && (
+                                        <span className={styles.mainBadge}>Главный</span>
+                                    )}
                                     <span className={styles.productCount}>
                                         ({warehouseProducts[wh.warehouseId]?.length || 0} товаров)
                                     </span>
                                 </h3>
                                 <div className={styles.warehouseActions}>
+                                    {!wh.isMain && (
+                                        <button
+                                            className={`${styles.actionButton} ${styles.mainButton}`}
+                                            onClick={() => setMainWarehouse(wh.warehouseId)}
+                                        >
+                                            Сделать главным
+                                        </button>
+                                    )}
                                     <button
                                         className={`${styles.actionButton} ${styles.editButton}`}
                                         onClick={() => handleEdit(wh)}
@@ -637,7 +669,15 @@ export default function WarehousePage() {
 
                             {/* Продукты склада */}
                             <div className={styles.productsSection}>
-                                {warehouseProducts[wh.warehouseId]?.length > 0 ? (
+                                {(() => {
+                                    const list = (warehouseProducts[wh.warehouseId] || []).filter(p => {
+                                        if (showZeroStock) return true;
+                                        return Number(p.quantityBase ?? 0) > 0;
+                                    });
+                                    if (list.length === 0) {
+                                        return <p className={styles.noProducts}>На складе нет продуктов</p>;
+                                    }
+                                    return (
                                     <table className={styles.productsTable}>
                                         <thead>
                                         <tr>
@@ -653,7 +693,7 @@ export default function WarehousePage() {
                                         </tr>
                                         </thead>
                                         <tbody>
-                                        {warehouseProducts[wh.warehouseId].map(p => {
+                                        {list.map(p => {
                                             const adjustKey = getAdjustKey(wh.warehouseId, p.productId);
                                             const inputVal = adjustQtyInputs[adjustKey] ?? "";
                                             const inputPriceVal = adjustPriceInputs[adjustKey] ?? "";
@@ -730,9 +770,8 @@ export default function WarehousePage() {
                                         })}
                                         </tbody>
                                     </table>
-                                ) : (
-                                    <p className={styles.noProducts}>На складе нет продуктов</p>
-                                )}
+                                    );
+                                })()}
                             </div>
                         </div>
                     ))}

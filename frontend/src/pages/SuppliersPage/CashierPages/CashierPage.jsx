@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
+import { API_BASE_URL } from "../../../auth";
 import styles from "./CashierPage.module.css";
-import DishModal from "./DishModal";
+import DishPickerModal from "./DishPickerModal";
 import OrderCard from "./OrderCard";
 
-const API_ORDERS = "http://localhost:8080/api/orders";
-const API_SHIFTS = "http://localhost:8080/api/shifts";
-const API_PERSONS = "http://localhost:8080/api/persons";
-const API_DISHES = "http://localhost:8080/api/dishes";
-const API_CLIENTS = "http://localhost:8080/api/clients";
-const API_TODAY_DEBTS = "http://localhost:8080/api/clients/today-debts";
-const API_OVERDUE_DEBTS = "http://localhost:8080/api/clients/overdue-debts";
+const API_ORDERS = `${API_BASE_URL}/api/orders`;
+const API_SHIFTS = `${API_BASE_URL}/api/shifts`;
+const API_PERSONS = `${API_BASE_URL}/api/persons`;
+const API_DISHES = `${API_BASE_URL}/api/dishes`;
+const API_CLIENTS = `${API_BASE_URL}/api/clients`;
+const API_TODAY_DEBTS = `${API_BASE_URL}/api/clients/today-debts`;
+const API_OVERDUE_DEBTS = `${API_BASE_URL}/api/clients/overdue-debts`;
+const API_DISH_CATEGORIES = `${API_BASE_URL}/api/dish-categories`;
 
 export default function CashierPage() {
     const [orders, setOrders] = useState([]);
@@ -30,6 +32,7 @@ export default function CashierPage() {
     const [paymentType, setPaymentType] = useState("cash"); // cash | transfer | unpaid
     const [deliveryPhone, setDeliveryPhone] = useState("");
     const [deliveryAddress, setDeliveryAddress] = useState("");
+    const [dishCategories, setDishCategories] = useState([]);
 
     const [clients, setClients] = useState([]);
     const [selectedClient, setSelectedClient] = useState(null);
@@ -80,6 +83,17 @@ export default function CashierPage() {
             .then(d => setAllDishes(Array.isArray(d) ? d : []))
             .catch(e => console.error("Ошибка загрузки блюд:", e));
 
+        fetch(API_DISH_CATEGORIES)
+            .then(async (r) => {
+                if (!r.ok) {
+                    throw new Error(`Не удалось загрузить категории (${r.status})`);
+                }
+                const text = await r.text();
+                return text ? JSON.parse(text) : [];
+            })
+            .then(d => setDishCategories(Array.isArray(d) ? d : []))
+            .catch(e => console.error("Ошибка загрузки категорий блюд:", e));
+
         fetchShifts()
             .then(() => {
                 // Если есть сохраненная смена, восстанавливаем ее
@@ -127,6 +141,19 @@ export default function CashierPage() {
             setShowDatePicker(false);
         }
     }, [selectedClient, isDebt]);
+
+    useEffect(() => {
+        if (!orderType) return;
+        if (selectedClient?.number) {
+            setDeliveryPhone(selectedClient.number);
+            return;
+        }
+        setDeliveryPhone("");
+    }, [orderType, selectedClient]);
+
+    const requiresContactDetails = orderType;
+    const effectivePhone = (deliveryPhone || "").trim() || (selectedClient?.number || "").trim();
+    const effectiveAddress = (deliveryAddress || "").trim();
 
     // === ДОБАВЛЕНО: Функция проверки долгов ===
     const checkDebts = async () => {
@@ -476,18 +503,18 @@ ${reportText}
             return;
         }
 
-        if (!selectedClient) {
-            alert("Выберите клиента!");
+        if (isDebt && !selectedClient) {
+            alert("Для долга выберите клиента!");
             return;
         }
 
-        if (orderType) {
-            if (!deliveryPhone.trim()) {
-                alert("Введите номер телефона для доставки!");
+        if (requiresContactDetails) {
+            if (!effectivePhone) {
+                alert(orderType ? "Введите номер телефона для доставки!" : "Введите номер телефона для перевода!");
                 return;
             }
-            if (!deliveryAddress.trim()) {
-                alert("Введите адрес доставки!");
+            if (!effectiveAddress) {
+                alert(orderType ? "Введите адрес доставки!" : "Введите адрес!");
                 return;
             }
         }
@@ -501,7 +528,7 @@ ${reportText}
             }
 
             const orderPayload = {
-                clientId: selectedClient.clientId,
+                clientId: selectedClient?.clientId ?? null,
                 shiftId: currentShift.shiftId,
                 date: new Date().toISOString().slice(0, 10),
                 amount: total,
@@ -509,8 +536,8 @@ ${reportText}
                 time: preparationTime,
                 duty: isDebt,
                 type: orderType,
-                deliveryPhone: orderType ? deliveryPhone.trim() : null,
-                deliveryAddress: orderType ? deliveryAddress.trim() : null,
+                deliveryPhone: requiresContactDetails ? effectivePhone : null,
+                deliveryAddress: requiresContactDetails ? effectiveAddress : null,
                 paymentType,
                 paid: paymentType !== "unpaid",
                 debt_payment_date: debtPayment,
@@ -533,8 +560,16 @@ ${reportText}
             order.paymentType = paymentType;
             order.paid = paymentType !== "unpaid";
             order.deliveryCost = orderType ? Number(deliveryCost || 0) : 0;
-            order.deliveryPhone = orderType ? deliveryPhone.trim() : "";
-            order.deliveryAddress = orderType ? deliveryAddress.trim() : "";
+            order.deliveryPhone = requiresContactDetails ? effectivePhone : "";
+            order.deliveryAddress = requiresContactDetails ? effectiveAddress : "";
+            if (selectedClient?.fullName) order.clientName = selectedClient.fullName;
+            if (selectedClient?.number) order.clientPhone = selectedClient.number;
+            order.items = currentOrderItems.map(i => ({
+                dishName: i.dishName,
+                qty: i.qty || 1,
+                price: i.price || 0,
+                sum: Number(i.price || 0) * Number(i.qty || 1)
+            }));
 
             // Обновляем список заказов (добавляем новый заказ в начало)
             setOrders(prev => [order, ...prev]);
@@ -555,21 +590,6 @@ ${reportText}
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             setDebtPaymentDate(tomorrow.toISOString().split('T')[0]);
-
-            // Отправляем блюда заказа
-            const dishPayload = currentOrderItems.map(i => ({
-                dishID: i.dishId,
-                qty: i.qty || 1
-            }));
-
-            fetch(`${API_ORDERS}/orderToDish?orderId=${order.orderId}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(dishPayload)
-            })
-                .then(r => r.json())
-                .then(res => console.log("Ответ от orderToDish:", res))
-                .catch(e => console.error("Ошибка отправки на orderToDish:", e));
 
         } catch (e) {
             console.error("Ошибка создания заказа:", e);
@@ -678,6 +698,31 @@ ${reportText}
         return rounded.toFixed(2).replace(/\.?0+$/, "");
     };
 
+    const normalizeTicketItems = (rawItems) => {
+        if (!Array.isArray(rawItems)) return [];
+        return rawItems.map((item) => {
+            const name = item?.dishName || item?.name || item?.title || item?.dish_name || "Позиция";
+            const qtyRaw = item?.qty ?? item?.quantity ?? item?.count ?? item?.amount ?? 1;
+            const qty = Math.max(1, Number(qtyRaw || 1));
+            const priceRaw = item?.price ?? item?.cost ?? item?.unitPrice ?? item?.unit_price ?? null;
+            const sumRaw = item?.sum ?? item?.total ?? item?.lineTotal ?? item?.line_total ?? null;
+            let price = Number(priceRaw || 0);
+            let sum = Number(sumRaw || 0);
+            if (!Number.isFinite(price) && Number.isFinite(sum)) {
+                price = qty ? sum / qty : sum;
+            }
+            if (!Number.isFinite(sum)) {
+                sum = price * qty;
+            }
+            return {
+                dishName: name,
+                qty,
+                price,
+                sum
+            };
+        });
+    };
+
     const escapeHtml = (value) => String(value ?? "")
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
@@ -694,29 +739,80 @@ ${reportText}
         ""
     ]);
 
+    const getOrderClientName = (order) => (
+        order.clientName ||
+        order.clientFullName ||
+        order.client_name ||
+        order.client ||
+        ""
+    );
+
     const buildKitchenTicketLines = (order, items) => {
         const lines = [];
-        lines.push(`ЗАКАЗ НА КУХНЮ №${order.orderId}`);
+        lines.push({
+            text: `ЗАКАЗ НА КУХНЮ №${order.orderId}`,
+            fontSize: 22,
+            fontWeight: 800,
+            align: "center"
+        });
+        const clientName = getOrderClientName(order);
+        if (clientName) {
+            lines.push({
+                text: `КЛИЕНТ: ${clientName}`,
+                fontSize: 22,
+                fontWeight: 800,
+                align: "center"
+            });
+        }
         if (order.created_at || order.createdAt) {
             lines.push(`Время: ${String(order.created_at || order.createdAt)}`);
         }
         lines.push("-".repeat(32));
 
-        items.forEach((item) => {
+        const normalizedItems = normalizeTicketItems(items);
+        const itemsTotal = normalizedItems.reduce((sum, item) => sum + Number(item.sum || 0), 0);
+        normalizedItems.forEach((item) => {
             const qty = Number(item.qty || 0);
             const price = Number(item.price || 0);
-            const sum = qty * price;
+            const sum = Number(item.sum || 0);
             lines.push(String(item.dishName || "Позиция"));
-            lines.push(`${qty} x ${formatTicketMoney(price)} = ${formatTicketMoney(sum)} ₽`);
+            lines.push(`${qty} x ${formatTicketMoney(price)} = ${formatTicketMoney(sum || qty * price)} ₽`);
         });
 
         lines.push("-".repeat(32));
         lines.push(`ИТОГО: ${formatTicketMoney(order.amount)} ₽`);
         lines.push(order.type ? "ТИП: ДОСТАВКА" : "ТИП: В ЗАЛЕ");
         if (order.type) {
-            lines.push(`ДОСТАВКА: ${formatTicketMoney(order.deliveryCost || 0)} ₽`);
-            if (order.deliveryPhone || order.clientPhone) lines.push(`ТЕЛЕФОН: ${order.deliveryPhone || order.clientPhone}`);
-            if (order.deliveryAddress) lines.push(`АДРЕС: ${order.deliveryAddress}`);
+            let deliveryCost = Number(
+                order.deliveryCost ??
+                order.delivery_cost ??
+                order.deliveryExpense ??
+                order.delivery_expense ??
+                0
+            );
+            if (!Number.isFinite(deliveryCost) || deliveryCost <= 0) {
+                const amount = Number(order.amount || 0);
+                if (Number.isFinite(amount) && amount > 0) {
+                    deliveryCost = Math.max(0, amount - itemsTotal);
+                }
+            }
+            lines.push(`ДОСТАВКА: ${formatTicketMoney(deliveryCost)} ₽`);
+        }
+        const contactPhone = order.deliveryPhone || order.clientPhone || order.client_number || order.clientNumber;
+        const contactAddress = order.deliveryAddress || order.delivery_address || order.clientAddress || order.client_address;
+        if (contactPhone) {
+            lines.push({
+                text: `ТЕЛЕФОН: ${contactPhone}`,
+                fontSize: 26,
+                fontWeight: 800
+            });
+        }
+        if (contactAddress) {
+            lines.push({
+                text: `АДРЕС: ${contactAddress}`,
+                fontSize: 26,
+                fontWeight: 800
+            });
         }
         const paymentRaw = (order.paymentType || "").toLowerCase();
         const paymentLabel = paymentRaw === "cash"
@@ -733,16 +829,51 @@ ${reportText}
         const fontWeight = style.fontWeight || 700;
         const align = style.align || "left";
         const lineHeight = style.lineHeight || 1.35;
-        const padding = style.padding || 12;
+        const pageSize = style.pageSize || "58mm auto";
+        const pageWidth = style.pageWidth || "55mm";
+        const pageMargin = style.pageMargin || "0mm";
+        const pagePadding = style.pagePadding
+            || (typeof style.padding === "number"
+                ? `${style.padding}px`
+                : (style.padding || "2mm"));
+
+        const normalized = (lines || []).map((line) => {
+            if (typeof line === "string") return { text: line };
+            if (line && typeof line === "object") return line;
+            return { text: String(line ?? "") };
+        });
+
+        const htmlLines = normalized.map((line) => {
+            const text = line.text === "" ? " " : String(line.text ?? "");
+            const size = line.fontSize || fontSize;
+            const weight = line.fontWeight || fontWeight;
+            const lineAlign = line.align || align;
+            const lh = line.lineHeight || lineHeight;
+            return `
+                <div style="white-space:pre-wrap; font-size:${size}px; font-weight:${weight}; line-height:${lh}; text-align:${lineAlign};">
+                    ${escapeHtml(text)}
+                </div>
+            `;
+        }).join("");
 
         const html = `
             <html>
                 <head>
                     <meta charset="UTF-8" />
                     <title>${escapeHtml(title)}</title>
+                    <style>
+                        @page { size: ${pageSize}; margin: ${pageMargin}; }
+                        * { box-sizing: border-box; }
+                        body {
+                            margin: 0;
+                            padding: ${pagePadding};
+                            width: ${pageWidth};
+                            font-family: 'Courier New', monospace;
+                        }
+                    </style>
                 </head>
-                <body style="font-family:'Courier New', monospace; padding:${padding}px; max-width:420px;">
-                    <pre style="margin:0; white-space:pre-wrap; font-size:${fontSize}px; font-weight:${fontWeight}; line-height:${lineHeight}; text-align:${align};">${escapeHtml(lines.join("\n"))}</pre>
+                <body>
+                    ${htmlLines}
                 </body>
             </html>
         `;
@@ -770,10 +901,29 @@ ${reportText}
         return { status: "order_number_printed_only" };
     };
 
-    const printOrderDetailsTicket = async (order) => {
-        const dishesRes = await fetch(`http://localhost:8080/api/shifts/getDish/${order.orderId}`);
-        const dishes = dishesRes.ok ? await dishesRes.json() : [];
-        const items = Array.isArray(dishes) ? dishes : [];
+    const printOrderDetailsTicket = async (order, orderItems = []) => {
+        let items = Array.isArray(orderItems) ? orderItems : [];
+        if (items.length === 0) {
+            try {
+                const dishesRes = await fetch(`${API_BASE_URL}/api/shifts/getDish/${order.orderId}`);
+                if (dishesRes.ok) {
+                    const dishes = await dishesRes.json();
+                    if (Array.isArray(dishes)) {
+                        items = dishes;
+                    } else if (Array.isArray(dishes?.items)) {
+                        items = dishes.items;
+                    } else if (Array.isArray(dishes?.data)) {
+                        items = dishes.data;
+                    }
+                }
+            } catch (e) {
+                console.error("Ошибка загрузки позиций для чека:", e);
+            }
+        }
+
+        if (items.length === 0 && Array.isArray(order.items)) {
+            items = order.items;
+        }
 
         const kitchenLines = buildKitchenTicketLines(order, items).concat(["", ""]);
         const title = `Чек заказа №${order.orderId}`;
@@ -1198,8 +1348,10 @@ ${reportText}
                                         setOrderType(next);
                                         if (!next) {
                                             setDeliveryCost(0);
-                                            setDeliveryPhone("");
-                                            setDeliveryAddress("");
+                                            if (paymentType !== "transfer") {
+                                                setDeliveryPhone("");
+                                                setDeliveryAddress("");
+                                            }
                                         }
                                     }}
                                     disabled={isLoading}
@@ -1351,12 +1503,11 @@ ${reportText}
                             onClick={createOrder}
                             disabled={
                                 currentOrderItems.length === 0 ||
-                                !selectedClient ||
                                 isLoading ||
-                                (orderType && (!deliveryPhone.trim() || !deliveryAddress.trim()))
+                                (requiresContactDetails && (!effectivePhone || !effectiveAddress))
                             }
                         >
-                            {!selectedClient ? "Выберите клиента" : "Создать заказ"}
+                            Создать заказ
                         </button>
 
                         <button
@@ -1638,11 +1789,13 @@ ${reportText}
 
             {/* === ДОБАВЛЕНО: Модальное окно уведомления о долгах === */}
             <DebtNotification />
-            <DishModal
+            <DishPickerModal
                 isOpen={modalOpen}
                 onClose={() => setModalOpen(false)}
                 dishes={allDishes}
-                onAddDish={d => setCurrentOrderItems(prev => [...prev, { ...d, qty: 1 }])}
+                categories={dishCategories}
+                initialItems={currentOrderItems}
+                onConfirm={(items) => setCurrentOrderItems(items)}
                 disabled={isLoading}
             />
         </div>
