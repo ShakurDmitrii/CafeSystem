@@ -12,6 +12,17 @@ const UNIT_PRESETS = {
     l: { baseUnit: "ml", unitFactor: "1000" },
     pcs: { baseUnit: "pcs", unitFactor: "1" }
 };
+const createEmptyForm = () => ({
+    supplierId: "",
+    productName: "",
+    productPrice: "",
+    waste: "",
+    isFavorite: false,
+    unit: "g",
+    baseUnit: "g",
+    unitFactor: "1",
+    imageUrl: ""
+});
 
 export default function ProductsPage() {
     const [products, setProducts] = useState([]);
@@ -19,21 +30,12 @@ export default function ProductsPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [uploadingImage, setUploadingImage] = useState(false);
+    const [editingProductId, setEditingProductId] = useState(null);
 
     const [search, setSearch] = useState("");
     const [sortBy, setSortBy] = useState("name_asc");
 
-    const [form, setForm] = useState({
-        supplierId: "",
-        productName: "",
-        productPrice: "",
-        waste: "",
-        isFavorite: false,
-        unit: "g",
-        baseUnit: "g",
-        unitFactor: "1",
-        imageUrl: ""
-    });
+    const [form, setForm] = useState(createEmptyForm);
 
     const loadData = async () => {
         setLoading(true);
@@ -132,30 +134,21 @@ export default function ProductsPage() {
         };
 
         try {
-            const res = await fetch(API_PRODUCTS, {
-                method: "POST",
+            const res = await fetch(editingProductId ? `${API_PRODUCTS}/${editingProductId}` : API_PRODUCTS, {
+                method: editingProductId ? "PUT" : "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
-                throw new Error(data?.message || `Ошибка создания (${res.status})`);
+                throw new Error(data?.message || `Ошибка сохранения (${res.status})`);
             }
             await res.json().catch(() => null);
-            setForm({
-                supplierId: "",
-                productName: "",
-                productPrice: "",
-                waste: "",
-                isFavorite: false,
-                unit: "g",
-                baseUnit: "g",
-                unitFactor: "1",
-                imageUrl: ""
-            });
+            setForm(createEmptyForm());
+            setEditingProductId(null);
             await loadData();
         } catch (e2) {
-            setError(e2.message || "Ошибка при создании продукта");
+            setError(e2.message || "Ошибка при сохранении продукта");
         }
     };
 
@@ -185,6 +178,29 @@ export default function ProductsPage() {
         }
     };
 
+    const startEditing = (product) => {
+        setEditingProductId(product.productId);
+        setError("");
+        setForm({
+            supplierId: String(product.supplierId ?? ""),
+            productName: product.productName ?? "",
+            productPrice: String(product.productPrice ?? ""),
+            waste: String(product.waste ?? ""),
+            isFavorite: !!product.isFavorite,
+            unit: product.unit ?? "g",
+            baseUnit: product.baseUnit ?? "g",
+            unitFactor: String(product.unitFactor ?? "1"),
+            imageUrl: product.imageUrl ?? ""
+        });
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const cancelEditing = () => {
+        setEditingProductId(null);
+        setError("");
+        setForm(createEmptyForm());
+    };
+
     return (
         <div className={styles.page}>
             <div className={styles.headerRow}>
@@ -193,7 +209,7 @@ export default function ProductsPage() {
             </div>
 
             <form className={styles.form} onSubmit={handleSubmit}>
-                <h3>Добавить продукт</h3>
+                <h3>{editingProductId ? `Редактирование продукта #${editingProductId}` : "Добавить продукт"}</h3>
                 <div className={styles.formGrid}>
                     <select
                         value={form.supplierId}
@@ -284,7 +300,16 @@ export default function ProductsPage() {
                         />
                         Избранный
                     </label>
-                    <button type="submit" className={styles.submitBtn}>Создать</button>
+                    <div className={styles.formActions}>
+                        <button type="submit" className={styles.submitBtn}>
+                            {editingProductId ? "Сохранить" : "Создать"}
+                        </button>
+                        {editingProductId && (
+                            <button type="button" className={styles.cancelBtn} onClick={cancelEditing}>
+                                Отмена
+                            </button>
+                        )}
+                    </div>
                 </div>
             </form>
 
@@ -324,6 +349,7 @@ export default function ProductsPage() {
                             <th>Коэф.</th>
                             <th>Фото</th>
                             <th>Избранный</th>
+                            <th>Действия</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -343,6 +369,17 @@ export default function ProductsPage() {
                                     ) : "—"}
                                 </td>
                                 <td>{p.isFavorite ? "Да" : "Нет"}</td>
+                                <td>
+                                    <div className={styles.rowActions}>
+                                        <button
+                                            type="button"
+                                            className={styles.editBtn}
+                                            onClick={() => startEditing(p)}
+                                        >
+                                            Редактировать
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
                         ))}
                         </tbody>

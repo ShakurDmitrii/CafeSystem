@@ -1,12 +1,16 @@
 package com.shakur.cafehelp.Service.MlServices;
 
 import com.shakur.cafehelp.DTO.MlDTO.RollMenuItemDTO;
+import com.shakur.cafehelp.Service.ProductService;
+import com.shakur.cafehelp.Service.RecipeExpansionService;
 import jooqdata.tables.records.DishRecord;
 import lombok.RequiredArgsConstructor;
 import org.jooq.DSLContext;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static jooqdata.tables.Dish.DISH;
@@ -16,6 +20,8 @@ import static jooqdata.tables.Dish.DISH;
 public class  MenuService {
 
     private final DSLContext dsl;
+    private final RecipeExpansionService recipeExpansionService;
+    private final ProductService productService;
 
     /**
      * Получить все блюда (роллы) из меню
@@ -45,14 +51,22 @@ public class  MenuService {
      * Получить состав блюда (ингредиенты)
      */
     public List<String> getDishIngredients(Integer dishId) {
-        return dsl.select(jooqdata.tables.Product.PRODUCT.PRODUCTNAME)
-                .from(jooqdata.tables.Techproduct.TECHPRODUCT)
-                .join(jooqdata.tables.Product.PRODUCT)
-                .on(jooqdata.tables.Product.PRODUCT.PRODUCTID
-                        .eq(jooqdata.tables.Techproduct.TECHPRODUCT.PRODUCTID))
-                .where(jooqdata.tables.Techproduct.TECHPRODUCT.DISHID.eq(dishId))
-                .fetch()
-                .map(record -> record.get(jooqdata.tables.Product.PRODUCT.PRODUCTNAME));
+        Map<Integer, String> productNames = productService.getProducts()
+                .stream()
+                .filter(product -> product.getProductName() != null)
+                .collect(Collectors.toMap(
+                        product -> product.getProductId(),
+                        product -> product.getProductName(),
+                        (left, right) -> left
+                ));
+
+        return recipeExpansionService.buildRequirementsForDish(dishId, 1)
+                .keySet()
+                .stream()
+                .map(productNames::get)
+                .filter(name -> name != null && !name.isBlank())
+                .sorted((a, b) -> a.toLowerCase(Locale.ROOT).compareTo(b.toLowerCase(Locale.ROOT)))
+                .toList();
     }
 
     /**

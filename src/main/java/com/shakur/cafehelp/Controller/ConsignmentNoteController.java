@@ -48,11 +48,31 @@ public class ConsignmentNoteController {
         return consignmentNoteService.createConsignmentNote(consignmentNoteDTO);
     }
 
+    @PostMapping("/{id}/post")
+    public ResponseEntity<?> postConsignmentNote(@PathVariable int id, @RequestBody Map<String, Integer> body) {
+        Integer warehouseId = body.get("warehouseId");
+        if (warehouseId == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "warehouseId is required"));
+        }
+        try {
+            consignmentNoteService.postConsignmentNote(id, warehouseId);
+            return ResponseEntity.ok(Map.of("status", "posted"));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.internalServerError().body(Map.of("message", e.getMessage()));
+        }
+    }
+
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteConsignmentNote(@PathVariable int id) {
-        boolean deleted = consignmentNoteService.deleteConsignmentNote(id);
-        if (!deleted) return ResponseEntity.notFound().build();
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<?> deleteConsignmentNote(@PathVariable int id) {
+        try {
+            boolean deleted = consignmentNoteService.deleteConsignmentNote(id);
+            if (!deleted) return ResponseEntity.notFound().build();
+            return ResponseEntity.noContent().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
     }
 
 }

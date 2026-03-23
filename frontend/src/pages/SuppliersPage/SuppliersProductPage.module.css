@@ -1,139 +1,219 @@
-/* Общий контейнер */
-.container {
+.page {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 20px;
-}
-
-/* Заголовки */
-.title {
-    font-size: 2rem;
-    font-weight: 700;
-    color: #333;
-    margin-bottom: 20px;
-}
-
-.sectionTitle {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 15px;
-}
-
-/* Форма добавления товара */
-.addProductForm {
-    background: #ffffff;
-    border-radius: 12px;
-    padding: 30px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-    max-width: 600px;
-    margin: 0 auto 40px auto;
-    transition: transform 0.3s, box-shadow 0.3s;
-}
-
-.addProductForm:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
-}
-
-.addProductForm form {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 1rem;
 }
 
-.inputField {
-    padding: 14px 16px;
-    border: 2px solid #e0e0e0;
-    border-radius: 10px;
-    font-size: 16px;
-    transition: border-color 0.3s, box-shadow 0.3s;
+.headerRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
-.inputField:focus {
-    outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+.reloadBtn {
+    border: 1px solid #0ea5e9;
+    background: #e0f2fe;
+    color: #075985;
+    border-radius: 8px;
+    padding: 0.5rem 0.8rem;
+    cursor: pointer;
+}
+
+.form {
+    background: #fff;
+    border: 1px solid #d6e4f0;
+    border-radius: 12px;
+    padding: 1rem;
+}
+
+.form h3 {
+    margin: 0 0 0.8rem 0;
+}
+
+.formGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+    gap: 0.7rem;
+    align-items: center;
+}
+
+.formGrid input,
+.formGrid select {
+    height: 38px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0 0.65rem;
+}
+
+.fileInput {
+    height: auto;
+    padding: 0.35rem 0.45rem;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #334155;
+}
+
+.fileInput::file-selector-button {
+    margin-right: 0.75rem;
+    border: 1px solid #0284c7;
+    background: #e0f2fe;
+    color: #075985;
+    border-radius: 6px;
+    padding: 0.35rem 0.75rem;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.fileInput::file-selector-button:hover {
+    background: #bae6fd;
 }
 
 .checkboxLabel {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-weight: 500;
-    color: #555;
-}
-
-.checkboxInput {
-    width: 18px;
-    height: 18px;
-    accent-color: #667eea;
+    gap: 0.5rem;
 }
 
 .submitBtn {
-    padding: 14px 0;
-    font-size: 16px;
-    font-weight: 600;
-    border-radius: 10px;
-    cursor: pointer;
+    height: 38px;
     border: none;
-    transition: all 0.3s;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    border-radius: 8px;
+    background: #16a34a;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
 }
 
-.submitBtn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+.cancelBtn {
+    height: 38px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font-weight: 600;
+    cursor: pointer;
 }
 
-/* Сетки карточек */
-.productsGrid {
-    display: grid;
-    gap: 20px;
+.formActions {
+    display: flex;
+    gap: 0.5rem;
 }
 
-.gridCols1 {
-    grid-template-columns: repeat(1, 1fr);
+.hint {
+    font-size: 0.85rem;
+    color: #475467;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 0.5rem 0.65rem;
 }
 
-.gridCols2 {
-    grid-template-columns: repeat(2, 1fr);
+.uploadStatus {
+    font-size: 0.85rem;
+    color: #475467;
 }
 
-.gridCols3 {
-    grid-template-columns: repeat(3, 1fr);
+.previewImage {
+    width: 72px;
+    height: 72px;
+    border-radius: 10px;
+    object-fit: cover;
+    border: 1px solid #cbd5e1;
 }
 
-@media (max-width: 768px) {
-    .gridCols2,
-    .gridCols3 {
-        grid-template-columns: 1fr;
+.controls {
+    display: flex;
+    gap: 0.7rem;
+}
+
+.controls input,
+.controls select {
+    height: 38px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0 0.65rem;
+}
+
+.controls input {
+    flex: 1;
+}
+
+.tableWrap {
+    overflow-x: auto;
+    background: #fff;
+    border: 1px solid #d6e4f0;
+    border-radius: 12px;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 920px;
+}
+
+.table th,
+.table td {
+    padding: 0.72rem;
+    border-bottom: 1px solid #edf2f7;
+    text-align: left;
+}
+
+.table th {
+    background: #f8fbff;
+    color: #334155;
+}
+
+.tableThumb {
+    width: 46px;
+    height: 46px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 1px solid #dbe2ea;
+}
+
+.rowActions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.editBtn {
+    border: 1px solid #0284c7;
+    background: #e0f2fe;
+    color: #075985;
+    border-radius: 8px;
+    padding: 0.45rem 0.75rem;
+    cursor: pointer;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.error {
+    color: #b42318;
+    font-weight: 500;
+}
+
+.info {
+    background: #fff;
+    border: 1px solid #d6e4f0;
+    border-radius: 10px;
+    padding: 0.9rem;
+}
+
+@media (max-width: 900px) {
+    .formGrid {
+        grid-template-columns: 1fr 1fr;
     }
 }
 
-/* Карточки товаров */
-.productCard {
-    background: white;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-    transition: all 0.3s;
-}
+@media (max-width: 640px) {
+    .formGrid {
+        grid-template-columns: 1fr;
+    }
 
-.productCard:hover {
-    box-shadow: 0 6px 25px rgba(0,0,0,0.12);
-}
-
-.favoriteCard {
-    background: #fff9e6;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-}
-
-.emptyState {
-    text-align: center;
-    color: #555;
-    padding: 40px 0;
+    .controls {
+        flex-direction: column;
+    }
 }

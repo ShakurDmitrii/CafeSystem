@@ -277,6 +277,12 @@
     font-size: 14px;
 }
 
+.qtyHint {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
 .productsTable tr:last-child td {
     border-bottom: none;
 }
@@ -335,6 +341,122 @@
     background: var(--warning-dark);
 }
 
+.modalOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 1000;
+}
+
+.modalCard {
+    width: min(920px, 100%);
+    max-height: calc(100vh - 40px);
+    overflow: auto;
+    border-radius: 18px;
+    background: #ffffff;
+    border: 1px solid var(--line);
+    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+    padding: 18px;
+}
+
+.modalHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.modalTitle {
+    margin: 0;
+    font-size: 24px;
+}
+
+.modalSubtitle {
+    margin: 6px 0 0;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.modalControls {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) 180px 180px;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.modalHint {
+    margin-bottom: 12px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.modalError {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+.productPickerList {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.productPickerItem {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #f8fafc;
+    padding: 14px 16px;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    color: var(--text);
+}
+
+.productPickerItemActive {
+    border-color: #38bdf8;
+    background: #ecfeff;
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
+}
+
+.productPickerMain {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.productPickerMeta {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.productPickerSide {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-end;
+    color: var(--muted);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.modalActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}
+
 @media (max-width: 900px) {
     .container {
         padding: 14px;
@@ -363,5 +485,23 @@
     .input,
     .productInput {
         min-width: 100%;
+    }
+
+    .modalHeader,
+    .modalActions {
+        flex-direction: column;
+    }
+
+    .modalControls {
+        grid-template-columns: 1fr;
+    }
+
+    .productPickerItem {
+        flex-direction: column;
+    }
+
+    .productPickerSide {
+        align-items: flex-start;
+        white-space: normal;
     }
 }

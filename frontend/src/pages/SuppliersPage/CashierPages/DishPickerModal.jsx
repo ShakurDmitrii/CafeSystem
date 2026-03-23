@@ -3,28 +3,65 @@ import styles from "./DishPickerModal.module.css";
 
 const normalize = (v) => String(v || "").trim();
 
+const toItemType = (item) =>
+    item?.itemType === "set" || item?.setId != null ? "set" : "dish";
+
 const toCategoryName = (dish) =>
-    dish?.categoryName || dish?.category || "Без категории";
+    toItemType(dish) === "set"
+        ? "Наборы"
+        : dish?.categoryName || dish?.category || "Без категории";
 
 const toDishId = (dish) => dish?.dishId ?? dish?.id;
+
+const toSetId = (item) => item?.setId;
+
+const toDisplayName = (item) =>
+    toItemType(item) === "set"
+        ? item?.setName || item?.dishName || item?.name || "Без названия"
+        : item?.dishName || item?.name || "Без названия";
+
+const toPrice = (item) => item?.price ?? item?.dishPrice ?? 0;
+
+const toEntityKey = (item) => {
+    const itemType = toItemType(item);
+    const rawId = itemType === "set" ? toSetId(item) : toDishId(item);
+    if (rawId == null) return null;
+    return `${itemType}-${rawId}`;
+};
+
+const toSetItems = (item) =>
+    Array.isArray(item?.setItems)
+        ? item.setItems
+        : Array.isArray(item?.items)
+            ? item.items
+            : [];
 
 const mapInitialItems = (items = []) =>
     items
         .filter(Boolean)
-        .map((d) => ({
-            dishId: toDishId(d),
-            dishName: d.dishName || d.name || "Без названия",
-            price: d.price ?? d.dishPrice ?? 0,
-            qty: Number(d.qty || 0) || 0,
-            imageUrl: d.imageUrl || null,
-            categoryName: toCategoryName(d)
-        }))
-        .filter((d) => d.dishId != null && d.qty > 0);
+        .map((item) => {
+            const itemType = toItemType(item);
+            const entityKey = toEntityKey(item);
+            return {
+                itemType,
+                entityKey,
+                dishId: itemType === "dish" ? toDishId(item) : null,
+                setId: itemType === "set" ? toSetId(item) : null,
+                dishName: toDisplayName(item),
+                price: toPrice(item),
+                qty: Number(item.qty || 0) || 0,
+                imageUrl: item.imageUrl || null,
+                categoryName: toCategoryName(item),
+                setItems: toSetItems(item)
+            };
+        })
+        .filter((item) => item.entityKey && item.qty > 0);
 
 export default function DishPickerModal({
     isOpen,
     onClose,
     dishes = [],
+    dishSets = [],
     categories = [],
     initialItems = [],
     onConfirm,
@@ -41,81 +78,102 @@ export default function DishPickerModal({
         setSearch("");
     }, [isOpen, initialItems]);
 
+    const catalogItems = useMemo(() => {
+        const dishItems = dishes.map((dish) => ({
+            ...dish,
+            itemType: "dish",
+            entityKey: toEntityKey(dish),
+            dishId: toDishId(dish),
+            dishName: toDisplayName(dish),
+            price: toPrice(dish),
+            categoryName: toCategoryName(dish)
+        }));
+        const setItems = dishSets.map((dishSet) => ({
+            ...dishSet,
+            itemType: "set",
+            entityKey: toEntityKey(dishSet),
+            setId: toSetId(dishSet),
+            dishName: toDisplayName(dishSet),
+            price: toPrice(dishSet),
+            categoryName: toCategoryName(dishSet),
+            setItems: toSetItems(dishSet)
+        }));
+        return [...dishItems, ...setItems].filter((item) => item.entityKey);
+    }, [dishes, dishSets]);
+
     const categoryOptions = useMemo(() => {
         const fromApi = categories
             .map((c) => normalize(c?.name))
             .filter((x) => x);
-        const fromDishes = dishes
+        const fromCatalog = catalogItems
             .map((d) => normalize(toCategoryName(d)))
             .filter((x) => x);
-        const all = Array.from(new Set([...fromApi, ...fromDishes]));
+        const all = Array.from(new Set([...fromApi, ...fromCatalog]));
         all.sort((a, b) => a.localeCompare(b, "ru"));
         return ["Все", ...all];
-    }, [categories, dishes]);
+    }, [categories, catalogItems]);
 
     const dishesByCategory = useMemo(() => {
         const searchTerm = normalize(search).toLowerCase();
-        const list = dishes.map((d) => ({
-            ...d,
-            dishId: toDishId(d),
-            dishName: d.dishName || d.name || "Без названия",
-            price: d.price ?? d.dishPrice ?? 0,
-            categoryName: toCategoryName(d)
-        }));
         const filteredByCategory = activeCategory === "Все"
-            ? list
-            : list.filter((d) => normalize(d.categoryName) === activeCategory);
+            ? catalogItems
+            : catalogItems.filter((d) => normalize(d.categoryName) === activeCategory);
         if (!searchTerm) return filteredByCategory;
         return filteredByCategory.filter((d) =>
             normalize(d.dishName).toLowerCase().includes(searchTerm)
         );
-    }, [dishes, activeCategory, search]);
+    }, [catalogItems, activeCategory, search]);
 
     const cartMap = useMemo(() => {
         const m = new Map();
         cartItems.forEach((i) => {
-            m.set(i.dishId, i);
+            m.set(i.entityKey, i);
         });
         return m;
     }, [cartItems]);
 
     const addToCart = (dish) => {
-        const dishId = toDishId(dish);
-        if (dishId == null) return;
+        const entityKey = toEntityKey(dish);
+        if (!entityKey) return;
+        const itemType = toItemType(dish);
         setCartItems((prev) => {
-            const existing = prev.find((p) => p.dishId === dishId);
+            const existing = prev.find((p) => p.entityKey === entityKey);
             if (existing) {
                 return prev.map((p) =>
-                    p.dishId === dishId ? { ...p, qty: p.qty + 1 } : p
+                    p.entityKey === entityKey ? { ...p, qty: p.qty + 1 } : p
                 );
             }
             return [
                 ...prev,
                 {
-                    dishId,
-                    dishName: dish.dishName || dish.name || "Без названия",
-                    price: dish.price ?? dish.dishPrice ?? 0,
+                    itemType,
+                    entityKey,
+                    dishId: itemType === "dish" ? toDishId(dish) : null,
+                    setId: itemType === "set" ? toSetId(dish) : null,
+                    dishName: toDisplayName(dish),
+                    price: toPrice(dish),
                     qty: 1,
                     imageUrl: dish.imageUrl || null,
-                    categoryName: toCategoryName(dish)
+                    categoryName: toCategoryName(dish),
+                    setItems: toSetItems(dish)
                 }
             ];
         });
     };
 
-    const updateQty = (dishId, qty) => {
+    const updateQty = (entityKey, qty) => {
         const n = Number(qty);
         if (!Number.isFinite(n) || n <= 0) {
-            setCartItems((prev) => prev.filter((p) => p.dishId !== dishId));
+            setCartItems((prev) => prev.filter((p) => p.entityKey !== entityKey));
             return;
         }
         setCartItems((prev) =>
-            prev.map((p) => (p.dishId === dishId ? { ...p, qty: n } : p))
+            prev.map((p) => (p.entityKey === entityKey ? { ...p, qty: n } : p))
         );
     };
 
-    const removeItem = (dishId) => {
-        setCartItems((prev) => prev.filter((p) => p.dishId !== dishId));
+    const removeItem = (entityKey) => {
+        setCartItems((prev) => prev.filter((p) => p.entityKey !== entityKey));
     };
 
     const total = cartItems.reduce(
@@ -123,13 +181,18 @@ export default function DishPickerModal({
         0
     );
 
+    const handleConfirm = async () => {
+        await Promise.resolve(onConfirm?.(cartItems));
+        onClose?.();
+    };
+
     if (!isOpen) return null;
 
     return (
         <div className={styles.overlay}>
             <div className={styles.modal}>
                 <header className={styles.header}>
-                    <h2>Выбор блюд</h2>
+                    <h2>Выбор позиций</h2>
                     <button className={styles.closeBtn} onClick={onClose}>
                         Закрыть
                     </button>
@@ -156,7 +219,7 @@ export default function DishPickerModal({
 
                     <section className={styles.dishes}>
                         <div className={styles.sectionTitle}>
-                            {activeCategory === "Все" ? "Все блюда" : activeCategory}
+                            {activeCategory === "Все" ? "Все позиции" : activeCategory}
                         </div>
                         <input
                             type="text"
@@ -167,9 +230,15 @@ export default function DishPickerModal({
                         />
                         <div className={styles.dishGrid}>
                             {dishesByCategory.map((d) => {
-                                const inCart = cartMap.get(d.dishId);
+                                const inCart = cartMap.get(d.entityKey);
+                                const isSet = d.itemType === "set";
+                                const setSummary = isSet
+                                    ? toSetItems(d)
+                                        .map((item) => `${item.dishName} x${item.qty || 1}`)
+                                        .join(", ")
+                                    : "";
                                 return (
-                                    <div key={d.dishId} className={styles.dishCard}>
+                                    <div key={d.entityKey} className={styles.dishCard}>
                                         {d.imageUrl ? (
                                             <img
                                                 src={d.imageUrl}
@@ -182,10 +251,18 @@ export default function DishPickerModal({
                                         <div className={styles.dishName}>{d.dishName}</div>
                                         <div className={styles.dishMeta}>
                                             <span>{Number(d.price || 0).toFixed(2)} ₽</span>
-                                            {d.categoryName && (
-                                                <span className={styles.dishCategory}>{d.categoryName}</span>
-                                            )}
+                                            <span className={styles.dishMetaRight}>
+                                                <span className={styles.typeBadge}>
+                                                    {isSet ? "Набор" : "Блюдо"}
+                                                </span>
+                                                {d.categoryName && (
+                                                    <span className={styles.dishCategory}>{d.categoryName}</span>
+                                                )}
+                                            </span>
                                         </div>
+                                        {isSet && setSummary && (
+                                            <div className={styles.setSummary}>{setSummary}</div>
+                                        )}
                                         <button
                                             className={styles.addBtn}
                                             type="button"
@@ -203,13 +280,18 @@ export default function DishPickerModal({
                     <aside className={styles.cart}>
                         <div className={styles.sectionTitle}>Корзина</div>
                         {cartItems.length === 0 ? (
-                            <div className={styles.empty}>Нет выбранных блюд</div>
+                            <div className={styles.empty}>Нет выбранных позиций</div>
                         ) : (
                             <div className={styles.cartList}>
                                 {cartItems.map((i) => (
-                                    <div key={i.dishId} className={styles.cartItem}>
+                                    <div key={i.entityKey} className={styles.cartItem}>
                                         <div className={styles.cartInfo}>
-                                            <div className={styles.cartName}>{i.dishName}</div>
+                                            <div className={styles.cartNameWrap}>
+                                                <div className={styles.cartName}>{i.dishName}</div>
+                                                <span className={styles.typeBadge}>
+                                                    {i.itemType === "set" ? "Набор" : "Блюдо"}
+                                                </span>
+                                            </div>
                                             <div className={styles.cartPrice}>
                                                 {Number(i.price || 0).toFixed(2)} ₽
                                             </div>
@@ -218,7 +300,7 @@ export default function DishPickerModal({
                                             <button
                                                 type="button"
                                                 className={styles.qtyBtn}
-                                                onClick={() => updateQty(i.dishId, i.qty - 1)}
+                                                onClick={() => updateQty(i.entityKey, i.qty - 1)}
                                                 disabled={disabled}
                                             >
                                                 −
@@ -229,14 +311,14 @@ export default function DishPickerModal({
                                                 className={styles.qtyInput}
                                                 value={i.qty}
                                                 onChange={(e) =>
-                                                    updateQty(i.dishId, e.target.value)
+                                                    updateQty(i.entityKey, e.target.value)
                                                 }
                                                 disabled={disabled}
                                             />
                                             <button
                                                 type="button"
                                                 className={styles.qtyBtn}
-                                                onClick={() => updateQty(i.dishId, i.qty + 1)}
+                                                onClick={() => updateQty(i.entityKey, i.qty + 1)}
                                                 disabled={disabled}
                                             >
                                                 +
@@ -244,7 +326,7 @@ export default function DishPickerModal({
                                             <button
                                                 type="button"
                                                 className={styles.removeBtn}
-                                                onClick={() => removeItem(i.dishId)}
+                                                onClick={() => removeItem(i.entityKey)}
                                                 disabled={disabled}
                                             >
                                                 Убрать
@@ -261,7 +343,7 @@ export default function DishPickerModal({
                             <button
                                 className={styles.okBtn}
                                 type="button"
-                                onClick={() => onConfirm(cartItems)}
+                                onClick={handleConfirm}
                                 disabled={disabled}
                             >
                                 ОК

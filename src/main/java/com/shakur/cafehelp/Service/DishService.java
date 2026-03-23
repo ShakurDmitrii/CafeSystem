@@ -8,6 +8,8 @@ import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.util.List;
 import java.util.Locale;
@@ -18,17 +20,23 @@ import static jooqdata.tables.Dish.DISH;
 public class DishService {
 
     private final DSLContext dsl;
+    private final RecipeCostService recipeCostService;
+    private final DishSetService dishSetService;
     private static final Field<String> DISH_IMAGE_URL = DSL.field(DSL.name("image_url"), String.class);
     private static final Field<Integer> DISH_CATEGORY_ID = DSL.field(DSL.name("dish", "category_id"), Integer.class);
     private static final org.jooq.Table<?> DISH_CATEGORY = DSL.table(DSL.name("sales", "dish_category")).as("dc");
     private static final Field<Integer> DC_ID = DSL.field(DSL.name("dc", "category_id"), Integer.class);
     private static final Field<String> DC_NAME = DSL.field(DSL.name("dc", "name"), String.class);
+    private static final org.jooq.Table<?> ORDERDISH_TABLE = DSL.table(DSL.name("sales", "orderdish"));
+    private static final Field<Integer> ORDERDISH_DISH_ID = DSL.field(DSL.name("dishid"), Integer.class);
     private volatile Boolean imageColumnPresent = null;
     private volatile Boolean categoryIdColumnPresent = null;
     private volatile Boolean categoryTablePresent = null;
 
-    public DishService(DSLContext dsl) {
+    public DishService(DSLContext dsl, RecipeCostService recipeCostService, DishSetService dishSetService) {
         this.dsl = dsl;
+        this.recipeCostService = recipeCostService;
+        this.dishSetService = dishSetService;
     }
 
     private Integer nextTechProductId() {
@@ -103,6 +111,7 @@ public class DishService {
                         .fetch()
                         .stream()
                         .map(this::toDishDto)
+                        .map(this::enrichWithCalculatedFirstCost)
                         .toList();
             }
 
@@ -120,6 +129,7 @@ public class DishService {
                     .fetch()
                     .stream()
                     .map(this::toDishDto)
+                    .map(this::enrichWithCalculatedFirstCost)
                     .toList();
         }
 
@@ -139,7 +149,9 @@ public class DishService {
                     dish.setCategoryName(null);
                     dish.setImageUrl(null);
                     return dish;
-                }).toList();
+                })
+                .map(this::enrichWithCalculatedFirstCost)
+                .toList();
     }
 
     // Получить блюдо по ID
@@ -164,7 +176,7 @@ public class DishService {
                         .where(DISH.DISHID.eq(id))
                         .fetchOne();
                 if (record == null) return null;
-                return toDishDto(record);
+                return enrichWithCalculatedFirstCost(toDishDto(record));
             }
 
             Record record = dsl.select(
@@ -181,7 +193,7 @@ public class DishService {
                     .where(DISH.DISHID.eq(id))
                     .fetchOne();
             if (record == null) return null;
-            return toDishDto(record);
+            return enrichWithCalculatedFirstCost(toDishDto(record));
         }
 
         DishRecord record = dsl.selectFrom(DISH)
@@ -199,9 +211,9 @@ public class DishService {
         dish.setWeight(record.getWeight());
         dish.setCategory(record.getCategory());
         dish.setCategoryId(null);
-        dish.setCategoryName(null);
+       dish.setCategoryName(null);
         dish.setImageUrl(null);
-        return dish;
+        return enrichWithCalculatedFirstCost(dish);
     }
 
     @Transactional
@@ -260,8 +272,32 @@ public class DishService {
         return dto;
     }
 
+    @Transactional
     // Удаление блюда
     public boolean deleteDish(int id) {
+        Integer orderRefs = dsl.selectCount()
+                .from(ORDERDISH_TABLE)
+                .where(ORDERDISH_DISH_ID.eq(id))
+                .fetchOne(0, Integer.class);
+
+        if (orderRefs != null && orderRefs > 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Нельзя удалить блюдо, потому что оно уже есть в заказах"
+            );
+        }
+
+        if (dishSetService.hasSetReferencesForDish(id)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Нельзя удалить блюдо, потому что оно входит в состав набора"
+            );
+        }
+
+        dsl.deleteFrom(DSL.table(DSL.name("sales", "techproduct")))
+                .where(DSL.field(DSL.name("DishId"), Integer.class).eq(id))
+                .execute();
+
         int deleted = dsl.deleteFrom(DISH)
                 .where(DISH.DISHID.eq(id))
                 .execute();
@@ -365,6 +401,27 @@ public class DishService {
         dish.setCategoryName(categoryName);
         dish.setCategory(categoryName != null ? categoryName : record.get(DISH.CATEGORY));
         dish.setImageUrl(record.get(DISH_IMAGE_URL));
+        return dish;
+    }
+
+    private DishDTO enrichWithCalculatedFirstCost(DishDTO dish) {
+        if (dish == null || dish.getDishId() <= 0) return dish;
+
+        double calculatedCost = recipeCostService.calculateDishCost(dish.getDishId());
+        dish.setFirstCost(calculatedCost);
+
+        Double storedCost = dsl.select(DISH.FIRSTCOST)
+                .from(DISH)
+                .where(DISH.DISHID.eq(dish.getDishId()))
+                .fetchOne(DISH.FIRSTCOST);
+
+        if (storedCost == null || Math.abs(storedCost - calculatedCost) > 0.009) {
+            dsl.update(DISH)
+                    .set(DISH.FIRSTCOST, calculatedCost)
+                    .where(DISH.DISHID.eq(dish.getDishId()))
+                    .execute();
+        }
+
         return dish;
     }
 }

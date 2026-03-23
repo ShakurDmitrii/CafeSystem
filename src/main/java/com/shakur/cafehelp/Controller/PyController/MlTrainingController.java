@@ -15,7 +15,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 // Java контроллер
 @RestController
@@ -46,12 +48,38 @@ public class MlTrainingController {
             // 3. Отправляем в Python ML сервис
             Map<String, Object> result = mlTrainingService.sendToPythonML(trainingRecords);
 
-            return ResponseEntity.ok(result);
+            int recordsCount = trainingRecords.size();
+            int newIngredientsCount = countUniqueIngredients(trainingRecords);
+
+            return ResponseEntity.ok(Map.of(
+                    "recordsCount", recordsCount,
+                    "newIngredientsCount", newIngredientsCount,
+                    "trainingResult", result
+            ));
 
         } catch (Exception e) {
             return ResponseEntity.status(500)
                     .body(Map.of("error", e.getMessage()));
         }
+    }
+
+    private int countUniqueIngredients(List<Map<String, Object>> trainingRecords) {
+        Set<String> uniq = new HashSet<>();
+        for (Map<String, Object> record : trainingRecords) {
+            Object ingredientsObj = record.get("ingredients");
+            if (ingredientsObj instanceof List<?> list) {
+                for (Object item : list) {
+                    if (item != null) uniq.add(item.toString());
+                }
+            } else if (ingredientsObj instanceof String s) {
+                // Fallback if something sent as string
+                for (String part : s.split("[,;|]")) {
+                    String trimmed = part.trim().toLowerCase();
+                    if (!trimmed.isEmpty()) uniq.add(trimmed);
+                }
+            }
+        }
+        return uniq.size();
     }
 
     @Data

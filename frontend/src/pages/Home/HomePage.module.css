@@ -171,6 +171,18 @@
     font-weight: 600;
 }
 
+.itemMeta {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.itemSubtext {
+    font-size: 12px;
+    color: #6b7280;
+}
+
 .itemValue {
     font-weight: 700;
     color: #1f2937;

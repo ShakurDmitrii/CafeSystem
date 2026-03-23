@@ -7,6 +7,8 @@ import org.jooq.Record;
 import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -296,7 +298,7 @@ public class ProductService {
                 ? dto.unitFactor
                 : BigDecimal.ONE;
 
-        Integer supplierId = dto.supplierId;
+        Integer supplierId = dto.supplierId != null && dto.supplierId > 0 ? dto.supplierId : null;
         String normalizedName = dto.productName != null ? dto.productName.trim() : "";
         if (!normalizedName.isEmpty()) {
             Integer existingId = dsl.select(Product.PRODUCT.PRODUCTID)
@@ -319,8 +321,8 @@ public class ProductService {
         Integer id;
         if (hasUnitColumns()) {
             var insert = dsl.insertInto(Product.PRODUCT)
-                    .set(Product.PRODUCT.SUPPLIERID, dto.supplierId)
-                    .set(Product.PRODUCT.PRODUCTNAME, dto.productName)
+                    .set(Product.PRODUCT.SUPPLIERID, supplierId)
+                    .set(Product.PRODUCT.PRODUCTNAME, normalizedName.isEmpty() ? dto.productName : normalizedName)
                     .set(Product.PRODUCT.PRODUCTPRICE, dto.productPrice)
                     .set(Product.PRODUCT.WASTE, dto.waste)
                     .set(Product.PRODUCT.ISFAVOURITE, dto.isFavorite)
@@ -334,8 +336,8 @@ public class ProductService {
                     .fetchOne(Product.PRODUCT.PRODUCTID);
         } else {
             id = dsl.insertInto(Product.PRODUCT)
-                    .set(Product.PRODUCT.SUPPLIERID, dto.supplierId)
-                    .set(Product.PRODUCT.PRODUCTNAME, dto.productName)
+                    .set(Product.PRODUCT.SUPPLIERID, supplierId)
+                    .set(Product.PRODUCT.PRODUCTNAME, normalizedName.isEmpty() ? dto.productName : normalizedName)
                     .set(Product.PRODUCT.PRODUCTPRICE, dto.productPrice)
                     .set(Product.PRODUCT.WASTE, dto.waste)
                     .set(Product.PRODUCT.ISFAVOURITE, dto.isFavorite)
@@ -354,6 +356,89 @@ public class ProductService {
         return dto;
     }
 
+    public ProductDTO updateProduct(int id, ProductDTO dto) {
+        Field<String> unitField = hasUnitColumns() ? PRODUCT_UNIT : DSL.inline("g").as("unit");
+        Field<String> baseUnitField = hasUnitColumns() ? PRODUCT_BASE_UNIT : DSL.inline("g").as("base_unit");
+        Field<BigDecimal> unitFactorField = hasUnitColumns() ? PRODUCT_UNIT_FACTOR : DSL.inline(BigDecimal.ONE).as("unit_factor");
+        Field<String> imageField = hasImageColumn() ? PRODUCT_IMAGE_URL : DSL.inline((String) null).as("image_url");
+
+        Record existingRecord = dsl.select(
+                        Product.PRODUCT.PRODUCTID,
+                        Product.PRODUCT.SUPPLIERID,
+                        Product.PRODUCT.PRODUCTNAME,
+                        Product.PRODUCT.PRODUCTPRICE,
+                        Product.PRODUCT.WASTE,
+                        Product.PRODUCT.ISFAVOURITE,
+                        unitField,
+                        baseUnitField,
+                        unitFactorField,
+                        imageField
+                )
+                .from(Product.PRODUCT)
+                .where(Product.PRODUCT.PRODUCTID.eq(id))
+                .fetchOne();
+
+        if (existingRecord == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Продукт не найден");
+        }
+
+        Integer supplierId = dto.supplierId != null && dto.supplierId > 0
+                ? dto.supplierId
+                : existingRecord.get(Product.PRODUCT.SUPPLIERID);
+        String productName = dto.productName != null && !dto.productName.isBlank()
+                ? dto.productName.trim()
+                : existingRecord.get(Product.PRODUCT.PRODUCTNAME);
+        BigDecimal productPrice = dto.productPrice != null
+                ? dto.productPrice
+                : existingRecord.get(Product.PRODUCT.PRODUCTPRICE);
+        Double waste = dto.waste != null
+                ? dto.waste
+                : existingRecord.get(Product.PRODUCT.WASTE);
+        Boolean isFavorite = dto.isFavorite != null
+                ? dto.isFavorite
+                : existingRecord.get(Product.PRODUCT.ISFAVOURITE);
+        String unit = dto.unit != null && !dto.unit.isBlank()
+                ? dto.unit.trim().toLowerCase()
+                : String.valueOf(existingRecord.get(unitField));
+        String baseUnit = dto.baseUnit != null && !dto.baseUnit.isBlank()
+                ? dto.baseUnit.trim().toLowerCase()
+                : String.valueOf(existingRecord.get(baseUnitField));
+        BigDecimal unitFactor = dto.unitFactor != null && dto.unitFactor.compareTo(BigDecimal.ZERO) > 0
+                ? dto.unitFactor
+                : existingRecord.get(unitFactorField);
+        String imageUrl = dto.imageUrl != null
+                ? dto.imageUrl
+                : existingRecord.get(imageField);
+
+        var update = dsl.update(Product.PRODUCT)
+                .set(Product.PRODUCT.SUPPLIERID, supplierId)
+                .set(Product.PRODUCT.PRODUCTNAME, productName)
+                .set(Product.PRODUCT.PRODUCTPRICE, productPrice)
+                .set(Product.PRODUCT.WASTE, waste)
+                .set(Product.PRODUCT.ISFAVOURITE, isFavorite);
+
+        if (hasUnitColumns()) {
+            update.set(PRODUCT_UNIT, unit)
+                    .set(PRODUCT_BASE_UNIT, baseUnit)
+                    .set(PRODUCT_UNIT_FACTOR, unitFactor);
+        }
+        if (hasImageColumn()) {
+            update.set(PRODUCT_IMAGE_URL, imageUrl);
+        }
+
+        update.where(Product.PRODUCT.PRODUCTID.eq(id)).execute();
+
+        if (supplierId != null) {
+            syncProductSupplierLinks(id, supplierId);
+        }
+
+        ProductDTO updated = getProductById(id);
+        if (supplierId != null) {
+            updated.supplierId = supplierId;
+        }
+        return updated;
+    }
+
     private void linkProductToSupplier(int productId, int supplierId) {
         dsl.insertInto(PRODUCT_SUPPLIER)
                 .columns(PS_PRODUCT_ID, PS_SUPPLIER_ID)
@@ -361,6 +446,13 @@ public class ProductService {
                 .onConflict(PS_PRODUCT_ID, PS_SUPPLIER_ID)
                 .doNothing()
                 .execute();
+    }
+
+    private void syncProductSupplierLinks(int productId, int supplierId) {
+        dsl.deleteFrom(PRODUCT_SUPPLIER)
+                .where(PS_PRODUCT_ID.eq(productId))
+                .execute();
+        linkProductToSupplier(productId, supplierId);
     }
 
     private boolean hasUnitColumns() {

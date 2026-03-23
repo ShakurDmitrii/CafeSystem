@@ -37,4 +37,9 @@ public ProductDTO getProduct(@PathVariable int id) {
         return productService.createProduct(productDTO);
     }
 
+    @PutMapping("/{id}")
+    public ProductDTO updateProduct(@PathVariable int id, @RequestBody ProductDTO productDTO) {
+        return productService.updateProduct(id, productDTO);
+    }
+
 }

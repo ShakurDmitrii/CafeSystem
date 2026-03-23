@@ -2,9 +2,11 @@
 
     import com.shakur.cafehelp.DTO.ConsProductDTO;
     import com.shakur.cafehelp.Service.ConsProductService;
+    import org.springframework.http.ResponseEntity;
     import org.springframework.web.bind.annotation.*;
 
     import java.util.List;
+    import java.util.Map;
 
     @RestController
     @RequestMapping("/api/consProduct")
@@ -33,13 +35,21 @@
 
 
         @PostMapping
-        public ConsProductDTO addConsProduct(@RequestBody ConsProductDTO consProductDTO) {
-            return consProductService.createConsProduct(consProductDTO);
+        public ResponseEntity<?> addConsProduct(@RequestBody ConsProductDTO consProductDTO) {
+            try {
+                return ResponseEntity.ok(consProductService.createConsProduct(consProductDTO));
+            } catch (IllegalArgumentException | IllegalStateException e) {
+                return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            }
         }
 
         @DeleteMapping("/{id}")
-        public ConsProductDTO deleteConsProduct(@PathVariable int id) {
-            return consProductService.deleteConsProduct(id);
+        public ResponseEntity<?> deleteConsProduct(@PathVariable int id) {
+            try {
+                return ResponseEntity.ok(consProductService.deleteConsProduct(id));
+            } catch (IllegalArgumentException | IllegalStateException e) {
+                return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            }
         }
 
     }

@@ -1,5 +1,6 @@
 package com.shakur.cafehelp.Controller;
 
+import com.shakur.cafehelp.DTO.PreparationWarehouseDTO;
 import com.shakur.cafehelp.DTO.ProductWarehouseDTO;
 import com.shakur.cafehelp.DTO.WareHouseDTO;
 import com.shakur.cafehelp.Service.WareHouseService;
@@ -79,6 +80,11 @@ public class WareHouseController {
         return ResponseEntity.ok(products);
     }
 
+    @GetMapping("/{id}/preparations")
+    public ResponseEntity<List<PreparationWarehouseDTO>> getPreparationsOnWarehouse(@PathVariable("id") int warehouseId) {
+        return ResponseEntity.ok(wareHouseService.getPreparationsOnWarehouse(warehouseId));
+    }
+
     /** Добавить или списать количество продукта на складе (body: { "delta": число }) */
     @PatchMapping("/{warehouseId}/products/{productId}/quantity")
     public ResponseEntity<Void> adjustProductQuantity(
@@ -91,6 +97,19 @@ public class WareHouseController {
         double delta = deltaNum.doubleValue();
         boolean ok = wareHouseService.adjustQuantity(warehouseId, productId, delta);
         if (!ok) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok().build();
+    }
+
+    @PatchMapping("/{warehouseId}/preparations/{preparationId}/quantity")
+    public ResponseEntity<Void> adjustPreparationQuantity(
+            @PathVariable("warehouseId") int warehouseId,
+            @PathVariable("preparationId") int preparationId,
+            @RequestBody java.util.Map<String, Number> body
+    ) {
+        Number deltaNum = body != null ? body.get("delta") : null;
+        if (deltaNum == null) return ResponseEntity.badRequest().build();
+        boolean ok = wareHouseService.adjustPreparationQuantity(warehouseId, preparationId, deltaNum.doubleValue());
+        if (!ok) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok().build();
     }
 

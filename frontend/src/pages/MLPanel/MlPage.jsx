@@ -48,8 +48,25 @@ export default function MlPage() {
             const result = await response.json();
 
             if (response.ok) {
-                setTrainingStatus(`✅ Модель обучена на ${result.recordsCount} записях. 
-                ${result.newIngredientsCount} ингредиентов в словаре.`);
+                const recordsCount =
+                    result?.recordsCount ??
+                    result?.records ??
+                    result?.trainingResult?.records ??
+                    result?.trainingResult?.recordsCount ??
+                    result?.newRecords ??
+                    null;
+
+                const ingredientsCount =
+                    result?.newIngredientsCount ??
+                    result?.ingredientsCount ??
+                    result?.modelInfo?.ingredientsCount ??
+                    result?.trainingResult?.ingredientsCount ??
+                    null;
+
+                const recordsText = recordsCount == null ? 'неизвестно' : recordsCount;
+                const ingredientsText = ingredientsCount == null ? 'неизвестно' : ingredientsCount;
+
+                setTrainingStatus(`✅ Модель обучена на ${recordsText} записях. ${ingredientsText} ингредиентов в словаре.`);
             } else {
                 setTrainingStatus(`❌ Ошибка: ${result.message || 'Не удалось обучить модель'}`);
             }

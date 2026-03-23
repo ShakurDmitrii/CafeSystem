@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { API_BASE_URL } from "../../auth";
 import styles from "./WarehousePage.module.css";
 
@@ -13,11 +13,61 @@ const getSafeUnitFactor = (value) => {
 };
 
 const toDisplayQty = (qtyBase, unitFactor) => Number(qtyBase ?? 0) / getSafeUnitFactor(unitFactor);
+const normalizeUnit = (value) => String(value ?? "").trim().toLowerCase();
+const hasExpandedUnitDisplay = (product) => getSafeUnitFactor(product?.unitFactor) > 1;
+const hasPackLikeDisplay = (product) =>
+    hasExpandedUnitDisplay(product)
+    && normalizeUnit(product?.unit) === normalizeUnit(product?.baseUnit);
+
+const getWarehouseUnitLabel = (product) => {
+    const unit = product?.unit ?? product?.baseUnit ?? "pcs";
+    const baseUnit = product?.baseUnit ?? unit;
+    const factor = getSafeUnitFactor(product?.unitFactor);
+    if (!hasExpandedUnitDisplay(product)) {
+        return unit;
+    }
+    return `${unit} (1 ед. = ${factor} ${baseUnit})`;
+};
+
+const getQuantityInputLabel = (product) => {
+    if (hasPackLikeDisplay(product)) {
+        return `${product?.baseUnit ?? product?.unit ?? "pcs"}, base`;
+    }
+    return product?.unit ?? product?.baseUnit ?? "pcs";
+};
+
+const normalizeMovementPayload = (product, qty, unitPrice) => {
+    const quantity = Number(qty);
+    const price = Number(unitPrice);
+
+    if (!hasPackLikeDisplay(product)) {
+        return {
+            quantity,
+            unitPrice: price
+        };
+    }
+
+    const factor = getSafeUnitFactor(product?.unitFactor);
+    return {
+        quantity: quantity / factor,
+        unitPrice: Number.isFinite(price) ? price * factor : price
+    };
+};
 
 const formatQty = (value) => {
     const n = Number(value ?? 0);
     if (!Number.isFinite(n)) return "0";
     return n.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
+};
+
+const formatPriceWithUnit = (value, unit) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "—";
+    const digits = Math.abs(n) > 0 && Math.abs(n) < 1 ? 4 : 2;
+    return `${n.toLocaleString("ru-RU", {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits
+    })} ₽/${unit || "ед."}`;
 };
 
 export default function WarehousePage() {
@@ -33,11 +83,18 @@ export default function WarehousePage() {
 
     const [productsFrom, setProductsFrom] = useState([]);
     const [warehouseProducts, setWarehouseProducts] = useState({});
-    const [avgReceiptPriceByProductId, setAvgReceiptPriceByProductId] = useState({});
+    const [avgReceiptPriceByWarehouseProduct, setAvgReceiptPriceByWarehouseProduct] = useState({});
     const [loadingWarehouses, setLoadingWarehouses] = useState(true);
     const [suppliers, setSuppliers] = useState([]);
+    const [catalogProducts, setCatalogProducts] = useState([]);
     const [adjustQtyInputs, setAdjustQtyInputs] = useState({}); // { "whId-productId": "0" }
     const [adjustPriceInputs, setAdjustPriceInputs] = useState({}); // { "whId-productId": "0" }
+    const [productPickerWarehouseId, setProductPickerWarehouseId] = useState(null);
+    const [productPickerSearch, setProductPickerSearch] = useState("");
+    const [selectedCatalogProductId, setSelectedCatalogProductId] = useState("");
+    const [selectedCatalogQuantity, setSelectedCatalogQuantity] = useState("");
+    const [selectedCatalogPrice, setSelectedCatalogPrice] = useState("");
+    const [productPickerError, setProductPickerError] = useState("");
 
     // Состояния для добавления продукта
     const [newProductName, setNewProductName] = useState("");
@@ -55,41 +112,83 @@ export default function WarehousePage() {
         if (movementFrom) loadProductsFromWarehouse(movementFrom);
         else setProductsFrom([]);
         setMovementProduct("");
-    }, [movementFrom, avgReceiptPriceByProductId]);
+    }, [movementFrom, avgReceiptPriceByWarehouseProduct]);
 
-    const buildWeightedReceiptPriceMap = (movementsList) => {
-        const totalsByProduct = {};
+    const filteredCatalogProducts = useMemo(() => {
+        const searchTerm = String(productPickerSearch || "").trim().toLowerCase();
+        const list = [...catalogProducts].sort((a, b) =>
+            String(a.productName ?? "").localeCompare(String(b.productName ?? ""), "ru")
+        );
+        if (!searchTerm) return list;
 
-        movementsList
-            .filter(m => m.docType === "receipt" && m.productId != null && m.unitPrice != null && m.quantity != null)
-            .forEach(m => {
-                const pid = Number(m.productId);
-                const qty = Number(m.quantity);
-                const price = Number(m.unitPrice);
-                if (!Number.isFinite(pid) || !Number.isFinite(qty) || !Number.isFinite(price) || qty <= 0 || price < 0) return;
+        return list.filter((product) => {
+            const productName = String(product.productName ?? "").toLowerCase();
+            const supplierId = product.supplierId ?? product.supplierID;
+            const supplier = suppliers.find((s) => (s.supplierId ?? s.supplierID ?? s.id) === supplierId);
+            const supplierName = String(supplier?.supplierName ?? supplier?.name ?? "").toLowerCase();
+            return productName.includes(searchTerm) || supplierName.includes(searchTerm);
+        });
+    }, [catalogProducts, productPickerSearch, suppliers]);
 
-                if (!totalsByProduct[pid]) {
-                    totalsByProduct[pid] = { qty: 0, amount: 0 };
-                }
-                totalsByProduct[pid].qty += qty;
-                totalsByProduct[pid].amount += qty * price;
-            });
+    const buildWarehouseIncomingPriceMaps = (movementsList) => {
+        const totalsByWarehouseProduct = {};
+        const latestByWarehouseProduct = {};
 
-        return Object.entries(totalsByProduct).reduce((acc, [pid, total]) => {
+        movementsList.forEach((movement) => {
+            const pid = Number(movement?.productId);
+            const qty = Number(movement?.quantity);
+            const price = Number(movement?.unitPrice);
+            const lineTotal = Number(movement?.lineTotal);
+            const docDateTs = movement?.docDate ? new Date(movement.docDate).getTime() : 0;
+
+            if (!Number.isFinite(pid) || !Number.isFinite(qty) || qty <= 0) return;
+            if (!Number.isFinite(price) || price < 0) return;
+
+            const incomingWarehouseId = movement?.docType === "receipt"
+                ? Number(movement?.toWarehouseId)
+                : movement?.docType === "movement"
+                    ? Number(movement?.toWarehouseId)
+                    : null;
+
+            if (!Number.isFinite(incomingWarehouseId) || incomingWarehouseId <= 0) return;
+
+            const key = `${incomingWarehouseId}-${pid}`;
+            if (!totalsByWarehouseProduct[key]) {
+                totalsByWarehouseProduct[key] = { qty: 0, amount: 0 };
+            }
+
+            totalsByWarehouseProduct[key].qty += qty;
+            totalsByWarehouseProduct[key].amount += Number.isFinite(lineTotal) ? lineTotal : qty * price;
+
+            const currentLatest = latestByWarehouseProduct[key];
+            if (!currentLatest || docDateTs >= currentLatest.timestamp) {
+                latestByWarehouseProduct[key] = { price, timestamp: docDateTs };
+            }
+        });
+
+        const averageMap = Object.entries(totalsByWarehouseProduct).reduce((acc, [key, total]) => {
             if (total.qty > 0) {
-                acc[Number(pid)] = total.amount / total.qty;
+                acc[key] = total.amount / total.qty;
             }
             return acc;
         }, {});
+
+        const latestMap = Object.entries(latestByWarehouseProduct).reduce((acc, [key, value]) => {
+            acc[key] = value.price;
+            return acc;
+        }, {});
+
+        return { averageMap, latestMap };
     };
 
     const loadWarehouses = async () => {
         setLoadingWarehouses(true);
         try {
-            const [whRes, supRes, movRes] = await Promise.all([
+            const [whRes, supRes, movRes, productsRes] = await Promise.all([
                 fetch(API_WAREHOUSES),
                 fetch(API_SUPPLIERS),
-                fetch(API_MOVEMENTS)
+                fetch(API_MOVEMENTS),
+                fetch(API_PRODUCTS)
             ]);
             const whData = whRes.ok ? await whRes.json().catch(() => []) : [];
             const warehousesArray = Array.isArray(whData) ? whData : [];
@@ -99,27 +198,20 @@ export default function WarehousePage() {
             const suppliersList = Array.isArray(supData) ? supData : [];
             setSuppliers(suppliersList);
 
+            const productsData = productsRes.ok ? await productsRes.json().catch(() => []) : [];
+            setCatalogProducts(Array.isArray(productsData) ? productsData : []);
+
             const movData = movRes.ok ? await movRes.json().catch(() => []) : [];
             const movementsList = Array.isArray(movData) ? movData : [];
-            const weightedReceiptPriceByProductId = buildWeightedReceiptPriceMap(movementsList);
-            const latestReceiptPriceByProductId = movementsList
-                .filter(m => m.docType === "receipt" && m.productId != null && m.unitPrice != null)
-                .sort((a, b) => new Date(b.docDate || 0) - new Date(a.docDate || 0))
-                .reduce((acc, m) => {
-                    const key = Number(m.productId);
-                    if (!Number.isNaN(key) && acc[key] == null) {
-                        acc[key] = Number(m.unitPrice);
-                    }
-                    return acc;
-                }, {});
+            const { averageMap, latestMap } = buildWarehouseIncomingPriceMaps(movementsList);
 
-            setAvgReceiptPriceByProductId(weightedReceiptPriceByProductId);
+            setAvgReceiptPriceByWarehouseProduct(averageMap);
 
             await loadAllWarehouseProducts(
                 warehousesArray,
                 suppliersList,
-                weightedReceiptPriceByProductId,
-                latestReceiptPriceByProductId
+                averageMap,
+                latestMap
             );
         } catch (err) {
             console.error(err);
@@ -142,8 +234,8 @@ export default function WarehousePage() {
     const loadAllWarehouseProducts = async (
         warehousesList,
         suppliersList = [],
-        weightedReceiptPriceByProductId = {},
-        latestReceiptPriceByProductId = {}
+        weightedReceiptPriceByWarehouseProduct = {},
+        latestReceiptPriceByWarehouseProduct = {}
     ) => {
         const productsMap = {};
 
@@ -179,8 +271,9 @@ export default function WarehousePage() {
 
                                 const productData = await resProd.json();
                                 const product = Array.isArray(productData) ? productData[0] : productData;
-                                const weightedReceiptPrice = weightedReceiptPriceByProductId[productId];
-                                const latestReceiptPrice = latestReceiptPriceByProductId[productId];
+                                const warehouseProductKey = `${wh.warehouseId}-${productId}`;
+                                const weightedReceiptPrice = weightedReceiptPriceByWarehouseProduct[warehouseProductKey];
+                                const latestReceiptPrice = latestReceiptPriceByWarehouseProduct[warehouseProductKey];
                                 const supplierId = product.supplierId ?? product.supplierID;
                                 const supplier = suppliersList.find(s => (s.supplierId ?? s.supplierID ?? s.id) === supplierId);
                                 const supplierName = supplier ? (supplier.supplierName ?? supplier.name) : "—";
@@ -199,6 +292,7 @@ export default function WarehousePage() {
                                     quantity: quantityDisplay,
                                     unitFactor,
                                     unit: product.unit ?? product.baseUnit ?? "pcs",
+                                    baseUnit: product.baseUnit ?? product.unit ?? "pcs",
                                     supplierName
                                 };
                             } catch (err) {
@@ -215,6 +309,7 @@ export default function WarehousePage() {
                                     quantity: Number(whQuantity ?? 0),
                                     unitFactor: 1,
                                     unit: "pcs",
+                                    baseUnit: "pcs",
                                     supplierName: "—"
                                 };
                             }
@@ -257,11 +352,13 @@ export default function WarehousePage() {
                         const product = Array.isArray(prodData) ? prodData[0] : prodData;
                         const unitFactor = getSafeUnitFactor(product?.unitFactor);
                         const quantityBase = Number(item.quantity ?? 0);
+                        const warehouseProductKey = `${warehouseId}-${productId}`;
                         return {
                             ...item,
                             productName: product?.productName ?? `Товар #${productId}`,
-                            productPrice: avgReceiptPriceByProductId[productId] ?? product?.productPrice ?? 0,
+                            productPrice: avgReceiptPriceByWarehouseProduct[warehouseProductKey] ?? product?.productPrice ?? 0,
                             unit: product?.unit ?? product?.baseUnit ?? "pcs",
+                            baseUnit: product?.baseUnit ?? product?.unit ?? "pcs",
                             unitFactor,
                             quantityBase,
                             quantity: toDisplayQty(quantityBase, unitFactor)
@@ -273,6 +370,7 @@ export default function WarehousePage() {
                             productName: `Товар #${productId}`,
                             productPrice: 0,
                             unit: "pcs",
+                            baseUnit: "pcs",
                             unitFactor: 1,
                             quantityBase: Number(item.quantity ?? 0),
                             quantity: Number(item.quantity ?? 0)
@@ -326,13 +424,14 @@ export default function WarehousePage() {
         if (!movementFrom || !movementTo || !movementProduct || !movementQuantity) return;
         const selectedProduct = productsFrom.find(p => String(p.productId) === String(movementProduct));
         const unitPrice = Number(selectedProduct?.productPrice ?? 0);
+        const normalized = normalizeMovementPayload(selectedProduct, movementQuantity, unitPrice);
 
         const payload = {
             fromWarehouseId: movementFrom,
             toWarehouseId: movementTo,
             productId: movementProduct,
-            quantity: parseFloat(movementQuantity),
-            unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0
+            quantity: normalized.quantity,
+            unitPrice: Number.isFinite(normalized.unitPrice) ? normalized.unitPrice : 0
         };
 
         fetch(API_MOVEMENTS, {
@@ -356,7 +455,89 @@ export default function WarehousePage() {
             .catch(err => console.error(err));
     };
     const selectedMovementProduct = productsFrom.find(p => String(p.productId) === String(movementProduct));
-    const movementUnit = selectedMovementProduct?.unit || "";
+    const movementUnit = selectedMovementProduct ? getQuantityInputLabel(selectedMovementProduct) : "";
+
+    const openProductPicker = (warehouseId) => {
+        setProductPickerWarehouseId(warehouseId);
+        setProductPickerSearch("");
+        setSelectedCatalogProductId("");
+        setSelectedCatalogQuantity("");
+        setSelectedCatalogPrice("");
+        setProductPickerError("");
+    };
+
+    const closeProductPicker = () => {
+        setProductPickerWarehouseId(null);
+        setProductPickerSearch("");
+        setSelectedCatalogProductId("");
+        setSelectedCatalogQuantity("");
+        setSelectedCatalogPrice("");
+        setProductPickerError("");
+    };
+
+    const handleSelectCatalogProduct = (product) => {
+        setSelectedCatalogProductId(String(product.productId));
+        setSelectedCatalogPrice(String(product.productPrice ?? ""));
+        setProductPickerError("");
+    };
+
+    const handleAddExistingProductToWarehouse = async () => {
+        const warehouseId = Number(productPickerWarehouseId);
+        const productId = Number(selectedCatalogProductId);
+        const quantity = parseFloat(selectedCatalogQuantity);
+        const unitPrice = parseFloat(selectedCatalogPrice);
+
+        if (!warehouseId) {
+            setProductPickerError("Не выбран склад");
+            return;
+        }
+
+        if (!productId) {
+            setProductPickerError("Выберите продукт из списка");
+            return;
+        }
+
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+            setProductPickerError("Укажите корректное количество");
+            return;
+        }
+
+        if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+            setProductPickerError("Укажите корректную цену прихода");
+            return;
+        }
+
+        try {
+            const productMeta = catalogProducts.find((product) => Number(product.productId) === productId);
+            const normalized = normalizeMovementPayload(productMeta, quantity, unitPrice);
+
+            const res = await fetch(API_MOVEMENTS, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    docType: "receipt",
+                    toWarehouseId: warehouseId,
+                    supplierId: productMeta?.supplierId ?? productMeta?.supplierID ?? null,
+                    productId,
+                    quantity: normalized.quantity,
+                    unitPrice: normalized.unitPrice,
+                    comment: `warehouse-existing-add:${warehouseId}`,
+                    createdBy: "warehouse-ui"
+                })
+            });
+
+            if (!res.ok) {
+                throw new Error("Ошибка добавления продукта на склад");
+            }
+
+            await loadWarehouses();
+            closeProductPicker();
+            alert("Продукт добавлен на склад");
+        } catch (err) {
+            console.error(err);
+            setProductPickerError("Не удалось добавить выбранный продукт");
+        }
+    };
 
     // Функция для добавления продукта на склад
     const handleAddProductToWarehouse = async (warehouseId) => {
@@ -468,6 +649,10 @@ export default function WarehousePage() {
 
     const handleWriteoffMovement = async (warehouseId, productId, qty, unitPrice, supplierId) => {
         try {
+            const productMeta = (warehouseProducts[warehouseId] || []).find(
+                (p) => Number(p.productId) === Number(productId)
+            );
+            const normalized = normalizeMovementPayload(productMeta, qty, unitPrice);
             const res = await fetch(API_MOVEMENTS, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -475,8 +660,8 @@ export default function WarehousePage() {
                     docType: "writeoff",
                     fromWarehouseId: Number(warehouseId),
                     productId: Number(productId),
-                    quantity: Number(qty),
-                    unitPrice: Number(unitPrice),
+                    quantity: normalized.quantity,
+                    unitPrice: normalized.unitPrice,
                     supplierId: supplierId ? Number(supplierId) : null,
                     comment: `warehouse-writeoff:${warehouseId}`,
                     createdBy: "warehouse-ui"
@@ -494,6 +679,10 @@ export default function WarehousePage() {
 
     const handleAddWithReceiptMovement = async (warehouseId, productId, qty, unitPrice, supplierId) => {
         try {
+            const productMeta = (warehouseProducts[warehouseId] || []).find(
+                (p) => Number(p.productId) === Number(productId)
+            );
+            const normalized = normalizeMovementPayload(productMeta, qty, unitPrice);
             const res = await fetch(API_MOVEMENTS, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -501,8 +690,8 @@ export default function WarehousePage() {
                     docType: "receipt",
                     toWarehouseId: Number(warehouseId),
                     productId: Number(productId),
-                    quantity: Number(qty),
-                    unitPrice: Number(unitPrice),
+                    quantity: normalized.quantity,
+                    unitPrice: normalized.unitPrice,
                     supplierId: supplierId ? Number(supplierId) : null,
                     comment: `warehouse-adjust-add:${warehouseId}`,
                     createdBy: "warehouse-ui"
@@ -592,7 +781,7 @@ export default function WarehousePage() {
                                     </button>
                                     <button
                                         className={`${styles.actionButton} ${styles.addButton}`}
-                                        onClick={() => startAddingProduct(wh.warehouseId)}
+                                        onClick={() => openProductPicker(wh.warehouseId)}
                                     >
                                         + Добавить продукт
                                     </button>
@@ -683,8 +872,8 @@ export default function WarehousePage() {
                                         <tr>
                                             <th>Продукт</th>
                                             <th>ID</th>
-                                            <th>Средняя цена</th>
-                                            <th>Последняя закупочная цена</th>
+                                            <th>Средняя цена / base</th>
+                                            <th>Последняя цена / unit</th>
                                             <th>Waste</th>
                                             <th>Поставщик</th>
                                             <th>Ед.</th>
@@ -701,18 +890,27 @@ export default function WarehousePage() {
                                                 <tr key={p.productId}>
                                                     <td>{p.productName}</td>
                                                     <td>{p.productId}</td>
-                                                    <td>{p.avgPrice ?? p.productPrice ?? "—"}</td>
-                                                    <td>{p.lastPurchasePrice ?? "—"}</td>
+                                                    <td>{formatPriceWithUnit(p.avgPrice ?? p.productPrice, p.baseUnit ?? p.unit ?? "pcs")}</td>
+                                                    <td>{p.lastPurchasePrice != null ? formatPriceWithUnit(p.lastPurchasePrice, p.unit ?? p.baseUnit ?? "pcs") : "—"}</td>
                                                     <td>{p.waste}</td>
                                                     <td>{p.supplierName ?? "—"}</td>
-                                                    <td>{p.unit ?? "pcs"}</td>
-                                                    <td>{formatQty(p.quantity)} {p.unit ?? "pcs"}</td>
+                                                    <td>{getWarehouseUnitLabel(p)}</td>
+                                                    <td>
+                                                        {hasExpandedUnitDisplay(p)
+                                                            ? `${formatQty(p.quantityBase)} ${p.baseUnit ?? p.unit ?? "pcs"}`
+                                                            : `${formatQty(p.quantity)} ${p.unit ?? "pcs"}`}
+                                                        {hasExpandedUnitDisplay(p) && (
+                                                            <div className={styles.qtyHint}>
+                                                                Закупочно: {formatQty(p.quantity)} {p.unit ?? "ед."} (1 ед. = {getSafeUnitFactor(p.unitFactor)} {p.baseUnit ?? p.unit ?? "pcs"})
+                                                            </div>
+                                                        )}
+                                                    </td>
                                                     <td>
                                                         <div className={styles.adjustQuantityCell}>
                                                             <input
                                                                 type="number"
                                                                 className={styles.adjustInput}
-                                                                placeholder={`Кол-во${p.unit ? ` (${p.unit})` : ""}`}
+                                                                placeholder={`Кол-во${getQuantityInputLabel(p) ? ` (${getQuantityInputLabel(p)})` : ""}`}
                                                                 value={inputVal}
                                                                 onChange={e => setAdjustInput(adjustKey, e.target.value)}
                                                                 min="0"
@@ -793,7 +991,9 @@ export default function WarehousePage() {
                     <option value="">Выберите продукт со склада отправителя</option>
                     {productsFrom.map(p => (
                         <option key={p.productId} value={p.productId}>
-                            {p.productName} (остаток: {formatQty(p.quantity)} {p.unit ?? "pcs"})
+                            {p.productName} (остаток: {hasExpandedUnitDisplay(p)
+                                ? `${formatQty(p.quantityBase)} ${p.baseUnit ?? p.unit ?? "pcs"}`
+                                : `${formatQty(p.quantity)} ${p.unit ?? "pcs"}`})
                         </option>
                     ))}
                 </select>
@@ -807,6 +1007,113 @@ export default function WarehousePage() {
                 />
                 <button className={styles.button} onClick={handleMovement}>Создать</button>
             </div>
+
+            {productPickerWarehouseId && (
+                <div className={styles.modalOverlay} onClick={closeProductPicker}>
+                    <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+                        <div className={styles.modalHeader}>
+                            <div>
+                                <h3 className={styles.modalTitle}>Добавить существующий продукт</h3>
+                                <p className={styles.modalSubtitle}>
+                                    Выберите товар из каталога, задайте количество и цену прихода для этого склада.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                className={`${styles.button} ${styles.cancelButton}`}
+                                onClick={closeProductPicker}
+                            >
+                                Закрыть
+                            </button>
+                        </div>
+
+                        <div className={styles.modalControls}>
+                            <input
+                                className={styles.input}
+                                type="text"
+                                placeholder="Поиск по названию или поставщику"
+                                value={productPickerSearch}
+                                onChange={e => setProductPickerSearch(e.target.value)}
+                            />
+                            <input
+                                className={styles.input}
+                                type="number"
+                                placeholder="Количество"
+                                value={selectedCatalogQuantity}
+                                onChange={e => setSelectedCatalogQuantity(e.target.value)}
+                                min="0"
+                                step="0.01"
+                            />
+                            <input
+                                className={styles.input}
+                                type="number"
+                                placeholder="Цена прихода"
+                                value={selectedCatalogPrice}
+                                onChange={e => setSelectedCatalogPrice(e.target.value)}
+                                min="0"
+                                step="0.01"
+                            />
+                        </div>
+
+                        <div className={styles.modalHint}>
+                            Если нужного товара нет, его можно создать на странице `Продукты`, а затем вернуться сюда.
+                        </div>
+
+                        {productPickerError && (
+                            <div className={styles.modalError}>{productPickerError}</div>
+                        )}
+
+                        <div className={styles.productPickerList}>
+                            {filteredCatalogProducts.length > 0 ? (
+                                filteredCatalogProducts.map((product) => {
+                                    const supplierId = product.supplierId ?? product.supplierID;
+                                    const supplier = suppliers.find((s) => (s.supplierId ?? s.supplierID ?? s.id) === supplierId);
+                                    const isActive = String(product.productId) === String(selectedCatalogProductId);
+                                    return (
+                                        <button
+                                            key={product.productId}
+                                            type="button"
+                                            className={`${styles.productPickerItem} ${isActive ? styles.productPickerItemActive : ""}`}
+                                            onClick={() => handleSelectCatalogProduct(product)}
+                                        >
+                                            <div className={styles.productPickerMain}>
+                                                <strong>{product.productName}</strong>
+                                                <span className={styles.productPickerMeta}>
+                                                    Поставщик: {supplier?.supplierName ?? supplier?.name ?? "—"}
+                                                </span>
+                                            </div>
+                                            <div className={styles.productPickerSide}>
+                                                <span>ID: {product.productId}</span>
+                                                <span>Цена: {Number(product.productPrice ?? 0).toFixed(2)}</span>
+                                                <span>Ед.: {product.unit ?? product.baseUnit ?? "pcs"}</span>
+                                            </div>
+                                        </button>
+                                    );
+                                })
+                            ) : (
+                                <div className={styles.noProducts}>Продукты не найдены</div>
+                            )}
+                        </div>
+
+                        <div className={styles.modalActions}>
+                            <button
+                                type="button"
+                                className={`${styles.button} ${styles.cancelButton}`}
+                                onClick={closeProductPicker}
+                            >
+                                Отмена
+                            </button>
+                            <button
+                                type="button"
+                                className={styles.button}
+                                onClick={handleAddExistingProductToWarehouse}
+                            >
+                                Добавить на склад
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

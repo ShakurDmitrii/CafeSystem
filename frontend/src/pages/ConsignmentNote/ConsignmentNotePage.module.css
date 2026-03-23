@@ -136,6 +136,32 @@
     background: #c82333;
 }
 
+.deleteBtn:disabled,
+.postBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.draftBadge,
+.postedBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.draftBadge {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.postedBadge {
+    background: #dcfce7;
+    color: #166534;
+}
+
 /* Модальное окно */
 .modalOverlay {
     position: fixed;
@@ -263,6 +289,11 @@
     background: #c82333;
 }
 
+.deleteSmallBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .totalSection {
     margin-top: 30px;
     padding-top: 20px;
@@ -315,6 +346,50 @@
 
 .closeBtn:hover {
     background: #5a6268;
+}
+
+.draftNotice,
+.postedNotice {
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.draftNotice {
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    color: #9a3412;
+}
+
+.postedNotice {
+    background: #ecfdf5;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+}
+
+.postSection {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-top: 14px;
+    margin-bottom: 14px;
+}
+
+.postBtn {
+    padding: 10px 18px;
+    background: #16a34a;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.postBtn:hover {
+    background: #15803d;
 }
 
 .emptyState {

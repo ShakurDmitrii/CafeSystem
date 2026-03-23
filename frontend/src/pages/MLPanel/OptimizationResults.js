@@ -7,6 +7,7 @@ export default function OptimizationResults() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [popularIngredients, setPopularIngredients] = useState([]);
+    const OPT_CACHE_KEY = 'ml.optimization.cache.v1';
     const [constraints, setConstraints] = useState({
         minIngredients: 3,
         maxIngredients: 6,
@@ -32,11 +33,36 @@ export default function OptimizationResults() {
     };
 
     const loadDefaultOptimization = async () => {
+        // Try cache first to avoid regenerating on navigation.
+        try {
+            const raw = localStorage.getItem(OPT_CACHE_KEY);
+            if (raw) {
+                const cached = JSON.parse(raw);
+                if (cached?.results) {
+                    setOptimizationResults(cached.results);
+                    if (cached?.constraints) setConstraints(prev => ({ ...prev, ...cached.constraints }));
+                    setError(null);
+                    return;
+                }
+            }
+        } catch (e) {
+            // ignore cache errors
+        }
+
         setLoading(true);
         try {
             const results = await ApiClient.optimizeRoll(constraints);
             setOptimizationResults(results);
             setError(null);
+            try {
+                localStorage.setItem(OPT_CACHE_KEY, JSON.stringify({
+                    constraints,
+                    results,
+                    savedAt: new Date().toISOString()
+                }));
+            } catch (e) {
+                // ignore storage errors
+            }
         } catch (err) {
             setError(`Ошибка загрузки: ${err.message}`);
         } finally {
@@ -50,6 +76,15 @@ export default function OptimizationResults() {
         try {
             const results = await ApiClient.optimizeRoll(constraints);
             setOptimizationResults(results);
+            try {
+                localStorage.setItem(OPT_CACHE_KEY, JSON.stringify({
+                    constraints,
+                    results,
+                    savedAt: new Date().toISOString()
+                }));
+            } catch (e) {
+                // ignore storage errors
+            }
         } catch (err) {
             setError(`Ошибка оптимизации: ${err.message}`);
         } finally {
@@ -235,12 +270,27 @@ export default function OptimizationResults() {
                                         <h4 className={styles.optimizationTitle}>
                                             {roll.name || `Оптимизированный ролл ${index + 1}`}
                                         </h4>
-                                        <span className={`${styles.scoreBadge} ${
-                                            roll.score > 0.8 ? styles.scoreHigh :
-                                                roll.score > 0.6 ? styles.scoreMedium : styles.scoreLow
-                                        }`}>
-                                            Оценка: {(roll.score * 100).toFixed(0)}%
-                                        </span>
+                                        {(() => {
+                                            const rawScore =
+                                                roll.score ??
+                                                roll.fitnessScore ??
+                                                roll.confidenceScore ??
+                                                roll.noveltyScore ??
+                                                null;
+                                            // Normalize fitnessScore to 0..1 for UI badge if needed.
+                                            const normScore = rawScore == null
+                                                ? null
+                                                : (rawScore > 1 ? Math.min(1, rawScore / 100) : rawScore);
+                                            const cls = normScore == null
+                                                ? styles.scoreLow
+                                                : (normScore > 0.8 ? styles.scoreHigh : normScore > 0.6 ? styles.scoreMedium : styles.scoreLow);
+                                            const label = normScore == null ? '—' : `${(normScore * 100).toFixed(0)}%`;
+                                            return (
+                                                <span className={`${styles.scoreBadge} ${cls}`}>
+                                                    Оценка: {label}
+                                                </span>
+                                            );
+                                        })()}
                                     </div>
 
                                     <div className={styles.ingredientsList}>
@@ -258,7 +308,9 @@ export default function OptimizationResults() {
                                         <div className={styles.financialItem}>
                                             <span className={styles.financialLabel}>Себестоимость:</span>
                                             <span className={styles.financialValue}>
-                                                {roll.cost ? `${roll.cost.toFixed(2)}₽` : '—'}
+                                                {(roll.estimatedCost ?? roll.cost) != null
+                                                    ? `${Number(roll.estimatedCost ?? roll.cost).toFixed(2)}₽`
+                                                    : '—'}
                                             </span>
                                         </div>
                                         <div className={styles.financialItem}>
@@ -270,7 +322,9 @@ export default function OptimizationResults() {
                                         <div className={styles.financialItem}>
                                             <span className={styles.financialLabel}>Прибыль:</span>
                                             <span className={styles.financialValue}>
-                                                {roll.estimatedProfit ? `${roll.estimatedProfit.toFixed(2)}₽` : '—'}
+                                                {roll.estimatedProfit != null
+                                                    ? `${Number(roll.estimatedProfit).toFixed(2)}₽`
+                                                    : (roll.profit != null ? `${Number(roll.profit).toFixed(2)}₽` : '—')}
                                             </span>
                                         </div>
                                         <div className={styles.financialItem}>
@@ -300,12 +354,26 @@ export default function OptimizationResults() {
                                         <h4 className={styles.optimizationTitle}>
                                             {result.name || `Вариант ${index + 1}`}
                                         </h4>
-                                        <span className={`${styles.scoreBadge} ${
-                                            result.score > 0.8 ? styles.scoreHigh :
-                                                result.score > 0.6 ? styles.scoreMedium : styles.scoreLow
-                                        }`}>
-                                            Оценка: {(result.score * 100).toFixed(0)}%
-                                        </span>
+                                        {(() => {
+                                            const rawScore =
+                                                result.score ??
+                                                result.fitnessScore ??
+                                                result.confidenceScore ??
+                                                result.noveltyScore ??
+                                                null;
+                                            const normScore = rawScore == null
+                                                ? null
+                                                : (rawScore > 1 ? Math.min(1, rawScore / 100) : rawScore);
+                                            const cls = normScore == null
+                                                ? styles.scoreLow
+                                                : (normScore > 0.8 ? styles.scoreHigh : normScore > 0.6 ? styles.scoreMedium : styles.scoreLow);
+                                            const label = normScore == null ? '—' : `${(normScore * 100).toFixed(0)}%`;
+                                            return (
+                                                <span className={`${styles.scoreBadge} ${cls}`}>
+                                                    Оценка: {label}
+                                                </span>
+                                            );
+                                        })()}
                                     </div>
 
                                     <div className={styles.ingredientsList}>
@@ -323,7 +391,9 @@ export default function OptimizationResults() {
                                         <div className={styles.financialItem}>
                                             <span className={styles.financialLabel}>Себестоимость:</span>
                                             <span className={styles.financialValue}>
-                                                {result.cost ? `${result.cost.toFixed(2)}₽` : '—'}
+                                                {(result.estimatedCost ?? result.cost) != null
+                                                    ? `${Number(result.estimatedCost ?? result.cost).toFixed(2)}₽`
+                                                    : '—'}
                                             </span>
                                         </div>
                                         <div className={styles.financialItem}>
@@ -335,7 +405,9 @@ export default function OptimizationResults() {
                                         <div className={styles.financialItem}>
                                             <span className={styles.financialLabel}>Прибыль:</span>
                                             <span className={styles.financialValue}>
-                                                {result.profit ? `${result.profit.toFixed(2)}₽` : '—'}
+                                                {result.estimatedProfit != null
+                                                    ? `${Number(result.estimatedProfit).toFixed(2)}₽`
+                                                    : (result.profit != null ? `${Number(result.profit).toFixed(2)}₽` : '—')}
                                             </span>
                                         </div>
                                         <div className={styles.financialItem}>

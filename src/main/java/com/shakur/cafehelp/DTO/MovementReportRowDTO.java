@@ -7,6 +7,7 @@ public class MovementReportRowDTO {
     private Integer documentId;
     private LocalDateTime docDate;
     private Integer productId;
+    private String productName;
     private BigDecimal quantity;
     private BigDecimal unitPrice;
     private BigDecimal lineTotal;
@@ -35,6 +36,14 @@ public class MovementReportRowDTO {
 
     public void setProductId(Integer productId) {
         this.productId = productId;
+    }
+
+    public String getProductName() {
+        return productName;
+    }
+
+    public void setProductName(String productName) {
+        this.productName = productName;
     }
 
     public BigDecimal getQuantity() {

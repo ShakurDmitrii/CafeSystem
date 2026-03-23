@@ -1,8 +1,14 @@
 import { useEffect, useState } from "react";
 import styles from './ConsignmentNotePage.module.css';
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "../../auth";
 
-const API_MOVEMENTS = "http://localhost:8080/movements";
+const API_MOVEMENTS = `${API_BASE_URL}/movements`;
+const API_CONSIGNMENT = `${API_BASE_URL}/api/consignmentNote`;
+const API_CONS_PRODUCT = `${API_BASE_URL}/api/consProduct`;
+const API_SUPPLIER = `${API_BASE_URL}/api/supplier`;
+const API_PRODUCT = `${API_BASE_URL}/api/product`;
+const API_WAREHOUSES = `${API_BASE_URL}/warehouses`;
 const CONSIGNMENT_MOVEMENT_PREFIX = "consignment-note:";
 
 export default function ConsignmentNotePage() {
@@ -22,6 +28,8 @@ export default function ConsignmentNotePage() {
     const [currentTotal, setCurrentTotal] = useState(0);
     const [totalsByNoteId, setTotalsByNoteId] = useState({});
     const [isCalculatingAll, setIsCalculatingAll] = useState(false);
+    const [postedNoteIds, setPostedNoteIds] = useState({});
+    const [postingNoteId, setPostingNoteId] = useState(null);
 
     const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
     const [warehouses, setWarehouses] = useState([]);
@@ -53,14 +61,42 @@ export default function ConsignmentNotePage() {
             }
         });
 
-        return { noteRows, priceByProductId, total };
+        return {
+            noteRows,
+            priceByProductId,
+            total,
+            warehouseId: noteRows[0]?.toWarehouseId ? Number(noteRows[0].toWarehouseId) : null
+        };
+    }
+
+    async function loadPostedNoteIds() {
+        try {
+            const res = await fetch(API_MOVEMENTS);
+            if (!res.ok) throw new Error("Не удалось получить движения");
+            const data = await res.json();
+            const rows = Array.isArray(data) ? data : [];
+            const next = {};
+            rows.forEach((movement) => {
+                if (movement.docType !== "receipt") return;
+                const comment = String(movement.comment ?? "").trim();
+                if (!comment.startsWith(CONSIGNMENT_MOVEMENT_PREFIX)) return;
+                const noteId = Number(comment.slice(CONSIGNMENT_MOVEMENT_PREFIX.length));
+                if (Number.isFinite(noteId) && noteId > 0) {
+                    next[noteId] = true;
+                }
+            });
+            setPostedNoteIds(next);
+        } catch (err) {
+            console.warn("Не удалось определить проведённые накладные:", err);
+            setPostedNoteIds({});
+        }
     }
 
     // --------------------Склады-------------------------------
     useEffect(() => {
         async function fetchWarehouses() {
             try {
-                const res = await fetch("http://localhost:8080/warehouses");
+                const res = await fetch(API_WAREHOUSES);
                 const data = await res.json();
                 setWarehouses(Array.isArray(data) ? data : []);
             } catch (err) {
@@ -76,13 +112,14 @@ export default function ConsignmentNotePage() {
             try {
                 setLoading(true);
 
-                const resNotes = await fetch("http://localhost:8080/api/consignmentNote");
+                const resNotes = await fetch(API_CONSIGNMENT);
                 const notesData = await resNotes.json();
                 setNotes(Array.isArray(notesData) ? notesData : []);
 
-                const resSup = await fetch("http://localhost:8080/api/supplier");
+                const resSup = await fetch(API_SUPPLIER);
                 const suppliersData = await resSup.json();
                 setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
+                await loadPostedNoteIds();
 
             } catch (err) {
                 console.error(err);
@@ -102,7 +139,7 @@ export default function ConsignmentNotePage() {
             return;
         }
         try {
-            const res = await fetch("http://localhost:8080/api/consignmentNote", {
+            const res = await fetch(API_CONSIGNMENT, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(formData)
@@ -112,6 +149,7 @@ export default function ConsignmentNotePage() {
 
             const newNote = await res.json();
             setNotes(prev => [...prev, newNote]);
+            setPostedNoteIds(prev => ({ ...prev, [newNote.consignmentId]: false }));
             setFormData({ supplierId: "", date: "" });
         } catch (err) {
             console.error(err);
@@ -129,13 +167,13 @@ export default function ConsignmentNotePage() {
 
         try {
             // 1. Получаем товары накладной
-            const resCons = await fetch(`http://localhost:8080/api/consProduct/${noteId}`);
+            const resCons = await fetch(`${API_CONS_PRODUCT}/${noteId}`);
             const consProductsData = await resCons.json();
             console.log("Товары накладной:", consProductsData);
 
             // 2. Получаем товары поставщика для выпадающего списка
             try {
-                const resSupProducts = await fetch(`http://localhost:8080/api/product/supplier/${note.supplierId}`);
+                const resSupProducts = await fetch(`${API_PRODUCT}/supplier/${note.supplierId}`);
                 const supplierProductsData = await resSupProducts.json();
                 console.log("Товары поставщика:", supplierProductsData);
 
@@ -178,7 +216,7 @@ export default function ConsignmentNotePage() {
                         }
 
                         // Получаем информацию о товаре
-                        const resProd = await fetch(`http://localhost:8080/api/product/${productId}`);
+                        const resProd = await fetch(`${API_PRODUCT}/${productId}`);
 
                         if (!resProd.ok) {
                             throw new Error(`Ошибка получения товара ${productId}`);
@@ -217,8 +255,10 @@ export default function ConsignmentNotePage() {
                 const movementData = await getNoteReceiptMovements(noteId);
                 priceMap = movementData.priceByProductId;
                 movementTotal = movementData.noteRows.length > 0 ? movementData.total : null;
+                setSelectedWarehouseId(movementData.warehouseId ? String(movementData.warehouseId) : "");
             } catch (e) {
                 console.warn("Не удалось получить цены из движений:", e);
+                setSelectedWarehouseId("");
             }
 
             const mergedProducts = consProductsWithNames.map(cp => {
@@ -226,7 +266,7 @@ export default function ConsignmentNotePage() {
                 const movementPrice = pId != null ? priceMap[pId] : null;
                 return {
                     ...cp,
-                    productPrice: movementPrice ?? cp.productPrice
+                    productPrice: movementPrice ?? cp.GROSS ?? cp.gross ?? cp.productPrice
                 };
             });
 
@@ -244,17 +284,18 @@ export default function ConsignmentNotePage() {
         setSelectedNoteId(null);
         setCurrentTotal(0);
         setConsProducts([]);
+        setSelectedWarehouseId("");
+        setPostingNoteId(null);
     }
 
     // -------------------- ДОБАВЛЕНИЕ ПРОДУКТА --------------------
     async function addProduct() {
-        if (!newProduct.productId || !newProduct.quantity || !newProduct.unitPrice) {
-            alert("Выберите продукт, укажите количество и цену закупки!");
+        if (postedNoteIds[selectedNoteId]) {
+            alert("Проведенную накладную нельзя редактировать");
             return;
         }
-
-        if (!selectedWarehouseId) {
-            alert("Выберите склад!");
+        if (!newProduct.productId || !newProduct.quantity || !newProduct.unitPrice) {
+            alert("Выберите продукт, укажите количество и цену закупки!");
             return;
         }
 
@@ -287,7 +328,7 @@ export default function ConsignmentNotePage() {
 
             console.log("Отправляем на сервер:", productToAdd);
 
-            const res = await fetch("http://localhost:8080/api/consProduct", {
+            const res = await fetch(API_CONS_PRODUCT, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(productToAdd)
@@ -300,36 +341,6 @@ export default function ConsignmentNotePage() {
 
             const created = await res.json();
             console.log("Создан consProduct:", created);
-
-            const currentNote = notes.find(n => String(n.consignmentId) === String(newProduct.consignmentId));
-            const noteDate = currentNote?.date ? String(currentNote.date).slice(0, 10) : null;
-
-            const movementPayload = {
-                docType: "receipt",
-                docDate: noteDate ? `${noteDate}T00:00:00` : undefined,
-                fromWarehouseId: null,
-                toWarehouseId: Number(selectedWarehouseId),
-                productId: selectedProduct.productId || selectedProduct.productID,
-                quantity: parseFloat(newProduct.quantity),
-                supplierId: selectedSupplierId ? Number(selectedSupplierId) : null,
-                unitPrice: parseFloat(newProduct.unitPrice),
-                comment: `${CONSIGNMENT_MOVEMENT_PREFIX}${newProduct.consignmentId}`,
-                createdBy: "consignment-ui"
-            };
-
-            const movementRes = await fetch(API_MOVEMENTS, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(movementPayload)
-            });
-
-            if (!movementRes.ok) {
-                await fetch(`http://localhost:8080/api/consProduct/${created.consProductId}`, {
-                    method: "DELETE"
-                }).catch(() => {});
-                const errText = await movementRes.text();
-                throw new Error(`Ошибка создания движения: ${errText || movementRes.status}`);
-            }
 
             // Добавляем товар в список
             const enteredUnitPrice = parseFloat(newProduct.unitPrice);
@@ -360,25 +371,30 @@ export default function ConsignmentNotePage() {
     }
 
     // -------------------- УДАЛЕНИЕ ПРОДУКТА --------------------
-    // Используем productId как идентификатор для DELETE /api/consProduct/{productId}
-    async function deleteProduct(productId) {
-        if (!productId) return;
+    async function deleteProduct(consProductId) {
+        if (postedNoteIds[selectedNoteId]) {
+            alert("Проведенную накладную нельзя редактировать");
+            return;
+        }
+        if (!consProductId) return;
 
         try {
-            const idToDelete = Number(productId);
+            const idToDelete = Number(consProductId);
             if (!idToDelete) {
-                console.error("Некорректный productId для удаления:", productId);
+                console.error("Некорректный consProductId для удаления:", consProductId);
                 return;
             }
 
-            const res = await fetch(`http://localhost:8080/api/consProduct/${idToDelete}`, {
+            const res = await fetch(`${API_CONS_PRODUCT}/${idToDelete}`, {
                 method: "DELETE"
             });
 
             if (!res.ok) throw new Error("Ошибка удаления товара");
 
-            // Удаляем из списка по productId
-            setConsProducts(prev => prev.filter(p => p.productId !== idToDelete));
+            setConsProducts(prev => prev.filter(p => Number(p.consProductId) !== idToDelete));
+            if (selectedNoteId) {
+                await calculateTotalForNote(selectedNoteId);
+            }
         } catch (err) {
             console.error(err);
             setError(err.message);
@@ -391,7 +407,7 @@ export default function ConsignmentNotePage() {
         if (!note) return;
 
         try {
-            const resCons = await fetch(`http://localhost:8080/api/consProduct/${noteId}`);
+            const resCons = await fetch(`${API_CONS_PRODUCT}/${noteId}`);
             const consProductsData = await resCons.json();
             const consProductsArray = Array.isArray(consProductsData) ? consProductsData : [];
 
@@ -409,22 +425,15 @@ export default function ConsignmentNotePage() {
                     const quantity = Number(cp.quantity) || 0;
                     if (!productId) continue;
 
-                    try {
-                        const resProd = await fetch(`http://localhost:8080/api/product/${productId}`);
-                        if (!resProd.ok) continue;
-                        const productData = await resProd.json();
-                        const price = Number(productData.productPrice || productData.price) || 0;
-                        total += price * quantity;
-                    } catch (err) {
-                        console.warn(`Не удалось получить цену для товара ${productId}:`, err);
-                    }
+                    const price = Number(cp.GROSS ?? cp.gross ?? 0) || 0;
+                    total += price * quantity;
                 }
             }
 
             setTotalsByNoteId(prev => ({ ...prev, [noteId]: total }));
             if (selectedNoteId === noteId) setCurrentTotal(total);
 
-            await fetch(`http://localhost:8080/api/consignmentNote/${noteId}`, {
+            await fetch(`${API_CONSIGNMENT}/${noteId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ amount: total })
@@ -445,16 +454,64 @@ export default function ConsignmentNotePage() {
         }
     }
 
+    async function handlePostNote(noteId) {
+        if (!noteId) return;
+        if (postedNoteIds[noteId]) {
+            alert("Накладная уже проведена");
+            return;
+        }
+        if (!selectedWarehouseId) {
+            alert("Выберите склад для проведения");
+            return;
+        }
+        if (!Array.isArray(consProducts) || consProducts.length === 0) {
+            alert("В накладной нет товаров для проведения");
+            return;
+        }
+
+        try {
+            setPostingNoteId(noteId);
+            const res = await fetch(`${API_CONSIGNMENT}/${noteId}/post`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ warehouseId: Number(selectedWarehouseId) })
+            });
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(errText || "Ошибка проведения накладной");
+            }
+
+            setPostedNoteIds(prev => ({ ...prev, [noteId]: true }));
+            await calculateTotalForNote(noteId);
+            alert(`Накладная #${noteId} проведена`);
+        } catch (err) {
+            console.error(err);
+            setError(err.message);
+            alert(err.message);
+        } finally {
+            setPostingNoteId(null);
+        }
+    }
+
     async function handleDeleteNote(noteId) {
         if (!window.confirm(`Удалить накладную #${noteId}?`)) return;
+        if (postedNoteIds[noteId]) {
+            alert("Проведенную накладную удалять нельзя");
+            return;
+        }
         try {
-            const res = await fetch(`http://localhost:8080/api/consignmentNote/${noteId}`, {
+            const res = await fetch(`${API_CONSIGNMENT}/${noteId}`, {
                 method: "DELETE"
             });
             if (!res.ok) throw new Error("Ошибка удаления накладной");
 
             setNotes(prev => prev.filter(n => n.consignmentId !== noteId));
             setTotalsByNoteId(prev => {
+                const next = { ...prev };
+                delete next[noteId];
+                return next;
+            });
+            setPostedNoteIds(prev => {
                 const next = { ...prev };
                 delete next[noteId];
                 return next;
@@ -521,6 +578,7 @@ export default function ConsignmentNotePage() {
                         <th>Поставщик</th>
                         <th>Номер</th>
                         <th>Дата</th>
+                        <th>Статус</th>
                         <th>Итого</th>
                         <th>
                             Действия
@@ -548,6 +606,11 @@ export default function ConsignmentNotePage() {
                             </td>
                             <td>{note.consignmentId}</td>
                             <td>{note.date}</td>
+                            <td>
+                                <span className={postedNoteIds[note.consignmentId] ? styles.postedBadge : styles.draftBadge}>
+                                    {postedNoteIds[note.consignmentId] ? "Проведена" : "Черновик"}
+                                </span>
+                            </td>
                             <td>{totalsByNoteId[note.consignmentId] ?? "–"}</td>
                             <td>
                                 <div className={styles.actionButtons}>
@@ -569,6 +632,7 @@ export default function ConsignmentNotePage() {
                                     <button
                                         className={styles.deleteBtn}
                                         onClick={() => handleDeleteNote(note.consignmentId)}
+                                        disabled={postedNoteIds[note.consignmentId]}
                                     >
                                         Удалить
                                     </button>
@@ -590,6 +654,12 @@ export default function ConsignmentNotePage() {
                         </div>
 
                         <div className={styles.modalContent}>
+                            <div className={postedNoteIds[selectedNoteId] ? styles.postedNotice : styles.draftNotice}>
+                                {postedNoteIds[selectedNoteId]
+                                    ? `Накладная проведена${selectedWarehouseId ? ` на склад #${selectedWarehouseId}` : ""}. Редактирование заблокировано.`
+                                    : "Накладная в черновике. Товары попадут на склад только после проведения."}
+                            </div>
+
                             {consProducts.length === 0 ? (
                                 <div className={styles.emptyState}>
                                     <p>Товаров в накладной нет</p>
@@ -620,7 +690,8 @@ export default function ConsignmentNotePage() {
                                                 <td>
                                                     <button
                                                         className={styles.deleteSmallBtn}
-                                                        onClick={() => deleteProduct(p.productId)}
+                                                        onClick={() => deleteProduct(p.consProductId)}
+                                                        disabled={postedNoteIds[selectedNoteId]}
                                                     >
                                                         ✖
                                                     </button>
@@ -632,21 +703,10 @@ export default function ConsignmentNotePage() {
                                 </table>
                             )}
 
+                            {!postedNoteIds[selectedNoteId] && (
                             <div className={styles.addProductSection}>
                                 <h3>Добавить товар</h3>
                                 <div className={styles.addProductForm}>
-                                    <select
-                                        value={selectedWarehouseId}
-                                        onChange={e => setSelectedWarehouseId(e.target.value)}
-                                        className={styles.inputField}
-                                        required
-                                    >
-                                        <option value="">Выберите склад</option>
-                                        {Array.isArray(warehouses) && warehouses.map(w => (
-                                            <option key={w.warehouseId} value={w.warehouseId}>{w.warehouseName}</option>
-                                        ))}
-                                    </select>
-
                                     <select
                                         value={newProduct.productId}
                                         onChange={e => {
@@ -694,11 +754,34 @@ export default function ConsignmentNotePage() {
                                     <button className={styles.addBtn} onClick={addProduct}>Добавить</button>
                                 </div>
                             </div>
+                            )}
 
                             <div className={styles.totalSection}>
                                 <div className={styles.totalInfo}>
                                     <strong>Итого: {currentTotal.toFixed(2)}</strong>
                                 </div>
+
+                                {!postedNoteIds[selectedNoteId] && (
+                                    <div className={styles.postSection}>
+                                        <select
+                                            value={selectedWarehouseId}
+                                            onChange={e => setSelectedWarehouseId(e.target.value)}
+                                            className={styles.inputField}
+                                        >
+                                            <option value="">Выберите склад для проведения</option>
+                                            {Array.isArray(warehouses) && warehouses.map(w => (
+                                                <option key={w.warehouseId} value={w.warehouseId}>{w.warehouseName}</option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            className={styles.postBtn}
+                                            onClick={() => handlePostNote(selectedNoteId)}
+                                            disabled={postingNoteId === selectedNoteId}
+                                        >
+                                            {postingNoteId === selectedNoteId ? "Провожу..." : "Провести накладную"}
+                                        </button>
+                                    </div>
+                                )}
 
                                 <div className={styles.modalActions}>
                                     <button

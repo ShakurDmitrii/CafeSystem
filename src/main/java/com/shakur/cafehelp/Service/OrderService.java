@@ -1,6 +1,7 @@
 package com.shakur.cafehelp.Service;
 
 import com.shakur.cafehelp.DTO.OrderDTO;
+import com.shakur.cafehelp.DTO.OrderDishDTO;
 import jooqdata.tables.Order;
 import jooqdata.tables.Orderdish;
 import jooqdata.tables.Dish;
@@ -29,14 +30,20 @@ public class OrderService {
     private static final Field<String> DELIVERY_ADDRESS_FIELD = DSL.field(DSL.name("delivery_address"), String.class);
     private static final Field<String> PAYMENT_TYPE_FIELD = DSL.field(DSL.name("payment_type"), String.class);
     private static final Field<Boolean> IS_PAID_FIELD = DSL.field(DSL.name("is_paid"), Boolean.class);
+    private static final Field<Integer> ORDERDISH_SET_ID = DSL.field(DSL.name("set_id"), Integer.class);
+    private static final org.jooq.Table<?> DISH_SET = DSL.table(DSL.name("sales", "dish_set"));
+    private static final org.jooq.Table<?> DISH_SET_ITEM = DSL.table(DSL.name("sales", "dish_set_item"));
+    private static final Field<Integer> DISH_SET_ID = DSL.field(DSL.name("sales", "dish_set", "setid"), Integer.class);
+    private static final Field<String> DISH_SET_NAME = DSL.field(DSL.name("sales", "dish_set", "setname"), String.class);
+    private static final Field<Double> DISH_SET_PRICE = DSL.field(DSL.name("sales", "dish_set", "price"), Double.class);
+    private static final Field<Double> DISH_SET_FIRST_COST = DSL.field(DSL.name("sales", "dish_set", "first_cost"), Double.class);
+    private static final Field<Integer> DISH_SET_ITEM_SET_ID = DSL.field(DSL.name("set_id"), Integer.class);
+    private static final Field<Integer> DISH_SET_ITEM_DISH_ID = DSL.field(DSL.name("dish_id"), Integer.class);
+    private static final Field<Integer> DISH_SET_ITEM_QTY = DSL.field(DSL.name("qty"), Integer.class);
 
     private final DSLContext dsl;
     private final WareHouseService wareHouseService;
-    private static final org.jooq.Table<?> TECHPRODUCT = DSL.table(DSL.name("sales", "techproduct"));
-    private static final Field<Integer> TECH_DISH_ID = DSL.field(DSL.name("DishId"), Integer.class);
-    private static final Field<Integer> TECH_PRODUCT_ID = DSL.field(DSL.name("productid"), Integer.class);
-    private static final Field<Double> TECH_WEIGHT = DSL.field(DSL.name("weight"), Double.class);
-    private static final Field<Double> TECH_WASTE = DSL.field(DSL.name("waste"), Double.class);
+    private final RecipeRequirementService recipeRequirementService;
     private static final org.jooq.Table<?> PRODUCT = DSL.table(DSL.name("sales", "product"));
     private static final Field<Integer> PRODUCT_ID = DSL.field(DSL.name("productid"), Integer.class);
     private static final Field<java.math.BigDecimal> PRODUCT_UNIT_FACTOR = DSL.field(DSL.name("unit_factor"), java.math.BigDecimal.class);
@@ -44,9 +51,10 @@ public class OrderService {
     private static final Field<String> PRODUCT_BASE_UNIT = DSL.field(DSL.name("base_unit"), String.class);
     private volatile Boolean baseUnitPresent = null;
 
-    public OrderService(DSLContext dsl, WareHouseService wareHouseService) {
+    public OrderService(DSLContext dsl, WareHouseService wareHouseService, RecipeRequirementService recipeRequirementService) {
         this.dsl = dsl;
         this.wareHouseService = wareHouseService;
+        this.recipeRequirementService = recipeRequirementService;
     }
 
     public OrderDTO createOrder(OrderDTO orderDTO) {
@@ -95,14 +103,23 @@ public class OrderService {
             if (orderDTO.getItems() != null) {
                 for (var item : orderDTO.getItems()) {
                     if (item == null) continue;
-                    int dishId = item.getDishID();
                     int qty = item.getQty();
-                    if (dishId <= 0 || qty <= 0) continue;
-                    dsl.insertInto(ORDERDISH)
+                    Integer dishId = item.getDishID();
+                    Integer setId = item.getSetId();
+                    if (qty <= 0) continue;
+                    if ((dishId == null || dishId <= 0) && (setId == null || setId <= 0)) continue;
+
+                    var insert = dsl.insertInto(ORDERDISH)
                             .set(ORDERDISH.ORDERID, orderId)
-                            .set(ORDERDISH.DISHID, dishId)
-                            .set(ORDERDISH.QTY, qty)
-                            .execute();
+                            .set(ORDERDISH.QTY, qty);
+
+                    if (dishId != null && dishId > 0) {
+                        insert.set(ORDERDISH.DISHID, dishId);
+                    } else {
+                        insert.set(ORDERDISH_SET_ID, setId);
+                    }
+
+                    insert.execute();
                 }
                 if (paid) {
                     try {
@@ -158,17 +175,21 @@ public class OrderService {
                     order.time = record.get(ORDER.TIME);
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
                     order.created_at = record.get(ORDER.CREATED_AT);
+                    order.date_issue = record.get(ORDER.DATE_ISSUE);
                     order.deliveryPhone = record.get(DELIVERY_PHONE_FIELD);
                     order.deliveryAddress = record.get(DELIVERY_ADDRESS_FIELD);
                     order.paymentType = record.get(PAYMENT_TYPE_FIELD);
                     order.paid = record.get(IS_PAID_FIELD);
+                    order.items = buildOrderDishDtos(record.get(ORDER.ORDERID));
                     return order;
                 });
     }
 
 
     public List<OrderDTO> getOrdersByClientId(int clientId) {
-        return dsl.selectFrom(ORDER)
+        return dsl.select(ORDER.fields())
+                .select(PAYMENT_TYPE_FIELD, IS_PAID_FIELD)
+                .from(ORDER)
                 .where(ORDER.CLIENTID.eq(clientId))
                 .fetch(record -> {
                     OrderDTO order = new OrderDTO();
@@ -182,6 +203,9 @@ public class OrderService {
                     order.setTime(record.get(ORDER.TIME));
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
                     order.setCreated_at(record.get(ORDER.CREATED_AT));
+                    order.setDate_issue(record.get(ORDER.DATE_ISSUE));
+                    order.setPaymentType(record.get(PAYMENT_TYPE_FIELD));
+                    order.setPaid(record.get(IS_PAID_FIELD));
                     return order;
                 });
     }
@@ -200,6 +224,7 @@ public class OrderService {
                     order.setTime(record.get(ORDER.TIME));
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
                     order.setCreated_at(record.get(ORDER.CREATED_AT));
+                    order.setDate_issue(record.get(ORDER.DATE_ISSUE));
                     return order;
                 });
     }
@@ -219,6 +244,7 @@ public class OrderService {
                     order.setTime(record.get(ORDER.TIME));
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
                     order.setCreated_at(record.get(ORDER.CREATED_AT));
+                    order.setDate_issue(record.get(ORDER.DATE_ISSUE));
                     return order;
                 });
     }
@@ -237,6 +263,7 @@ public class OrderService {
                     order.setTime(record.get(ORDER.TIME));
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
                     order.setCreated_at(record.get(ORDER.CREATED_AT));
+                    order.setDate_issue(record.get(ORDER.DATE_ISSUE));
                     return order;
                 });
     }
@@ -254,6 +281,7 @@ public class OrderService {
                     order.setTime(record.get(ORDER.TIME));
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
                     order.setCreated_at(record.get(ORDER.CREATED_AT));
+                    order.setDate_issue(record.get(ORDER.DATE_ISSUE));
                     return order;
                 });
     }
@@ -275,10 +303,12 @@ public List<OrderDTO> getOrders() {
                     order.setTime(record.get(ORDER.TIME));
                     order.timeDelay = record.get(ORDER.TIMEDELAY);
                     order.setCreated_at(record.get(ORDER.CREATED_AT));
+                    order.setDate_issue(record.get(ORDER.DATE_ISSUE));
                     order.setDeliveryPhone(record.get(DELIVERY_PHONE_FIELD));
                     order.setDeliveryAddress(record.get(DELIVERY_ADDRESS_FIELD));
                     order.setPaymentType(record.get(PAYMENT_TYPE_FIELD));
                     order.setPaid(record.get(IS_PAID_FIELD));
+                    order.setItems(buildOrderDishDtos(record.get(ORDER.ORDERID)));
                     return order;
                 }).toList();
 }
@@ -293,6 +323,7 @@ public List<OrderDTO> getOrders() {
         order.setTime(record.get(ORDER.TIME));
         order.setTimeDelay(record.get(ORDER.TIMEDELAY));
         order.setCreated_at(record.get(ORDER.CREATED_AT));
+        order.setDate_issue(record.get(ORDER.DATE_ISSUE));
         return order;
     }
     public OrderDTO addTimeDelay(int orderId, Double delayMinutes) {
@@ -308,6 +339,18 @@ public List<OrderDTO> getOrders() {
                 .fetchOne();
 
         return mapToDTO(updatedRecord);
+    }
+
+    @Transactional
+    public OrderDTO markOrderIssued(int orderId) {
+        int updated = dsl.update(ORDER)
+                .set(ORDER.DATE_ISSUE, LocalDate.now())
+                .where(ORDER.ORDERID.eq(orderId))
+                .execute();
+        if (updated != 1) {
+            throw new RuntimeException("Заказ с id " + orderId + " не найден");
+        }
+        return getOrderById(orderId);
     }
 
     @Transactional
@@ -379,7 +422,8 @@ public List<OrderDTO> getOrders() {
         if (mainWarehouseId == null) return;
 
         Map<Integer, Double> requiredByProduct = new HashMap<>();
-        var rows = dsl.select(ORDERDISH.DISHID, ORDERDISH.QTY)
+        Map<Integer, Double> requiredByPreparation = new HashMap<>();
+        var rows = dsl.select(ORDERDISH.DISHID, ORDERDISH_SET_ID, ORDERDISH.QTY)
                 .from(ORDERDISH)
                 .where(ORDERDISH.ORDERID.eq(orderId))
                 .fetch();
@@ -387,47 +431,57 @@ public List<OrderDTO> getOrders() {
 
         for (Record r : rows) {
             Integer dishId = r.get(ORDERDISH.DISHID);
+            Integer setId = r.get(ORDERDISH_SET_ID);
             Integer qty = r.get(ORDERDISH.QTY);
-            if (dishId == null || qty == null || qty <= 0) continue;
-            mergeRequirements(requiredByProduct, buildRequirementsForDish(dishId, qty));
+            if (qty == null || qty <= 0) continue;
+            RecipeRequirementService.RequirementSet set;
+            if (dishId != null && dishId > 0) {
+                set = buildRequirementsForDish(dishId, qty);
+            } else if (setId != null && setId > 0) {
+                set = buildRequirementsForSet(setId, qty);
+            } else {
+                continue;
+            }
+            mergeRequirements(requiredByProduct, set.productRequirements());
+            mergeRequirements(requiredByPreparation, set.preparationRequirements());
         }
 
-        applyWarehouseWriteoffForRequirements(mainWarehouseId, requiredByProduct);
+        applyWarehouseWriteoffForRequirements(mainWarehouseId, requiredByProduct, requiredByPreparation);
     }
 
     private void applyWarehouseWriteoffForDish(int dishId, int qty) {
         if (qty <= 0) return;
         Integer mainWarehouseId = wareHouseService.getMainWarehouseId();
         if (mainWarehouseId == null) return;
-        Map<Integer, Double> requiredByProduct = buildRequirementsForDish(dishId, qty);
-        applyWarehouseWriteoffForRequirements(mainWarehouseId, requiredByProduct);
+        RecipeRequirementService.RequirementSet set = buildRequirementsForDish(dishId, qty);
+        applyWarehouseWriteoffForRequirements(mainWarehouseId, set.productRequirements(), set.preparationRequirements());
     }
 
-    private Map<Integer, Double> buildRequirementsForDish(int dishId, int qty) {
+    private RecipeRequirementService.RequirementSet buildRequirementsForDish(int dishId, int qty) {
+        return recipeRequirementService.buildForDish(dishId, qty);
+    }
+
+    private RecipeRequirementService.RequirementSet buildRequirementsForSet(int setId, int orderQty) {
         Map<Integer, Double> requiredByProduct = new HashMap<>();
-        if (qty <= 0) return requiredByProduct;
+        Map<Integer, Double> requiredByPreparation = new HashMap<>();
 
-        var rows = dsl.select(TECH_PRODUCT_ID, TECH_WEIGHT, TECH_WASTE)
-                .from(TECHPRODUCT)
-                .where(TECH_DISH_ID.eq(dishId))
+        var rows = dsl.select(DISH_SET_ITEM_DISH_ID, DISH_SET_ITEM_QTY)
+                .from(DISH_SET_ITEM)
+                .where(DISH_SET_ITEM_SET_ID.eq(setId))
                 .fetch();
-        if (rows.isEmpty()) return requiredByProduct;
 
-        for (Record r : rows) {
-            Integer productId = r.get(TECH_PRODUCT_ID);
-            Double weight = r.get(TECH_WEIGHT);
-            Double waste = r.get(TECH_WASTE);
-            if (productId == null || weight == null || weight <= 0) continue;
-
-            double wastePct = waste != null ? waste : 0.0;
-            if (wastePct < 0) wastePct = 0;
-            if (wastePct > 100) wastePct = 100;
-
-            double baseQty = weight * qty * (1 + (wastePct / 100.0));
-            if (baseQty <= 0) continue;
-            requiredByProduct.merge(productId, baseQty, Double::sum);
+        for (Record row : rows) {
+            Integer dishId = row.get(DISH_SET_ITEM_DISH_ID);
+            Integer setDishQty = row.get(DISH_SET_ITEM_QTY);
+            if (dishId == null || dishId <= 0 || setDishQty == null || setDishQty <= 0) {
+                continue;
+            }
+            RecipeRequirementService.RequirementSet nested = buildRequirementsForDish(dishId, orderQty * setDishQty);
+            mergeRequirements(requiredByProduct, nested.productRequirements());
+            mergeRequirements(requiredByPreparation, nested.preparationRequirements());
         }
-        return requiredByProduct;
+
+        return new RecipeRequirementService.RequirementSet(requiredByProduct, requiredByPreparation);
     }
 
     private void mergeRequirements(Map<Integer, Double> target, Map<Integer, Double> add) {
@@ -436,13 +490,25 @@ public List<OrderDTO> getOrders() {
         }
     }
 
-    private void applyWarehouseWriteoffForRequirements(Integer warehouseId, Map<Integer, Double> requiredByProduct) {
-        if (warehouseId == null || requiredByProduct == null || requiredByProduct.isEmpty()) return;
+    private void applyWarehouseWriteoffForRequirements(
+            Integer warehouseId,
+            Map<Integer, Double> requiredByProduct,
+            Map<Integer, Double> requiredByPreparation
+    ) {
+        if (warehouseId == null) return;
+        boolean noProducts = requiredByProduct == null || requiredByProduct.isEmpty();
+        boolean noPreparations = requiredByPreparation == null || requiredByPreparation.isEmpty();
+        if (noProducts && noPreparations) return;
 
-        Map<Integer, ProductInfo> productInfo = loadProductInfo(requiredByProduct.keySet());
+        Map<Integer, ProductInfo> productInfo = loadProductInfo(
+                requiredByProduct != null ? requiredByProduct.keySet() : java.util.Set.of()
+        );
+        Map<Integer, PreparationInfo> preparationInfo = loadPreparationInfo(
+                requiredByPreparation != null ? requiredByPreparation.keySet() : java.util.Set.of()
+        );
         List<String> missing = new java.util.ArrayList<>();
 
-        for (Map.Entry<Integer, Double> e : requiredByProduct.entrySet()) {
+        for (Map.Entry<Integer, Double> e : (requiredByProduct != null ? requiredByProduct.entrySet() : java.util.Collections.<Map.Entry<Integer, Double>>emptySet())) {
             Integer productId = e.getKey();
             double required = e.getValue() != null ? e.getValue() : 0.0;
             if (required <= 0) continue;
@@ -456,17 +522,40 @@ public List<OrderDTO> getOrders() {
             }
         }
 
+        for (Map.Entry<Integer, Double> e : (requiredByPreparation != null ? requiredByPreparation.entrySet() : java.util.Collections.<Map.Entry<Integer, Double>>emptySet())) {
+            Integer preparationId = e.getKey();
+            double required = e.getValue() != null ? e.getValue() : 0.0;
+            if (required <= 0) continue;
+
+            double available = wareHouseService.getAvailablePreparationQuantity(warehouseId, preparationId);
+            if (available + 1e-6 < required) {
+                PreparationInfo info = preparationInfo.get(preparationId);
+                String name = info != null && info.name != null ? info.name : ("Заготовка ID " + preparationId);
+                missing.add(name + " (" + formatQty(available) + "/" + formatQty(required) + " g)");
+            }
+        }
+
         if (!missing.isEmpty()) {
             throw new RuntimeException("Не хватает продуктов на складе: " + String.join(", ", missing));
         }
 
-        for (Map.Entry<Integer, Double> e : requiredByProduct.entrySet()) {
+        for (Map.Entry<Integer, Double> e : (requiredByProduct != null ? requiredByProduct.entrySet() : java.util.Collections.<Map.Entry<Integer, Double>>emptySet())) {
             Integer productId = e.getKey();
             double required = e.getValue() != null ? e.getValue() : 0.0;
             if (required <= 0) continue;
             boolean ok = wareHouseService.adjustQuantity(warehouseId, productId, -required);
             if (!ok) {
                 throw new RuntimeException("Не удалось списать продукт: ID " + productId);
+            }
+        }
+
+        for (Map.Entry<Integer, Double> e : (requiredByPreparation != null ? requiredByPreparation.entrySet() : java.util.Collections.<Map.Entry<Integer, Double>>emptySet())) {
+            Integer preparationId = e.getKey();
+            double required = e.getValue() != null ? e.getValue() : 0.0;
+            if (required <= 0) continue;
+            boolean ok = wareHouseService.adjustPreparationQuantity(warehouseId, preparationId, -required);
+            if (!ok) {
+                throw new RuntimeException("Не удалось списать заготовку: ID " + preparationId);
             }
         }
     }
@@ -488,6 +577,22 @@ public List<OrderDTO> getOrders() {
             String unit = hasBaseUnit ? r.get(PRODUCT_BASE_UNIT) : null;
             if (unit == null || unit.isBlank()) unit = "g";
             result.put(id, new ProductInfo(name, unit));
+        }
+        return result;
+    }
+
+    private Map<Integer, PreparationInfo> loadPreparationInfo(java.util.Set<Integer> preparationIds) {
+        Map<Integer, PreparationInfo> result = new HashMap<>();
+        if (preparationIds == null || preparationIds.isEmpty()) return result;
+
+        var rows = dsl.select(RecipeSchema.PREPARATION_ID, RecipeSchema.PREPARATION_NAME)
+                .from(RecipeSchema.PREPARATION)
+                .where(RecipeSchema.PREPARATION_ID.in(preparationIds))
+                .fetch();
+        for (Record r : rows) {
+            Integer id = r.get(RecipeSchema.PREPARATION_ID);
+            if (id == null) continue;
+            result.put(id, new PreparationInfo(r.get(RecipeSchema.PREPARATION_NAME)));
         }
         return result;
     }
@@ -517,6 +622,110 @@ public List<OrderDTO> getOrders() {
         }
     }
 
+    private static class PreparationInfo {
+        final String name;
+
+        PreparationInfo(String name) {
+            this.name = name;
+        }
+    }
+
+    private List<OrderLineItem> loadOrderLineItems(int orderId) {
+        Field<Double> dishPriceField = DISH.PRICE.as("dish_price");
+        Field<Double> setPriceField = DISH_SET_PRICE.as("set_price");
+        Field<String> setNameField = DISH_SET_NAME.as("set_name");
+
+        return dsl.select(
+                        ORDERDISH.DISHID,
+                        ORDERDISH_SET_ID,
+                        ORDERDISH.QTY,
+                        DISH.DISHNAME,
+                        dishPriceField,
+                        setNameField,
+                        setPriceField
+                )
+                .from(ORDERDISH)
+                .leftJoin(DISH).on(DISH.DISHID.eq(ORDERDISH.DISHID))
+                .leftJoin(DISH_SET).on(DISH_SET_ID.eq(ORDERDISH_SET_ID))
+                .where(ORDERDISH.ORDERID.eq(orderId))
+                .fetch(record -> {
+                    Integer dishId = record.get(ORDERDISH.DISHID);
+                    Integer setId = record.get(ORDERDISH_SET_ID);
+                    Integer qty = record.get(ORDERDISH.QTY);
+                    String name = dishId != null && dishId > 0
+                            ? record.get(DISH.DISHNAME)
+                            : record.get(setNameField);
+                    Double price = dishId != null && dishId > 0
+                            ? record.get(dishPriceField)
+                            : record.get(setPriceField);
+                    return new OrderLineItem(
+                            dishId,
+                            setId,
+                            name != null ? name : "Позиция",
+                            price != null ? price : 0.0,
+                            qty != null ? qty : 0
+                    );
+                });
+    }
+
+    private List<OrderDishDTO> buildOrderDishDtos(int orderId) {
+        return loadOrderLineItems(orderId).stream().map(row -> {
+            OrderDishDTO item = new OrderDishDTO();
+            item.setDishID(row.dishId);
+            item.setSetId(row.setId);
+            item.setItemType(row.setId != null && row.setId > 0 ? "set" : "dish");
+            item.setQty(row.qty != null ? row.qty : 0);
+            item.setDishName(row.name != null ? row.name : "Позиция");
+            item.setName(row.name != null ? row.name : "Позиция");
+            item.setPrice(row.price != null ? row.price : 0.0);
+            item.setSum((row.price != null ? row.price : 0.0) * (row.qty != null ? row.qty : 0));
+            return item;
+        }).toList();
+    }
+
+    private double calculateOrderItemsFirstCost(int orderId) {
+        double total = 0.0;
+        var rows = dsl.select(
+                        ORDERDISH.DISHID,
+                        ORDERDISH_SET_ID,
+                        ORDERDISH.QTY,
+                        DISH.FIRSTCOST,
+                        DISH_SET_FIRST_COST
+                )
+                .from(ORDERDISH)
+                .leftJoin(DISH).on(DISH.DISHID.eq(ORDERDISH.DISHID))
+                .leftJoin(DISH_SET).on(DISH_SET_ID.eq(ORDERDISH_SET_ID))
+                .where(ORDERDISH.ORDERID.eq(orderId))
+                .fetch();
+
+        for (Record row : rows) {
+            int qty = row.get(ORDERDISH.QTY) != null ? row.get(ORDERDISH.QTY) : 0;
+            if (qty <= 0) continue;
+            Integer dishId = row.get(ORDERDISH.DISHID);
+            double firstCost = dishId != null && dishId > 0
+                    ? (row.get(DISH.FIRSTCOST) != null ? row.get(DISH.FIRSTCOST) : 0.0)
+                    : (row.get(DISH_SET_FIRST_COST) != null ? row.get(DISH_SET_FIRST_COST) : 0.0);
+            total += firstCost * qty;
+        }
+        return total;
+    }
+
+    private static class OrderLineItem {
+        final Integer dishId;
+        final Integer setId;
+        final String name;
+        final Double price;
+        final Integer qty;
+
+        OrderLineItem(Integer dishId, Integer setId, String name, Double price, Integer qty) {
+            this.dishId = dishId;
+            this.setId = setId;
+            this.name = name;
+            this.price = price;
+            this.qty = qty;
+        }
+    }
+
     public Map<String, Object> getOrderKitchenPrintPayload(
             int orderId,
             String paymentType,
@@ -532,21 +741,15 @@ public List<OrderDTO> getOrders() {
             throw new RuntimeException("Заказ с id " + orderId + " не найден");
         }
 
-        var rows = dsl
-                .select(DISH.DISHNAME, ORDERDISH.QTY, DISH.PRICE)
-                .from(ORDERDISH)
-                .join(DISH).on(DISH.DISHID.eq(ORDERDISH.DISHID))
-                .where(ORDERDISH.ORDERID.eq(orderId))
-                .fetch();
-
+        List<OrderLineItem> rows = loadOrderLineItems(orderId);
         if (rows.isEmpty()) {
             throw new RuntimeException("В заказе нет позиций для печати");
         }
 
         List<Map<String, Object>> items = rows.stream().map(r -> {
-            String name = r.get(DISH.DISHNAME) != null ? r.get(DISH.DISHNAME) : "Позиция";
-            Integer qty = r.get(ORDERDISH.QTY) != null ? r.get(ORDERDISH.QTY) : 0;
-            Double price = r.get(DISH.PRICE) != null ? r.get(DISH.PRICE) : 0.0;
+            String name = r.name != null ? r.name : "Позиция";
+            Integer qty = r.qty != null ? r.qty : 0;
+            Double price = r.price != null ? r.price : 0.0;
             double sum = qty * price;
 
             Map<String, Object> item = new HashMap<>();

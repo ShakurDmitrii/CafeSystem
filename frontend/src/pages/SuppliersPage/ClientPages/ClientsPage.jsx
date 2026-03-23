@@ -1,7 +1,53 @@
 import { useState, useEffect } from "react";
 import styles from "./ClientsPage.module.css";
+import { API_BASE_URL } from "../../../auth";
 
-const API_CLIENTS = "http://localhost:8080/api/clients";
+const API_CLIENTS = `${API_BASE_URL}/api/clients`;
+const API_ORDERS = `${API_BASE_URL}/api/orders`;
+
+const getOrderTimestamp = (order) => {
+    const raw = order?.created_at || order?.createdAt || order?.date;
+    const ts = raw ? new Date(raw).getTime() : 0;
+    return Number.isFinite(ts) ? ts : 0;
+};
+
+const formatOrderDate = (value) => {
+    if (!value) return "Дата не указана";
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) {
+        return String(value);
+    }
+    return dt.toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+};
+
+const formatPaymentType = (paymentType, paid) => {
+    const normalized = String(paymentType || "").trim().toLowerCase();
+    if (normalized === "cash") return "Наличные";
+    if (normalized === "transfer") return "Перевод";
+    if (normalized === "card") return "Карта";
+    if (normalized === "unpaid" || paid === false) return "Не оплачено";
+    return paymentType || "Оплата не указана";
+};
+
+const loadOrderDishes = async (orderId) => {
+    if (!orderId) return [];
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/shifts/getDish/${orderId}`);
+        if (!res.ok) throw new Error(`Ошибка загрузки блюд ${res.status}`);
+        const text = await res.text();
+        const dishes = text ? JSON.parse(text) : [];
+        return Array.isArray(dishes) ? dishes : [];
+    } catch (e) {
+        console.error("Ошибка загрузки блюд заказа:", e);
+        return [];
+    }
+};
 
 
 export default function ClientsPage() {
@@ -9,9 +55,14 @@ export default function ClientsPage() {
     const [dutyClients, setDutyClients] = useState([]);
     const [selectedClient, setSelectedClient] = useState(null);
     const [clientDishes, setClientDishes] = useState([]);
+    const [clientOrders, setClientOrders] = useState([]);
+    const [expandedOrders, setExpandedOrders] = useState({});
+    const [orderItemsById, setOrderItemsById] = useState({});
+    const [orderItemsLoadingById, setOrderItemsLoadingById] = useState({});
     const [viewMode, setViewMode] = useState("all"); // "all", "duty", "details"
     const [loading, setLoading] = useState(false);
     const [dutyLoading, setDutyLoading] = useState(false);
+    const [clientOrdersLoading, setClientOrdersLoading] = useState(false);
 
     // Форма создания клиента
     const [newClient, setNewClient] = useState({
@@ -88,6 +139,28 @@ export default function ClientsPage() {
             });
     };
 
+    const loadClientOrders = (clientId) => {
+        setClientOrdersLoading(true);
+        fetch(`${API_ORDERS}/client/${clientId}`)
+            .then(r => {
+                if (!r.ok) {
+                    throw new Error(`HTTP ${r.status}`);
+                }
+                return r.json();
+            })
+            .then(data => {
+                const orders = Array.isArray(data) ? [...data] : [];
+                orders.sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
+                setClientOrders(orders);
+                setClientOrdersLoading(false);
+            })
+            .catch(e => {
+                console.error("Ошибка загрузки заказов клиента:", e);
+                setClientOrders([]);
+                setClientOrdersLoading(false);
+            });
+    };
+
     const createClient = async () => {
         if (!newClient.fullName.trim()) {
             alert("Введите ФИО клиента");
@@ -110,15 +183,6 @@ export default function ClientsPage() {
                 throw new Error(`HTTP ${response.status}: ${responseText || 'No response body'}`);
             }
 
-            // Пытаемся распарсить JSON
-            let data;
-            try {
-                data = responseText ? JSON.parse(responseText) : {};
-            } catch (parseError) {
-                console.error("JSON parse error:", parseError);
-                data = {};
-            }
-
             setNewClient({ fullName: "", number: "" });
             loadClients();
             alert("✅ Клиент создан успешно!");
@@ -132,7 +196,38 @@ export default function ClientsPage() {
     const handleClientSelect = (client) => {
         setSelectedClient(client);
         setViewMode("details");
+        setExpandedOrders({});
+        setOrderItemsById({});
+        setOrderItemsLoadingById({});
         loadClientDishes(client.clientId);
+        loadClientOrders(client.clientId);
+    };
+
+    const toggleOrderDetails = async (orderId) => {
+        const isExpanded = Boolean(expandedOrders[orderId]);
+        setExpandedOrders(prev => ({
+            ...prev,
+            [orderId]: !isExpanded
+        }));
+
+        if (isExpanded || orderItemsById[orderId] || orderItemsLoadingById[orderId]) {
+            return;
+        }
+
+        setOrderItemsLoadingById(prev => ({
+            ...prev,
+            [orderId]: true
+        }));
+
+        const items = await loadOrderDishes(orderId);
+        setOrderItemsById(prev => ({
+            ...prev,
+            [orderId]: items
+        }));
+        setOrderItemsLoadingById(prev => ({
+            ...prev,
+            [orderId]: false
+        }));
     };
 
     // Списание всего долга клиента
@@ -469,6 +564,70 @@ export default function ClientsPage() {
                                         <span className={styles.dishId}>
                                             ID: {dish.dishId}
                                         </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className={styles.ordersSection}>
+                        <h4>🧾 История заказов</h4>
+                        {clientOrdersLoading ? (
+                            <div className={styles.empty}>Загрузка заказов...</div>
+                        ) : clientOrders.length === 0 ? (
+                            <div className={styles.empty}>У клиента пока нет заказов</div>
+                        ) : (
+                            <div className={styles.ordersList}>
+                                {clientOrders.map(order => (
+                                    <div key={order.orderId} className={styles.orderHistoryCard}>
+                                        <div className={styles.orderHistoryHeader}>
+                                            <span className={styles.orderHistoryId}>Заказ #{order.orderId}</span>
+                                            <div className={styles.orderHeaderActions}>
+                                                <span className={`${styles.orderStatusBadge} ${order.status ? styles.orderReady : styles.orderCooking}`}>
+                                                    {order.status ? "Готов" : "Готовится"}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    className={styles.expandOrderBtn}
+                                                    onClick={() => toggleOrderDetails(order.orderId)}
+                                                >
+                                                    {expandedOrders[order.orderId] ? "Скрыть состав" : "Показать состав"}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className={styles.orderHistoryMeta}>
+                                            <span>{formatOrderDate(order.created_at || order.createdAt || order.date)}</span>
+                                            <span>{order.type ? "Доставка" : "В заведении"}</span>
+                                            <span>{formatPaymentType(order.paymentType, order.paid)}</span>
+                                            {order.duty && <span className={styles.orderDebt}>Долг</span>}
+                                            {Number(order.timeDelay || 0) > 0 && (
+                                                <span className={styles.orderDelay}>Задержка {order.timeDelay} мин</span>
+                                            )}
+                                        </div>
+                                        <div className={styles.orderHistoryAmount}>
+                                            {Number(order.amount || 0).toFixed(2)} ₽
+                                        </div>
+                                        {expandedOrders[order.orderId] && (
+                                            <div className={styles.orderItemsPanel}>
+                                                {orderItemsLoadingById[order.orderId] ? (
+                                                    <div className={styles.orderItemsEmpty}>Загрузка состава заказа...</div>
+                                                ) : (orderItemsById[order.orderId] || []).length === 0 ? (
+                                                    <div className={styles.orderItemsEmpty}>Нет данных по блюдам</div>
+                                                ) : (
+                                                    <div className={styles.orderItemsList}>
+                                                        {(orderItemsById[order.orderId] || []).map((item, index) => (
+                                                            <div key={`${order.orderId}-${item.dishName || "dish"}-${index}`} className={styles.orderItemRow}>
+                                                                <span className={styles.orderItemName}>{item.dishName || "Блюдо без названия"}</span>
+                                                                <span className={styles.orderItemQty}>x{item.qty || 0}</span>
+                                                                <span className={styles.orderItemSum}>
+                                                                    {Number(item.sum ?? ((item.price || 0) * (item.qty || 0))).toFixed(2)} ₽
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>

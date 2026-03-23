@@ -335,6 +335,157 @@
     color: #333;
 }
 
+.ordersSection {
+    margin-bottom: 25px;
+}
+
+.ordersSection h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.ordersList {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.orderHistoryCard {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 14px 16px;
+    background: #fafafa;
+}
+
+.orderHistoryHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.orderHeaderActions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.orderHistoryId {
+    font-weight: 700;
+    color: #111827;
+}
+
+.orderStatusBadge {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 5px 10px;
+    border-radius: 999px;
+}
+
+.orderReady {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.orderCooking {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.expandOrderBtn {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #0f172a;
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.expandOrderBtn:hover {
+    background: #f8fafc;
+}
+
+.orderHistoryMeta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+    color: #4b5563;
+    font-size: 14px;
+}
+
+.orderHistoryMeta span {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    padding: 4px 10px;
+}
+
+.orderDebt {
+    background: #fee2e2 !important;
+    color: #b91c1c;
+    border-color: #fecaca !important;
+}
+
+.orderDelay {
+    background: #fef3c7 !important;
+    color: #92400e;
+    border-color: #fde68a !important;
+}
+
+.orderHistoryAmount {
+    font-size: 16px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.orderItemsPanel {
+    margin-top: 12px;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 12px;
+}
+
+.orderItemsList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.orderItemRow {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 10px;
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+.orderItemName {
+    color: #111827;
+    font-weight: 500;
+}
+
+.orderItemQty {
+    color: #475569;
+    font-weight: 600;
+}
+
+.orderItemSum {
+    color: #111827;
+    font-weight: 700;
+}
+
+.orderItemsEmpty {
+    color: #6b7280;
+    font-style: italic;
+}
+
 .dishesList {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

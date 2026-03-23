@@ -1,123 +1,427 @@
- .container {
-   padding: 24px;
-   max-width: 900px;
-   margin: 0 auto;
-   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
- }
+.container {
+  padding: 24px;
+  max-width: 980px;
+  margin: 0 auto;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
 
- .title {
-   font-size: 24px;
-   font-weight: 600;
-   margin-bottom: 20px;
- }
+.title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
 
- .formRow {
-   display: flex;
-   flex-wrap: wrap;
-   gap: 12px;
-   margin-bottom: 24px;
-   align-items: flex-end;
- }
+.formRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+  align-items: flex-end;
+}
 
- .select,
- .input {
-   padding: 8px 10px;
-   border-radius: 6px;
-   border: 1px solid #d0d7de;
-   font-size: 14px;
-   min-width: 160px;
- }
+.ingredientChooser {
+  min-width: 260px;
+  flex: 1 1 280px;
+}
 
- .input[type="number"] {
-   max-width: 140px;
- }
+.pickerButton {
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #d0d7de;
+  background: #ffffff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+}
 
- .primaryButton,
- .secondaryButton,
- .dangerButton {
-   padding: 8px 14px;
-   border-radius: 6px;
-   border: none;
-   font-size: 14px;
-   cursor: pointer;
-   transition: background-color 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
- }
+.pickerButton:hover {
+  border-color: #1f6feb;
+  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12);
+}
 
- .primaryButton {
-   background-color: #2da44e;
-   color: #ffffff;
- }
+.pickerButtonLabel {
+  font-size: 12px;
+  color: #57606a;
+}
 
- .primaryButton:hover {
-   background-color: #2c974b;
- }
+.pickerButtonValue {
+  font-size: 15px;
+  color: #24292f;
+  font-weight: 600;
+}
 
- .secondaryButton {
-   background-color: #f6f8fa;
-   color: #24292f;
-   border: 1px solid #d0d7de;
- }
+.selectedMeta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #57606a;
+}
 
- .secondaryButton:hover {
-   background-color: #eaeef2;
- }
+.select,
+.input,
+.searchInput {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #d0d7de;
+  font-size: 14px;
+  min-width: 160px;
+  box-sizing: border-box;
+}
 
- .dangerButton {
-   background-color: #cf222e;
-   color: #ffffff;
- }
+.input,
+.select {
+  width: auto;
+}
 
- .dangerButton:hover {
-   background-color: #a40e26;
- }
+.searchInput {
+  width: min(360px, 100%);
+}
 
- .ingredientsTitle {
-   font-size: 18px;
-   font-weight: 600;
-   margin-bottom: 12px;
- }
+.formRow .input[type="number"] {
+  max-width: 160px;
+}
 
- .ingredientsList {
-   list-style: none;
-   padding: 0;
-   margin: 0 0 16px;
- }
+.primaryButton,
+.secondaryButton,
+.dangerButton,
+.closeButton {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
+}
 
- .ingredientItem {
-   padding: 10px 12px;
-   border-radius: 8px;
-   border: 1px solid #d0d7de;
-   background-color: #ffffff;
-   display: flex;
-   flex-direction: column;
-   margin-bottom: 8px;
- }
+.primaryButton {
+  background-color: #2da44e;
+  color: #ffffff;
+}
 
- .ingredientMain {
-   font-size: 14px;
- }
+.primaryButton:hover {
+  background-color: #2c974b;
+}
 
- .ingredientActions {
-   margin-top: 6px;
-   display: flex;
-   gap: 8px;
- }
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
 
- .emptyText {
-   font-size: 14px;
-   color: #6e7781;
- }
+.secondaryButton,
+.closeButton {
+  background-color: #f6f8fa;
+  color: #24292f;
+  border: 1px solid #d0d7de;
+}
 
- .totalCostBlock {
-   margin-top: 16px;
-   display: flex;
-   flex-wrap: wrap;
-   gap: 24px;
-   align-items: baseline;
- }
+.secondaryButton:hover,
+.closeButton:hover {
+  background-color: #eaeef2;
+}
 
- .totalCost {
-   font-size: 16px;
-   font-weight: 600;
- }
+.dangerButton {
+  background-color: #cf222e;
+  color: #ffffff;
+}
 
+.dangerButton:hover {
+  background-color: #a40e26;
+}
+
+.ingredientsTitle {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.ingredientsList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+}
+
+.ingredientItem {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #d0d7de;
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+}
+
+.ingredientMain {
+  font-size: 14px;
+}
+
+.ingredientBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef5ff;
+  color: #1f5fbf;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ingredientActions {
+  margin-top: 6px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.emptyText {
+  font-size: 14px;
+  color: #6e7781;
+}
+
+.totalCostBlock {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: baseline;
+}
+
+.totalCost {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.hintText {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #d8dee4;
+  background: #f6f8fa;
+  color: #57606a;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.48);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.modal {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 40px);
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.24);
+  padding: 20px;
+  overflow: auto;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 22px;
+}
+
+.modalSubtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: #57606a;
+}
+
+.modalToolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.modalToolbar .searchInput,
+.field .input,
+.field .select {
+  width: 100%;
+}
+
+.modalList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pickerTabs {
+  display: inline-flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #f6f8fa;
+}
+
+.pickerTab {
+  border: none;
+  background: transparent;
+  color: #57606a;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.activePickerTab {
+  background: #ffffff;
+  color: #1f6feb;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.ingredientOption {
+  width: 100%;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 14px 16px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.05s ease;
+}
+
+.ingredientOptionContent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ingredientOption:hover {
+  border-color: #1f6feb;
+  background: #eef5ff;
+}
+
+.ingredientOptionName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #24292f;
+}
+
+.ingredientOptionMeta {
+  font-size: 13px;
+  color: #57606a;
+  white-space: nowrap;
+}
+
+.emptyModalState {
+  border: 1px dashed #d0d7de;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  color: #57606a;
+  background: #f8fafc;
+}
+
+.modalForm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modalFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: #24292f;
+}
+
+.field span {
+  font-weight: 600;
+}
+
+.unitHint {
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f6f8fa;
+  border: 1px solid #d8dee4;
+  color: #57606a;
+  line-height: 1.4;
+}
+
+.errorText {
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff1f2;
+  color: #b42318;
+  border: 1px solid #fecdd3;
+  font-size: 14px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .container {
+    padding: 16px;
+  }
+
+  .modal {
+    padding: 16px;
+  }
+
+  .modalHeader,
+  .modalToolbar,
+  .modalActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .modalFormGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .ingredientOption {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ingredientOptionMeta {
+    white-space: normal;
+  }
+
+  .input[type="number"] {
+    max-width: none;
+  }
+}

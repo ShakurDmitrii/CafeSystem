@@ -1,5 +1,6 @@
 package com.shakur.cafehelp.Service;
 
+import com.shakur.cafehelp.DTO.PreparationWarehouseDTO;
 import com.shakur.cafehelp.DTO.ProductWarehouseDTO;
 import com.shakur.cafehelp.DTO.WareHouseDTO;
 import jooqdata.tables.records.ProductwarehouseRecord;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.ArrayList;
 import java.math.BigDecimal;
 import org.jooq.Field;
+import org.jooq.Table;
 import org.jooq.impl.DSL;
 
 import static jooqdata.tables.Warehouse.WAREHOUSE;
@@ -22,6 +24,11 @@ public class WareHouseService {
 
     private final DSLContext dsl;
     private static final Field<Boolean> WAREHOUSE_IS_MAIN = DSL.field(DSL.name("is_main"), Boolean.class);
+    private static final Table<?> PREPARATION_WAREHOUSE = DSL.table(DSL.name("sales", "preparationwarehouse"));
+    private static final Field<Integer> PW_WAREHOUSE_ID = DSL.field(DSL.name("warehouseid"), Integer.class);
+    private static final Field<Integer> PW_PREPARATION_ID = DSL.field(DSL.name("preparationid"), Integer.class);
+    private static final Field<Integer> PW_ID = DSL.field(DSL.name("preparationwarehouseid"), Integer.class);
+    private static final Field<Double> PW_QUANTITY = DSL.field(DSL.name("quantity"), Double.class);
 
     public WareHouseService(DSLContext dsl) {
         this.dsl = dsl;
@@ -171,19 +178,45 @@ public class WareHouseService {
 
     // Получение всех продуктов на складе
     public List<ProductWarehouseDTO> getProductsOnWarehouse(int warehouseId) {
-        return dsl.selectFrom(Productwarehouse.PRODUCTWAREHOUSE)
+        return dsl.select(
+                        DSL.min(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTWAREHOUSEID).as("productwarehouseid"),
+                        Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID,
+                        Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID,
+                        DSL.sum(Productwarehouse.PRODUCTWAREHOUSE.QUANTITY).as("quantity")
+                )
+                .from(Productwarehouse.PRODUCTWAREHOUSE)
                 .where(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID.eq(warehouseId))
+                .groupBy(
+                        Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID,
+                        Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID
+                )
+                .orderBy(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID.asc())
                 .fetch()
                 .stream()
                 .map(r -> {
                     ProductWarehouseDTO dto = new ProductWarehouseDTO();
-                    dto.setProductWarehouseId(r.getProductwarehouseid());
-                    dto.setProductId(r.getProductid());
-                    dto.setWarehouseId(r.getWarehouseid());
-                    dto.setQuantity(r.getQuantity() != null ? r.getQuantity() : 0.0);
+                    dto.setProductWarehouseId(r.get("productwarehouseid", Integer.class));
+                    dto.setProductId(r.get(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID));
+                    dto.setWarehouseId(r.get(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID));
+                    dto.setQuantity(r.get("quantity", Double.class) != null ? r.get("quantity", Double.class) : 0.0);
                     return dto;
                 })
                 .toList();
+    }
+
+    public List<PreparationWarehouseDTO> getPreparationsOnWarehouse(int warehouseId) {
+        return dsl.select(PW_ID, PW_PREPARATION_ID, PW_WAREHOUSE_ID, PW_QUANTITY)
+                .from(PREPARATION_WAREHOUSE)
+                .where(PW_WAREHOUSE_ID.eq(warehouseId))
+                .orderBy(PW_ID.asc())
+                .fetch(record -> {
+                    PreparationWarehouseDTO dto = new PreparationWarehouseDTO();
+                    dto.setPreparationWarehouseId(record.get(PW_ID));
+                    dto.setPreparationId(record.get(PW_PREPARATION_ID));
+                    dto.setWarehouseId(record.get(PW_WAREHOUSE_ID));
+                    dto.setQuantity(record.get(PW_QUANTITY) != null ? record.get(PW_QUANTITY) : 0.0);
+                    return dto;
+                });
     }
 
     /** Изменить количество продукта на складе (положительный delta — добавить, отрицательный — списать) */
@@ -234,6 +267,64 @@ public class WareHouseService {
                 .from(Productwarehouse.PRODUCTWAREHOUSE)
                 .where(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID.eq(warehouseId))
                 .and(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID.eq(productId))
+                .fetchOne(0, Double.class);
+        return sum != null ? sum : 0.0;
+    }
+
+    @Transactional
+    public boolean adjustPreparationQuantity(int warehouseId, int preparationId, double delta) {
+        var records = dsl.select(PW_ID, PW_WAREHOUSE_ID, PW_PREPARATION_ID, PW_QUANTITY)
+                .from(PREPARATION_WAREHOUSE)
+                .where(PW_WAREHOUSE_ID.eq(warehouseId))
+                .and(PW_PREPARATION_ID.eq(preparationId))
+                .orderBy(PW_ID.asc())
+                .fetch();
+
+        if (records.isEmpty()) {
+            if (delta < 0) return false;
+            dsl.insertInto(PREPARATION_WAREHOUSE)
+                    .set(PW_WAREHOUSE_ID, warehouseId)
+                    .set(PW_PREPARATION_ID, preparationId)
+                    .set(PW_QUANTITY, delta)
+                    .execute();
+            return true;
+        }
+
+        if (delta >= 0) {
+            var first = records.get(0);
+            double current = first.get(PW_QUANTITY) != null ? first.get(PW_QUANTITY) : 0.0;
+            dsl.update(PREPARATION_WAREHOUSE)
+                    .set(PW_QUANTITY, current + delta)
+                    .where(PW_ID.eq(first.get(PW_ID)))
+                    .execute();
+            return true;
+        }
+
+        double available = records.stream()
+                .map(r -> r.get(PW_QUANTITY) != null ? r.get(PW_QUANTITY) : 0.0)
+                .reduce(0.0, Double::sum);
+        if (available + 1e-6 < -delta) return false;
+
+        double remaining = -delta;
+        for (var record : records) {
+            if (remaining <= 0) break;
+            double current = record.get(PW_QUANTITY) != null ? record.get(PW_QUANTITY) : 0.0;
+            if (current <= 0) continue;
+            double take = Math.min(current, remaining);
+            dsl.update(PREPARATION_WAREHOUSE)
+                    .set(PW_QUANTITY, current - take)
+                    .where(PW_ID.eq(record.get(PW_ID)))
+                    .execute();
+            remaining -= take;
+        }
+        return true;
+    }
+
+    public double getAvailablePreparationQuantity(int warehouseId, int preparationId) {
+        Double sum = dsl.select(DSL.sum(PW_QUANTITY))
+                .from(PREPARATION_WAREHOUSE)
+                .where(PW_WAREHOUSE_ID.eq(warehouseId))
+                .and(PW_PREPARATION_ID.eq(preparationId))
                 .fetchOne(0, Double.class);
         return sum != null ? sum : 0.0;
     }

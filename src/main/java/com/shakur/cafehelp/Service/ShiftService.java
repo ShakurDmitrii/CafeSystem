@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -33,6 +34,12 @@ import static jooqdata.tables.Dish.DISH;
 public class ShiftService {
     private static final Field<String> PAYMENT_TYPE_FIELD = DSL.field(DSL.name("payment_type"), String.class);
     private static final Field<Boolean> IS_PAID_FIELD = DSL.field(DSL.name("is_paid"), Boolean.class);
+    private static final Field<Integer> ORDERDISH_SET_ID = DSL.field(DSL.name("set_id"), Integer.class);
+    private static final org.jooq.Table<?> DISH_SET = DSL.table(DSL.name("sales", "dish_set"));
+    private static final org.jooq.Field<Integer> DISH_SET_ID = DSL.field(DSL.name("sales", "dish_set", "setid"), Integer.class);
+    private static final org.jooq.Field<String> DISH_SET_NAME = DSL.field(DSL.name("sales", "dish_set", "setname"), String.class);
+    private static final org.jooq.Field<Double> DISH_SET_PRICE = DSL.field(DSL.name("sales", "dish_set", "price"), Double.class);
+    private static final org.jooq.Field<Double> DISH_SET_FIRST_COST = DSL.field(DSL.name("sales", "dish_set", "first_cost"), Double.class);
 
     private final DSLContext dsl;
 
@@ -45,33 +52,17 @@ public class ShiftService {
         return dsl.selectFrom(Shift.SHIFT)
                 .fetch()
                 .stream()
-                .map(record -> {
-                    ShiftDTO dto = new ShiftDTO();
-                    dto.shiftId = record.getId();
-                    dto.data = record.getData();
-                    dto.expenses = record.getExpenses();
-                    dto.profit = record.getProfit();
-                    dto.income = record.getIncome(); // добавлено
-                    dto.startTime = record.getStarttime();
-                    dto.endTime = record.getEndtime();
-                    dto.personCode = record.getPersoncode() != null ? record.getPersoncode() : 0;
-                    return dto;
-                }).toList();
+                .map(this::toShiftDTO)
+                .toList();
     }
 
     // Создание новой смены
     public ShiftDTO createShift(ShiftDTO dto) {
-        if (dto.personCode != 0) {
-            boolean hasOpenShift = dsl.fetchExists(
-                    dsl.selectOne()
-                            .from(Shift.SHIFT)
-                            .where(Shift.SHIFT.PERSONCODE.eq(dto.personCode))
-                            .and(Shift.SHIFT.ENDTIME.isNull())
-            );
-            if (hasOpenShift) {
-                throw new RuntimeException("У сотрудника уже есть открытая смена");
-            }
+        LinkedHashSet<Integer> workerIds = normalizeWorkerIds(dto);
+        if (workerIds.isEmpty()) {
+            throw new RuntimeException("Выберите хотя бы одного сотрудника");
         }
+        validateWorkersAvailable(workerIds, null);
 
         ShiftRecord record = dsl.newRecord(Shift.SHIFT);
         record.setData(dto.data);
@@ -80,15 +71,21 @@ public class ShiftService {
         record.setIncome(dto.income); // добавлено
         record.setStarttime(dto.startTime);
         record.setEndtime(dto.endTime);
-        record.setPersoncode(dto.personCode);
+        record.setPersoncode(workerIds.iterator().next());
         record.store(); // id присвоится автоматически базой
 
-        dto.shiftId = record.getId(); // получаем сгенерированный id
-        return dto;
+        syncShiftPersons(record.getId(), workerIds, record.getPersoncode());
+        return getShiftById(record.getId());
     }
 
     // Обновление смены
     public ShiftDTO updateShift(int shiftId, ShiftDTO dto) {
+        LinkedHashSet<Integer> workerIds = normalizeWorkerIds(dto);
+        if (workerIds.isEmpty()) {
+            throw new RuntimeException("У смены должен быть хотя бы один сотрудник");
+        }
+        validateWorkersAvailable(workerIds, shiftId);
+
         int rows = dsl.update(Shift.SHIFT)
                 .set(Shift.SHIFT.DATA, dto.data)
                 .set(Shift.SHIFT.EXPENSES, dto.expenses)
@@ -96,7 +93,7 @@ public class ShiftService {
                 .set(Shift.SHIFT.INCOME, dto.income)
                 .set(Shift.SHIFT.STARTTIME, dto.startTime)
                 .set(Shift.SHIFT.ENDTIME, dto.endTime)
-                .set(Shift.SHIFT.PERSONCODE, dto.personCode == 0 ? null : dto.personCode)
+                .set(Shift.SHIFT.PERSONCODE, workerIds.iterator().next())
                 .where(Shift.SHIFT.ID.eq(shiftId))
                 .execute();
 
@@ -104,9 +101,8 @@ public class ShiftService {
             throw new RuntimeException("Update affected " + rows + " rows");
         }
 
-        // Возвращаем DTO с тем же shiftId
-        dto.shiftId = shiftId;
-        return dto;
+        syncShiftPersons(shiftId, workerIds, workerIds.iterator().next());
+        return getShiftById(shiftId);
     }
 
 
@@ -115,18 +111,8 @@ public class ShiftService {
         return dsl.selectFrom(Shift.SHIFT)
                 .where(Shift.SHIFT.ID.eq(id))
                 .fetchOptional()
-                .map(shiftRecord -> {
-                    ShiftDTO dto = new ShiftDTO();
-                    dto.shiftId = shiftRecord.getId();
-                    dto.data = shiftRecord.getData();
-                    dto.expenses = shiftRecord.getExpenses();
-                    dto.profit = shiftRecord.getProfit();
-                    dto.income = shiftRecord.getIncome(); // добавлено
-                    dto.startTime = shiftRecord.getStarttime();
-                    dto.endTime = shiftRecord.getEndtime();
-                    dto.personCode = shiftRecord.getPersoncode() != null ? shiftRecord.getPersoncode() : 0;
-                    return dto;
-                }).orElseThrow(() -> new RuntimeException("Shift not found with id: " + id));
+                .map(this::toShiftDTO)
+                .orElseThrow(() -> new RuntimeException("Shift not found with id: " + id));
     }
 
     // Открытие смены
@@ -139,6 +125,53 @@ public class ShiftService {
         return shift;
     }
 
+    private List<OrderLineItem> loadOrderLineItems(int orderId) {
+        Field<Double> dishPriceField = Dish.DISH.PRICE.as("dish_price");
+        Field<Double> dishFirstCostField = Dish.DISH.FIRSTCOST.as("dish_first_cost");
+        Field<String> setNameField = DISH_SET_NAME.as("set_name");
+        Field<Double> setPriceField = DISH_SET_PRICE.as("set_price");
+        Field<Double> setFirstCostField = DISH_SET_FIRST_COST.as("set_first_cost");
+
+        return dsl.select(
+                        Orderdish.ORDERDISH.DISHID,
+                        ORDERDISH_SET_ID,
+                        Orderdish.ORDERDISH.QTY,
+                        Dish.DISH.DISHNAME,
+                        dishPriceField,
+                        dishFirstCostField,
+                        setNameField,
+                        setPriceField,
+                        setFirstCostField
+                )
+                .from(Orderdish.ORDERDISH)
+                .leftJoin(Dish.DISH).on(Dish.DISH.DISHID.eq(Orderdish.ORDERDISH.DISHID))
+                .leftJoin(DISH_SET).on(DISH_SET_ID.eq(ORDERDISH_SET_ID))
+                .where(Orderdish.ORDERDISH.ORDERID.eq(orderId))
+                .fetch(record -> {
+                    Integer dishId = record.get(Orderdish.ORDERDISH.DISHID);
+                    Integer setId = record.get(ORDERDISH_SET_ID);
+                    int qty = record.get(Orderdish.ORDERDISH.QTY) != null ? record.get(Orderdish.ORDERDISH.QTY) : 0;
+                    boolean isDish = dishId != null && dishId > 0;
+                    return new OrderLineItem(
+                            dishId,
+                            setId,
+                            isDish ? record.get(Dish.DISH.DISHNAME) : record.get(setNameField),
+                            isDish ? record.get(dishPriceField) : record.get(setPriceField),
+                            isDish ? record.get(dishFirstCostField) : record.get(setFirstCostField),
+                            qty
+                    );
+                });
+    }
+
+    private record OrderLineItem(
+            Integer dishId,
+            Integer setId,
+            String name,
+            Double price,
+            Double firstCost,
+            int qty
+    ) {}
+
     // Закрытие смены
     public ShiftRecord closeShift(int shiftId, BigDecimal expenses) {
         // Получаем все заказы за эту смену
@@ -146,29 +179,29 @@ public class ShiftService {
                 .where(Order.ORDER.SHIFTID.eq(shiftId))
                 .fetch();
 
-        // Считаем income
-        Double income = orders.stream().mapToDouble(order ->
-                dsl.select(Orderdish.ORDERDISH.QTY, DISH.PRICE, DISH.FIRSTCOST)
-                        .from(Orderdish.ORDERDISH)
-                        .join(DISH).on(DISH.DISHID.eq(Orderdish.ORDERDISH.DISHID))
-                        .where(Orderdish.ORDERDISH.ORDERID.eq(order.getOrderid()))
-                        .fetch()
-                        .stream()
-                        .mapToDouble(r -> r.get(DISH.PRICE).doubleValue() * r.get(Orderdish.ORDERDISH.QTY))
-                        .sum()
-        ).sum();
+        Double income = orders.stream()
+                .mapToDouble(order -> {
+                    Double amount = order.getAmount();
+                    if (amount != null && amount > 0) {
+                        return amount;
+                    }
+                    return loadOrderLineItems(order.getOrderid()).stream()
+                            .mapToDouble(item -> {
+                                double price = item.price() != null ? item.price() : 0.0;
+                                return price * item.qty();
+                            })
+                            .sum();
+                })
+                .sum();
 
-        // Считаем себестоимость
-        Double totalCost = orders.stream().mapToDouble(order ->
-                dsl.select(Orderdish.ORDERDISH.QTY, DISH.FIRSTCOST)
-                        .from(Orderdish.ORDERDISH)
-                        .join(DISH).on(DISH.DISHID.eq(Orderdish.ORDERDISH.DISHID))
-                        .where(Orderdish.ORDERDISH.ORDERID.eq(order.getOrderid()))
-                        .fetch()
-                        .stream()
-                        .mapToDouble(r -> r.get(DISH.FIRSTCOST).doubleValue() * r.get(Orderdish.ORDERDISH.QTY))
-                        .sum()
-        ).sum();
+        Double totalCost = orders.stream()
+                .mapToDouble(order -> loadOrderLineItems(order.getOrderid()).stream()
+                        .mapToDouble(item -> {
+                            double firstCost = item.firstCost() != null ? item.firstCost() : 0.0;
+                            return firstCost * item.qty();
+                        })
+                        .sum())
+                .sum();
 
         BigDecimal profit = BigDecimal.valueOf(income - totalCost - expenses.doubleValue());
 
@@ -185,19 +218,14 @@ public class ShiftService {
     }
 
     public List<DishDTO> getDishesByOrderId(int orderId) {
-        return dsl.select(Dish.DISH.DISHID, Dish.DISH.DISHNAME, Dish.DISH.PRICE, Orderdish.ORDERDISH.QTY )
-                .from(Orderdish.ORDERDISH)
-                .join(Dish.DISH)
-                .on(Orderdish.ORDERDISH.DISHID.eq(Dish.DISH.DISHID))
-                .where(Orderdish.ORDERDISH.ORDERID.eq(orderId))
-                .fetch()
-                .stream()
-                .map(record -> {
+        return loadOrderLineItems(orderId).stream()
+                .map(item -> {
                     DishDTO dto = new DishDTO();
-                    dto.dishId = record.get(Dish.DISH.DISHID);
-                    dto.dishName = record.get(Dish.DISH.DISHNAME);
-                    dto.price = record.get(Dish.DISH.PRICE);
-                    dto.qty = record.get(Orderdish.ORDERDISH.QTY);
+                    dto.dishId = item.dishId() != null ? item.dishId() : 0;
+                    dto.dishName = item.name();
+                    dto.price = item.price();
+                    dto.firstCost = item.firstCost();
+                    dto.qty = item.qty();
                     return dto;
                 })
                 .toList();
@@ -268,22 +296,12 @@ public class ShiftService {
                         .where(Client.CLIENT.CLIENTID.eq(clientId))
                         .fetchOne();
             }
-            var dishRows = dsl.select(
-                            Dish.DISH.DISHNAME,
-                            Dish.DISH.PRICE,
-                            Orderdish.ORDERDISH.QTY
-                    )
-                    .from(Orderdish.ORDERDISH)
-                    .join(Dish.DISH).on(Dish.DISH.DISHID.eq(Orderdish.ORDERDISH.DISHID))
-                    .where(Orderdish.ORDERDISH.ORDERID.eq(orderId))
-                    .fetch();
-
             List<Map<String, Object>> items = new ArrayList<>();
             double itemsTotal = 0.0;
-            for (Record dishRow : dishRows) {
-                String dishName = dishRow.get(Dish.DISH.DISHNAME);
-                Integer qty = dishRow.get(Orderdish.ORDERDISH.QTY) != null ? dishRow.get(Orderdish.ORDERDISH.QTY) : 0;
-                Double price = dishRow.get(Dish.DISH.PRICE) != null ? dishRow.get(Dish.DISH.PRICE) : 0.0;
+            for (OrderLineItem itemRow : loadOrderLineItems(orderId)) {
+                String dishName = itemRow.name();
+                Integer qty = itemRow.qty();
+                Double price = itemRow.price() != null ? itemRow.price() : 0.0;
                 double lineTotal = price * qty;
                 itemsTotal += lineTotal;
                 totalDishesCount += qty;
@@ -356,6 +374,128 @@ public class ShiftService {
         report.put("topPositions", topPositions);
         report.put("totals", totals);
         return report;
+    }
+
+    private ShiftDTO toShiftDTO(ShiftRecord record) {
+        ShiftDTO dto = new ShiftDTO();
+        dto.shiftId = record.getId();
+        dto.data = record.getData();
+        dto.expenses = record.getExpenses();
+        dto.profit = record.getProfit();
+        dto.income = record.getIncome();
+        dto.startTime = record.getStarttime();
+        dto.endTime = record.getEndtime();
+        dto.personCode = record.getPersoncode() != null ? record.getPersoncode() : 0;
+
+        List<Integer> personIds = loadWorkerIds(record.getId(), record.getPersoncode());
+        List<String> personNames = loadWorkerNames(personIds);
+        dto.personIds = personIds;
+        dto.personNames = personNames;
+        dto.personName = !personNames.isEmpty() ? personNames.get(0) : null;
+        return dto;
+    }
+
+    private LinkedHashSet<Integer> normalizeWorkerIds(ShiftDTO dto) {
+        LinkedHashSet<Integer> workerIds = new LinkedHashSet<>();
+        if (dto == null) {
+            return workerIds;
+        }
+        if (dto.personCode >= 0) {
+            workerIds.add(dto.personCode);
+        }
+        if (dto.personIds != null) {
+            dto.personIds.stream()
+                    .filter(id -> id != null && id >= 0)
+                    .forEach(workerIds::add);
+        }
+        return workerIds;
+    }
+
+    private void syncShiftPersons(int shiftId, Set<Integer> workerIds, Integer mainWorkerId) {
+        dsl.deleteFrom(Shiftperson.SHIFTPERSON)
+                .where(Shiftperson.SHIFTPERSON.SHIFTID.eq(shiftId))
+                .execute();
+
+        workerIds.stream()
+                .filter(id -> mainWorkerId == null || !mainWorkerId.equals(id))
+                .forEach(id -> dsl.insertInto(Shiftperson.SHIFTPERSON)
+                        .set(Shiftperson.SHIFTPERSON.SHIFTID, shiftId)
+                        .set(Shiftperson.SHIFTPERSON.PERSONID, id)
+                        .execute());
+    }
+
+    private List<Integer> loadWorkerIds(int shiftId, Integer mainWorkerId) {
+        LinkedHashSet<Integer> ids = new LinkedHashSet<>();
+        if (mainWorkerId != null && mainWorkerId >= 0) {
+            ids.add(mainWorkerId);
+        }
+        ids.addAll(
+                dsl.select(Shiftperson.SHIFTPERSON.PERSONID)
+                        .from(Shiftperson.SHIFTPERSON)
+                        .where(Shiftperson.SHIFTPERSON.SHIFTID.eq(shiftId))
+                        .fetch(Shiftperson.SHIFTPERSON.PERSONID)
+        );
+        return new ArrayList<>(ids);
+    }
+
+    private List<String> loadWorkerNames(List<Integer> personIds) {
+        if (personIds == null || personIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Integer, String> namesById = dsl.select(Person.PERSON.PERSONID, Person.PERSON.NAME)
+                .from(Person.PERSON)
+                .where(Person.PERSON.PERSONID.in(personIds))
+                .fetchMap(Person.PERSON.PERSONID, Person.PERSON.NAME);
+
+        List<String> names = new ArrayList<>();
+        for (Integer personId : personIds) {
+            if (personId == null) {
+                continue;
+            }
+            String name = namesById.get(personId);
+            names.add(name != null && !name.isBlank() ? name : "ID " + personId);
+        }
+        return names;
+    }
+
+    private void validateWorkersAvailable(Set<Integer> workerIds, Integer currentShiftId) {
+        if (workerIds == null || workerIds.isEmpty()) {
+            return;
+        }
+
+        LinkedHashSet<String> conflicts = new LinkedHashSet<>();
+        List<ShiftRecord> openShifts = dsl.selectFrom(Shift.SHIFT)
+                .where(Shift.SHIFT.ENDTIME.isNull())
+                .fetch();
+
+        for (ShiftRecord openShift : openShifts) {
+            if (currentShiftId != null && currentShiftId.equals(openShift.getId())) {
+                continue;
+            }
+
+            List<Integer> existingWorkerIds = loadWorkerIds(openShift.getId(), openShift.getPersoncode());
+            for (Integer workerId : existingWorkerIds) {
+                if (workerId != null && workerIds.contains(workerId)) {
+                    conflicts.add(resolveWorkerName(workerId));
+                }
+            }
+        }
+
+        if (!conflicts.isEmpty()) {
+            throw new RuntimeException("Уже есть открытая смена у: " + String.join(", ", conflicts));
+        }
+    }
+
+    private String resolveWorkerName(Integer workerId) {
+        if (workerId == null) {
+            return "Неизвестный сотрудник";
+        }
+        String name = dsl.select(Person.PERSON.NAME)
+                .from(Person.PERSON)
+                .where(Person.PERSON.PERSONID.eq(workerId))
+                .fetchOne(Person.PERSON.NAME);
+        return name != null && !name.isBlank() ? name : "ID " + workerId;
     }
 
 

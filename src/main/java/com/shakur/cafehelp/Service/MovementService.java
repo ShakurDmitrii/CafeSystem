@@ -88,7 +88,8 @@ public class MovementService {
         BigDecimal qtyBase = unitConversionService.toBaseQuantity(dto.getProductId(), dto.getQuantity());
         BigDecimal netQtyBase = qtyBase;
         BigDecimal unitPrice = dto.getUnitPrice() != null ? BigDecimal.valueOf(dto.getUnitPrice()) : null;
-        BigDecimal total = unitPrice != null ? unitPrice.multiply(qtyBase) : null;
+        BigDecimal inputQty = dto.getQuantity() != null ? BigDecimal.valueOf(dto.getQuantity()) : BigDecimal.ZERO;
+        BigDecimal total = unitPrice != null ? unitPrice.multiply(inputQty) : null;
 
         Integer fromWarehouseId = dto.getFromWarehouseId();
         Integer toWarehouseId = dto.getToWarehouseId();
@@ -297,11 +298,12 @@ public class MovementService {
     }
 
     public List<MovementReportRowDTO> getReceiptReport(Integer productId, LocalDate dateFrom, LocalDate dateTo) {
-        if (productId == null || dateFrom == null || dateTo == null) return List.of();
+        if (dateFrom == null || dateTo == null) return List.of();
         if (dateTo.isBefore(dateFrom)) return List.of();
 
         Table<?> d = INVENTORY_DOCUMENTS.as("d");
         Table<?> l = INVENTORY_DOCUMENT_LINES.as("l");
+        Table<?> p = PRODUCT.as("p");
 
         Field<Integer> dId = DSL.field(DSL.name("d", "id"), Integer.class);
         Field<String> dType = DSL.field(DSL.name("d", "doc_type"), String.class);
@@ -312,39 +314,52 @@ public class MovementService {
         Field<BigDecimal> lQty = DSL.field(DSL.name("l", "qty"), BigDecimal.class);
         Field<BigDecimal> lUnitPrice = DSL.field(DSL.name("l", "unit_price"), BigDecimal.class);
         Field<BigDecimal> lTotal = DSL.field(DSL.name("l", "line_total"), BigDecimal.class);
+        Field<Integer> pProductId = DSL.field(DSL.name("p", "productid"), Integer.class);
+        Field<String> pProductName = DSL.field(DSL.name("p", "productname"), String.class);
 
         LocalDateTime from = dateFrom.atStartOfDay();
         LocalDateTime to = dateTo.atTime(LocalTime.MAX);
 
-        var rows = dsl.select(
+        var query = dsl.select(
                         dId,
                         dDate,
                         lProductId,
+                        pProductName,
                         lQty,
                         lUnitPrice,
                         lTotal
                 )
                 .from(d)
                 .join(l).on(dId.eq(lDocumentId))
+                .leftJoin(p).on(pProductId.eq(lProductId))
                 .where(dType.eq("receipt"))
-                .and(lProductId.eq(productId))
                 .and(dDate.ge(from))
-                .and(dDate.le(to))
-                .orderBy(dDate.asc(), dId.asc())
+                .and(dDate.le(to));
+
+        if (productId != null) {
+            query = query.and(lProductId.eq(productId));
+        }
+
+        var rows = query
+                .orderBy(pProductName.asc().nullsLast(), lProductId.asc(), dDate.asc(), dId.asc())
                 .fetch();
 
         List<MovementReportRowDTO> result = new ArrayList<>();
-        BigDecimal prevPrice = null;
-        BigDecimal prevQty = null;
+        Map<Integer, BigDecimal> prevPriceByProduct = new LinkedHashMap<>();
+        Map<Integer, BigDecimal> prevQtyByProduct = new LinkedHashMap<>();
 
         for (Record r : rows) {
+            Integer pid = r.get(lProductId);
             BigDecimal price = r.get(lUnitPrice);
             BigDecimal qty = r.get(lQty);
+            BigDecimal prevPrice = pid != null ? prevPriceByProduct.get(pid) : null;
+            BigDecimal prevQty = pid != null ? prevQtyByProduct.get(pid) : null;
 
             MovementReportRowDTO dto = new MovementReportRowDTO();
             dto.setDocumentId(r.get(dId));
             dto.setDocDate(r.get(dDate));
-            dto.setProductId(r.get(lProductId));
+            dto.setProductId(pid);
+            dto.setProductName(r.get(pProductName));
             dto.setQuantity(qty);
             dto.setUnitPrice(price);
             dto.setLineTotal(r.get(lTotal));
@@ -352,8 +367,10 @@ public class MovementService {
             dto.setQuantityDelta(prevQty != null && qty != null ? qty.subtract(prevQty) : null);
             result.add(dto);
 
-            if (price != null) prevPrice = price;
-            if (qty != null) prevQty = qty;
+            if (pid != null) {
+                if (price != null) prevPriceByProduct.put(pid, price);
+                if (qty != null) prevQtyByProduct.put(pid, qty);
+            }
         }
 
         return result;

@@ -8,10 +8,66 @@ const API_ORDERS = `${API_BASE_URL}/api/orders`;
 const API_SHIFTS = `${API_BASE_URL}/api/shifts`;
 const API_PERSONS = `${API_BASE_URL}/api/persons`;
 const API_DISHES = `${API_BASE_URL}/api/dishes`;
+const API_DISH_SETS = `${API_BASE_URL}/api/dish-sets`;
 const API_CLIENTS = `${API_BASE_URL}/api/clients`;
 const API_TODAY_DEBTS = `${API_BASE_URL}/api/clients/today-debts`;
 const API_OVERDUE_DEBTS = `${API_BASE_URL}/api/clients/overdue-debts`;
 const API_DISH_CATEGORIES = `${API_BASE_URL}/api/dish-categories`;
+
+const resolveShiftPersons = (shift, persons = []) => {
+    if (!shift) return [];
+
+    const ids = Array.isArray(shift.personIds) && shift.personIds.length > 0
+        ? shift.personIds
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id >= 0)
+        : [Number(shift.personCode)].filter((id) => Number.isInteger(id) && id >= 0);
+    const names = Array.isArray(shift.personNames) ? shift.personNames : [];
+
+    return ids.reduce((acc, personId, index) => {
+        if (personId == null || Number.isNaN(personId) || acc.some((person) => Number(person.personID) === personId)) {
+            return acc;
+        }
+
+        const fromCatalog = persons.find((person) => Number(person.personID) === personId);
+        acc.push(fromCatalog || {
+            personID: personId,
+            name: names[index] || shift.personName || `Сотр. #${personId}`
+        });
+        return acc;
+    }, []);
+};
+
+const getShiftWorkersLabel = (shift, persons = []) => {
+    const workers = resolveShiftPersons(shift, persons);
+    return workers.length > 0
+        ? workers.map((person) => person.name || `Сотр. #${person.personID}`).join(", ")
+        : "Не указаны";
+};
+
+const expandOrderItemsForApi = (items = []) => {
+    return items
+        .filter(Boolean)
+        .map((item) => {
+            const itemType = item?.itemType === "set" || item?.setId != null ? "set" : "dish";
+            const qty = Math.max(1, Number(item?.qty || 1));
+            const dishId = Number(item?.dishId);
+            const setId = Number(item?.setId);
+
+            return {
+                itemType,
+                dishID: itemType === "dish" && Number.isInteger(dishId) && dishId >= 0 ? dishId : null,
+                setId: itemType === "set" && Number.isInteger(setId) && setId > 0 ? setId : null,
+                qty
+            };
+        })
+        .filter((item) =>
+            item.qty > 0 && (
+                (item.itemType === "dish" && item.dishID != null) ||
+                (item.itemType === "set" && item.setId != null)
+            )
+        );
+};
 
 export default function CashierPage() {
     const [orders, setOrders] = useState([]);
@@ -21,9 +77,12 @@ export default function CashierPage() {
     const [isLoading, setIsLoading] = useState(true);
 
     const [persons, setPersons] = useState([]);
-    const [selectedPerson, setSelectedPerson] = useState(null);
+    const [selectedShiftPersons, setSelectedShiftPersons] = useState([]);
+    const [showShiftPersonModal, setShowShiftPersonModal] = useState(false);
+    const [shiftPersonSearch, setShiftPersonSearch] = useState("");
     const [isDebt, setIsDebt] = useState(false);
     const [allDishes, setAllDishes] = useState([]);
+    const [allDishSets, setAllDishSets] = useState([]);
     const [modalOpen, setModalOpen] = useState(false);
     const [orderType, setOrderType] = useState(false);
     const [allShifts, setAllShifts] = useState([]);
@@ -47,6 +106,7 @@ export default function CashierPage() {
     const [shiftReportOpen, setShiftReportOpen] = useState(false);
     const [shiftReportLoading, setShiftReportLoading] = useState(false);
     const [shiftReport, setShiftReport] = useState(null);
+    const [showIssuedOrders, setShowIssuedOrders] = useState(false);
 
     // === ДОБАВЛЕНО: Состояния для долгов ===
     const [todayDebts, setTodayDebts] = useState([]);
@@ -83,6 +143,17 @@ export default function CashierPage() {
             .then(d => setAllDishes(Array.isArray(d) ? d : []))
             .catch(e => console.error("Ошибка загрузки блюд:", e));
 
+        fetch(API_DISH_SETS)
+            .then(async (r) => {
+                if (!r.ok) {
+                    throw new Error(`Не удалось загрузить наборы (${r.status})`);
+                }
+                const text = await r.text();
+                return text ? JSON.parse(text) : [];
+            })
+            .then(d => setAllDishSets(Array.isArray(d) ? d : []))
+            .catch(e => console.error("Ошибка загрузки наборов:", e));
+
         fetch(API_DISH_CATEGORIES)
             .then(async (r) => {
                 if (!r.ok) {
@@ -95,17 +166,20 @@ export default function CashierPage() {
             .catch(e => console.error("Ошибка загрузки категорий блюд:", e));
 
         fetchShifts()
-            .then(() => {
+            .then((loadedShifts) => {
                 // Если есть сохраненная смена, восстанавливаем ее
                 if (savedShiftOpen && savedShiftId && savedShiftData) {
                     try {
-                        const shift = JSON.parse(savedShiftData);
-                        setCurrentShift(shift);
+                        const savedShift = JSON.parse(savedShiftData);
+                        const restoredShift = Array.isArray(loadedShifts)
+                            ? loadedShifts.find((shift) => Number(shift.shiftId) === Number(savedShiftId)) || savedShift
+                            : savedShift;
+                        setCurrentShift(restoredShift);
                         setShiftOpen(true);
-                        setSelectedPerson(persons.find(p => p.personID === shift.personCode) || null);
+                        setSelectedShiftPersons(resolveShiftPersons(restoredShift));
 
                         // Загружаем заказы для восстановленной смены
-                        loadOrdersForShift(shift.shiftId);
+                        loadOrdersForShift(restoredShift.shiftId);
                     } catch (e) {
                         console.error("Ошибка восстановления смены:", e);
                         localStorage.removeItem('currentShiftId');
@@ -134,6 +208,12 @@ export default function CashierPage() {
         }
     }, [currentShift, shiftOpen]);
 
+    useEffect(() => {
+        if (shiftOpen && currentShift) {
+            setSelectedShiftPersons(resolveShiftPersons(currentShift, persons));
+        }
+    }, [persons, currentShift, shiftOpen]);
+
     // Автоматически сбрасываем чекбокс долга, если клиент был убран
     useEffect(() => {
         if (!selectedClient && isDebt) {
@@ -154,6 +234,27 @@ export default function CashierPage() {
     const requiresContactDetails = orderType;
     const effectivePhone = (deliveryPhone || "").trim() || (selectedClient?.number || "").trim();
     const effectiveAddress = (deliveryAddress || "").trim();
+    const selectedShiftPersonIds = new Set(selectedShiftPersons.map((person) => Number(person.personID)));
+    const filteredShiftPersons = persons.filter((person) => {
+        const query = shiftPersonSearch.trim().toLowerCase();
+        if (!query) return true;
+        return String(person.name || "").toLowerCase().includes(query);
+    });
+    const selectedShiftPersonsLabel = selectedShiftPersons.length > 0
+        ? selectedShiftPersons.map((person) => person.name || `Сотр. #${person.personID}`).join(", ")
+        : "Сотрудники не выбраны";
+    const currentShiftWorkersLabel = getShiftWorkersLabel(currentShift, persons);
+
+    const toggleShiftPersonSelection = (person) => {
+        if (person?.personID == null) return;
+        setSelectedShiftPersons((prev) => {
+            const exists = prev.some((item) => Number(item.personID) === Number(person.personID));
+            if (exists) {
+                return prev.filter((item) => Number(item.personID) !== Number(person.personID));
+            }
+            return [...prev, person];
+        });
+    };
 
     // === ДОБАВЛЕНО: Функция проверки долгов ===
     const checkDebts = async () => {
@@ -237,15 +338,22 @@ export default function CashierPage() {
                 const filtered = allOrders.filter(o => o.shiftId === shiftId);
                 console.log("Загружено заказов для смены", shiftId, ":", filtered.length);
 
-                // Сортируем заказы: сначала неготовые, потом готовые
+                // Сортируем заказы: сначала неготовые, потом готовые, затем выданные
                 const sortedOrders = filtered.sort((a, b) => {
-                    // Сначала по статусу (неготовые выше готовых)
-                    if (a.status !== b.status) {
+                    const aIssued = Boolean(a.date_issue || a.dateIssue);
+                    const bIssued = Boolean(b.date_issue || b.dateIssue);
+
+                    if (aIssued !== bIssued) {
+                        return aIssued ? 1 : -1;
+                    }
+
+                    // Сначала по статусу (неготовые выше готовых) среди невыданных
+                    if (!aIssued && !bIssued && a.status !== b.status) {
                         return a.status ? 1 : -1;
                     }
 
                     // Для неготовых сортируем по наличию задержки
-                    if (!a.status && !b.status) {
+                    if (!aIssued && !bIssued && !a.status && !b.status) {
                         if (a.timeDelay > 0 && b.timeDelay === 0) return -1;
                         if (a.timeDelay === 0 && b.timeDelay > 0) return 1;
                         // Новые заказы сверху
@@ -304,8 +412,8 @@ export default function CashierPage() {
     }, [shiftOpen, currentShift]);
 
     const createShift = () => {
-        if (!selectedPerson) {
-            alert("Выберите сотрудника для открытия смены!");
+        if (selectedShiftPersons.length === 0) {
+            alert("Выберите хотя бы одного сотрудника для открытия смены!");
             return;
         }
 
@@ -321,18 +429,33 @@ export default function CashierPage() {
                 income: 0,
                 profit: 0,
                 expenses: 0,
-                // Shift.personcode references person.personid in DB
-                personCode: selectedPerson.personID
+                personCode: Number(selectedShiftPersons[0]?.personID),
+                personIds: selectedShiftPersons
+                    .map((person) => Number(person.personID))
+                    .filter((id) => Number.isInteger(id) && id >= 0)
             })
         })
-            .then(r => r.json())
+            .then(async (r) => {
+                const text = await r.text();
+                const body = text ? JSON.parse(text) : null;
+                if (!r.ok) {
+                    throw new Error(body?.message || `Ошибка создания смены (${r.status})`);
+                }
+                return body;
+            })
             .then(shift => {
                 setCurrentShift(shift);
+                setSelectedShiftPersons(resolveShiftPersons(shift, persons));
                 setShiftOpen(true);
-                loadOrders();
+                setShowShiftPersonModal(false);
+                setShiftPersonSearch("");
+                loadOrdersForShift(shift.shiftId);
                 fetchShifts();
             })
-            .catch(e => console.error("Ошибка создания смены:", e))
+            .catch(e => {
+                console.error("Ошибка создания смены:", e);
+                alert(e.message || "Не удалось открыть смену");
+            })
             .finally(() => setIsLoading(false));
     };
 
@@ -340,10 +463,7 @@ export default function CashierPage() {
         setIsLoading(true);
         setCurrentShift(shift);
         setShiftOpen(true);
-
-        // Устанавливаем выбранного сотрудника
-        const person = persons.find(p => p.personID === shift.personCode);
-        setSelectedPerson(person || null);
+        setSelectedShiftPersons(resolveShiftPersons(shift, persons));
 
         // Загружаем заказы для смены
         loadOrdersForShift(shift.shiftId)
@@ -394,7 +514,9 @@ export default function CashierPage() {
                 setShiftOpen(false);
                 setCurrentShift(null);
                 setOrders([]);
-                setSelectedPerson(null);
+                setSelectedShiftPersons([]);
+                setShowShiftPersonModal(false);
+                setShiftPersonSearch("");
                 setCurrentOrderItems([]);
                 setSelectedClient(null);
                 setIsDebt(false);
@@ -499,7 +621,12 @@ ${reportText}
 
     const createOrder = async () => {
         if (currentOrderItems.length === 0 || !currentShift) {
-            alert("Добавьте блюда в заказ!");
+            alert("Добавьте позиции в заказ!");
+            return;
+        }
+
+        if (orderItemsForApi.length === 0) {
+            alert("В заказе нет позиций, которые можно отправить на кухню.");
             return;
         }
 
@@ -541,10 +668,7 @@ ${reportText}
                 paymentType,
                 paid: paymentType !== "unpaid",
                 debt_payment_date: debtPayment,
-                items: currentOrderItems.map(i => ({
-                    dishID: i.dishId,
-                    qty: i.qty || 1
-                }))
+                items: orderItemsForApi
             };
 
             console.log("Отправляем заказ на сервер:", orderPayload);
@@ -565,7 +689,9 @@ ${reportText}
             if (selectedClient?.fullName) order.clientName = selectedClient.fullName;
             if (selectedClient?.number) order.clientPhone = selectedClient.number;
             order.items = currentOrderItems.map(i => ({
-                dishName: i.dishName,
+                dishName: i.dishName || i.name || i.setName || "Позиция",
+                name: i.dishName || i.name || i.setName || "Позиция",
+                itemType: i.itemType || "dish",
                 qty: i.qty || 1,
                 price: i.price || 0,
                 sum: Number(i.price || 0) * Number(i.qty || 1)
@@ -687,6 +813,41 @@ ${reportText}
                 }
                 : o
         )));
+
+        return body;
+    };
+
+    const issueOrder = async (orderId) => {
+        const res = await fetch(`${API_ORDERS}/${orderId}/issue`, {
+            method: "PATCH"
+        });
+
+        let body = null;
+        try {
+            body = await res.json();
+        } catch {
+            body = null;
+        }
+
+        if (!res.ok) {
+            throw new Error(body?.message || `Ошибка выдачи заказа (${res.status})`);
+        }
+
+        setOrders((prev) => {
+            const next = prev.map((o) => (
+                o.orderId === orderId
+                    ? {
+                        ...o,
+                        date_issue: body?.date_issue || body?.dateIssue || new Date().toISOString().slice(0, 10),
+                        dateIssue: body?.dateIssue || body?.date_issue || new Date().toISOString().slice(0, 10)
+                    }
+                    : o
+            ));
+            if (currentShift?.shiftId) {
+                localStorage.setItem(`orders_shift_${currentShift.shiftId}`, JSON.stringify(next));
+            }
+            return next;
+        });
 
         return body;
     };
@@ -888,6 +1049,102 @@ ${reportText}
         w.print();
     };
 
+    const printKitchenTicketWindow = (order, rawItems = []) => {
+        const items = normalizeTicketItems(rawItems);
+        const paymentRaw = (order.paymentType || "").toLowerCase();
+        const paymentLabel = paymentRaw === "cash"
+            ? "Наличка"
+            : paymentRaw === "transfer"
+                ? "Перевод"
+                : "Не оплачено";
+        const isDelivery = Boolean(order.type);
+        let deliveryCost = Number(
+            order.deliveryCost ??
+            order.delivery_cost ??
+            order.deliveryExpense ??
+            order.delivery_expense ??
+            0
+        );
+        if (!Number.isFinite(deliveryCost)) {
+            deliveryCost = 0;
+        }
+
+        const itemRows = items.length > 0
+            ? items.map((item) => {
+                const qty = Number(item.qty || 0);
+                const price = Number(item.price || 0);
+                const sum = Number(item.sum || qty * price || 0);
+                return `
+                    <div style="padding:8px 0;border-bottom:1px dashed #d6d6d6;">
+                        <div style="font-size:16px;font-weight:800;line-height:1.25;word-break:break-word;">
+                            ${escapeHtml(item.dishName || "Позиция")}
+                        </div>
+                        <div style="display:flex;justify-content:space-between;gap:8px;font-size:14px;font-weight:700;margin-top:4px;">
+                            <span>${escapeHtml(String(qty))} x ${escapeHtml(formatTicketMoney(price))} ₽</span>
+                            <strong style="font-weight:800;">${escapeHtml(formatTicketMoney(sum))} ₽</strong>
+                        </div>
+                    </div>
+                `;
+            }).join("")
+            : `<div style="padding:10px 0;font-size:15px;font-weight:700;">Состав заказа не найден</div>`;
+
+        const contactPhone = order.deliveryPhone || order.clientPhone || order.client_number || order.clientNumber || "";
+        const contactAddress = order.deliveryAddress || order.delivery_address || order.clientAddress || order.client_address || "";
+        const createdAt = order.created_at || order.createdAt || "";
+
+        const html = `
+            <html>
+                <head>
+                    <meta charset="UTF-8" />
+                    <title>${escapeHtml(`Чек заказа №${order.orderId}`)}</title>
+                    <style>
+                        @page { size: 58mm auto; margin: 0; }
+                        * { box-sizing: border-box; }
+                        body {
+                            margin: 0;
+                            width: 58mm;
+                            padding: 3mm;
+                            font-family: Arial, 'DejaVu Sans', sans-serif;
+                            font-weight: 600;
+                            color: #111;
+                            background: #fff;
+                            -webkit-font-smoothing: none;
+                            text-rendering: geometricPrecision;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div style="text-align:center;font-weight:900;font-size:22px;letter-spacing:0.03em;">ЗАКАЗ №${escapeHtml(order.orderId)}</div>
+                    ${createdAt ? `<div style="margin-top:6px;font-size:13px;font-weight:700;">Время: ${escapeHtml(String(createdAt))}</div>` : ""}
+                    <div style="margin:8px 0;border-top:1px solid #000;"></div>
+                    ${itemRows}
+                    <div style="margin-top:8px;border-top:1px solid #000;padding-top:8px;">
+                        <div style="display:flex;justify-content:space-between;font-size:17px;font-weight:900;">
+                            <span>ИТОГО</span>
+                            <span>${escapeHtml(formatTicketMoney(order.amount))} ₽</span>
+                        </div>
+                        <div style="margin-top:6px;font-size:14px;font-weight:700;">Тип: ${isDelivery ? "Доставка" : "В зале"}</div>
+                        ${isDelivery ? `<div style="margin-top:4px;font-size:14px;font-weight:700;">Доставка: ${escapeHtml(formatTicketMoney(deliveryCost))} ₽</div>` : ""}
+                        <div style="margin-top:4px;font-size:14px;font-weight:700;">Оплата: ${escapeHtml(paymentLabel)}</div>
+                        ${contactPhone ? `<div style="margin-top:6px;font-size:14px;font-weight:700;word-break:break-word;">Телефон: ${escapeHtml(contactPhone)}</div>` : ""}
+                        ${contactAddress ? `<div style="margin-top:4px;font-size:14px;font-weight:700;word-break:break-word;">Адрес: ${escapeHtml(contactAddress)}</div>` : ""}
+                    </div>
+                </body>
+            </html>
+        `;
+
+        const w = window.open("", "_blank", "width=420,height=820");
+        if (!w) {
+            throw new Error("Не удалось открыть окно печати");
+        }
+        w.document.write(html);
+        w.document.close();
+        w.focus();
+        window.setTimeout(() => {
+            w.print();
+        }, 180);
+    };
+
     const printOrderNumberTicket = async (order) => {
         const title = `Чек заказа №${order.orderId}`;
         const numberLines = buildOrderNumberTicketLines(order.orderId);
@@ -903,6 +1160,44 @@ ${reportText}
 
     const printOrderDetailsTicket = async (order, orderItems = []) => {
         let items = Array.isArray(orderItems) ? orderItems : [];
+        try {
+            const payloadRes = await fetch(`${API_ORDERS}/${order.orderId}/kitchen-payload`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    paymentType: order.paymentType,
+                    deliveryCost: Number(
+                        order.deliveryCost ??
+                        order.delivery_cost ??
+                        order.deliveryExpense ??
+                        order.delivery_expense ??
+                        0
+                    ),
+                    deliveryPhone: order.deliveryPhone || order.clientPhone || order.client_number || order.clientNumber || null,
+                    deliveryAddress: order.deliveryAddress || order.delivery_address || order.clientAddress || order.client_address || null
+                })
+            });
+
+            if (payloadRes.ok) {
+                const payload = await payloadRes.json();
+                const payloadItems = Array.isArray(payload?.items) ? payload.items : [];
+                const payloadOrder = {
+                    ...order,
+                    amount: payload?.total ?? order.amount,
+                    type: payload?.isDelivery ?? order.type,
+                    paymentType: payload?.paymentType ?? order.paymentType,
+                    deliveryPhone: payload?.deliveryPhone ?? order.deliveryPhone,
+                    deliveryAddress: payload?.deliveryAddress ?? order.deliveryAddress,
+                    created_at: payload?.createdAt ?? order.created_at ?? order.createdAt,
+                    createdAt: payload?.createdAt ?? order.createdAt ?? order.created_at
+                };
+                printKitchenTicketWindow(payloadOrder, payloadItems);
+                return { status: "order_details_printed_only" };
+            }
+        } catch (payloadError) {
+            console.error("Ошибка получения payload для печати:", payloadError);
+        }
+
         if (items.length === 0) {
             try {
                 const dishesRes = await fetch(`${API_BASE_URL}/api/shifts/getDish/${order.orderId}`);
@@ -925,15 +1220,7 @@ ${reportText}
             items = order.items;
         }
 
-        const kitchenLines = buildKitchenTicketLines(order, items).concat(["", ""]);
-        const title = `Чек заказа №${order.orderId}`;
-        printLinesInWindow(`${title} - Кухня`, kitchenLines, {
-            fontSize: 20,
-            fontWeight: 700,
-            align: "left",
-            lineHeight: 1.4,
-            padding: 12
-        });
+        printKitchenTicketWindow(order, items);
         return { status: "order_details_printed_only" };
     };
 
@@ -954,6 +1241,7 @@ ${reportText}
         0
     );
     const totalOrderAmount = orderItemsTotal + (orderType ? Number(deliveryCost || 0) : 0);
+    const orderItemsForApi = expandOrderItemsForApi(currentOrderItems);
 
     const formatDate = (dateString) => {
         const date = new Date(dateString);
@@ -968,7 +1256,7 @@ ${reportText}
     const getSortedOrders = () => {
         // Разделяем заказы на группы
         const cookingOrders = orders
-            .filter(o => !o.status)
+            .filter(o => !o.status && !o.date_issue && !o.dateIssue)
             .sort((a, b) => {
                 // Сначала с задержкой
                 if (a.timeDelay > 0 && b.timeDelay === 0) return -1;
@@ -978,13 +1266,17 @@ ${reportText}
             });
 
         const readyOrders = orders
-            .filter(o => o.status)
+            .filter(o => o.status && !o.date_issue && !o.dateIssue)
             .sort((a, b) => {
                 // Новые заказы сверху
                 return b.orderId - a.orderId;
             });
 
-        return { cookingOrders, readyOrders };
+        const issuedOrders = orders
+            .filter(o => o.date_issue || o.dateIssue)
+            .sort((a, b) => b.orderId - a.orderId);
+
+        return { cookingOrders, readyOrders, issuedOrders };
     };
 
     // === ДОБАВЛЕНО: Компонент уведомления о долгах ===
@@ -1088,7 +1380,7 @@ ${reportText}
         );
     }
 
-    const { cookingOrders, readyOrders } = getSortedOrders();
+    const { cookingOrders, readyOrders, issuedOrders } = getSortedOrders();
     const sortedShifts = [...allShifts].sort((a, b) => (b.shiftId || 0) - (a.shiftId || 0));
 
     return (
@@ -1098,6 +1390,11 @@ ${reportText}
                 <span className={shiftOpen ? styles.shiftOpen : styles.shiftClosed}>
                     {shiftOpen ? `Смена открыта | ID: ${currentShift?.shiftId || ''}` : "Смена закрыта"}
                 </span>
+                {shiftOpen && (
+                    <div className={styles.shiftWorkersMeta}>
+                        Работники: {currentShiftWorkersLabel}
+                    </div>
+                )}
 
                 {shiftOpen && (
                     <div className={styles.headerActions}>
@@ -1119,6 +1416,21 @@ ${reportText}
                         >
                             🧾 Z-отчет
                         </button>
+                        <button
+                            className={`${styles.btn} ${styles.secondary}`}
+                            onClick={() => {
+                                if (!currentShift?.shiftId) return;
+                                window.open(
+                                    `${window.location.origin}/kitchen-display/${currentShift.shiftId}`,
+                                    "_blank",
+                                    "noopener,noreferrer"
+                                );
+                            }}
+                            disabled={!currentShift || isLoading}
+                            title="Открыть отдельный экран кухни"
+                        >
+                            Экран кухни
+                        </button>
                     </div>
                 )}
             </header>
@@ -1127,30 +1439,50 @@ ${reportText}
                 <div className={styles.closedMessage}>
                     <div className={styles.selectEmployeeWrapper}>
                         <h3>Открыть новую смену</h3>
-                        <select
+                        <button
+                            type="button"
                             className={styles.selectEmployeeBtn}
-                            value={selectedPerson?.personID || ""}
-                            onChange={e => {
-                                const p = persons.find(x => x.personID === Number(e.target.value));
-                                setSelectedPerson(p || null);
-                            }}
+                            onClick={() => setShowShiftPersonModal(true)}
                             disabled={isLoading}
                         >
-                            <option value="">Выберите сотрудника</option>
-                            {persons.map(p => (
-                                <option key={p.personID} value={p.personID}>{p.name}</option>
-                            ))}
-                        </select>
+                            {selectedShiftPersons.length > 0
+                                ? `Выбрано сотрудников: ${selectedShiftPersons.length}`
+                                : "Выбрать работников"}
+                        </button>
 
-                        {selectedPerson && (
-                            <div className={styles.selectedPerson}>
-                                Выбран сотрудник: <b>{selectedPerson.name}</b>
+                        {selectedShiftPersons.length > 0 && (
+                            <>
+                                <div className={styles.selectedPerson}>
+                                    На смене: <b>{selectedShiftPersonsLabel}</b>
+                                </div>
+                                <div className={styles.selectedPeopleList}>
+                                    {selectedShiftPersons.map((person) => (
+                                        <span key={person.personID} className={styles.selectedPersonChip}>
+                                            <span>{person.name}</span>
+                                            <button
+                                                type="button"
+                                                className={styles.selectedPersonChipRemove}
+                                                onClick={() => toggleShiftPersonSelection(person)}
+                                                disabled={isLoading}
+                                                aria-label={`Убрать ${person.name}`}
+                                            >
+                                                ×
+                                            </button>
+                                        </span>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+
+                        {selectedShiftPersons.length === 0 && (
+                            <div className={styles.selectedPersonHint}>
+                                Можно выбрать сразу несколько работников на одну смену.
                             </div>
                         )}
 
                         <button
                             className={`${styles.btn} ${styles.primary}`}
-                            disabled={!selectedPerson || isLoading}
+                            disabled={selectedShiftPersons.length === 0 || isLoading}
                             onClick={createShift}
                         >
                             {isLoading ? "Открывается..." : "Открыть новую смену"}
@@ -1169,7 +1501,7 @@ ${reportText}
                                     <div>Время: {s.startTime || 'Не указано'}</div>
                                     <div>Статус: {!s.endTime ? "🟢 Открыта" : "🔴 Закрыта"}</div>
                                     <div>Сумма заказов: {Number(s.income || 0).toFixed(2)} ₽</div>
-                                    {s.personName && <div>Кассир: {s.personName}</div>}
+                                    <div>Работники: {getShiftWorkersLabel(s, persons)}</div>
                                 </div>
                                 {!s.endTime && (
                                     <button
@@ -1294,7 +1626,7 @@ ${reportText}
                         ) : (
                             currentOrderItems.map((item, idx) => (
                                 <div key={idx} className={styles.item}>
-                                    <span>{item.dishName}</span>
+                                    <span>{item.itemType === "set" ? `Набор: ${item.dishName}` : item.dishName}</span>
 
                                     <div className={styles.qtyControls}>
                                         <button
@@ -1529,6 +1861,11 @@ ${reportText}
                                 <span className={styles.readyCount}>
                                     ✅ {readyOrders.length}
                                 </span>
+                                {issuedOrders.length > 0 && (
+                                    <span className={styles.issuedCount}>
+                                        📦 {issuedOrders.length}
+                                    </span>
+                                )}
                             </div>
                             <button
                                 className={`${styles.btn} ${styles.secondary}`}
@@ -1560,6 +1897,7 @@ ${reportText}
                                                 onPrintOrderNumber={printOrderNumberTicket}
                                                 onPrintOrderDetails={printOrderDetailsTicket}
                                                 onUpdatePayment={updateOrderPayment}
+                                                onIssueOrder={issueOrder}
                                             />
                                         ))}
                                     </div>
@@ -1579,6 +1917,33 @@ ${reportText}
                                                 onPrintOrderNumber={printOrderNumberTicket}
                                                 onPrintOrderDetails={printOrderDetailsTicket}
                                                 onUpdatePayment={updateOrderPayment}
+                                                onIssueOrder={issueOrder}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+
+                                {issuedOrders.length > 0 && (
+                                    <div className={styles.orderGroup}>
+                                        <div className={styles.groupHeader}>
+                                            <h3>📦 Выданные ({issuedOrders.length})</h3>
+                                            <button
+                                                type="button"
+                                                className={styles.groupToggle}
+                                                onClick={() => setShowIssuedOrders((prev) => !prev)}
+                                            >
+                                                {showIssuedOrders ? "Свернуть" : "Развернуть"}
+                                            </button>
+                                        </div>
+                                        {showIssuedOrders && issuedOrders.map(o => (
+                                            <OrderCard
+                                                key={o.orderId}
+                                                order={o}
+                                                markOrderReady={markOrderReady}
+                                                onPrintOrderNumber={printOrderNumberTicket}
+                                                onPrintOrderDetails={printOrderDetailsTicket}
+                                                onUpdatePayment={updateOrderPayment}
+                                                onIssueOrder={issueOrder}
                                             />
                                         ))}
                                     </div>
@@ -1586,6 +1951,68 @@ ${reportText}
                             </>
                         )}
                     </section>
+                </div>
+            )}
+
+            {showShiftPersonModal && !shiftOpen && (
+                <div className={styles.modalOverlay}>
+                    <div className={styles.modal}>
+                        <h3>Работники на смене</h3>
+                        <div className={styles.modalContent}>
+                            <input
+                                type="text"
+                                placeholder="Поиск сотрудника..."
+                                value={shiftPersonSearch}
+                                onChange={(e) => setShiftPersonSearch(e.target.value)}
+                                className={styles.modalInput}
+                                disabled={isLoading}
+                            />
+
+                            <div className={styles.clientPickerList}>
+                                {filteredShiftPersons.length === 0 ? (
+                                    <div className={styles.noResults}>Сотрудники не найдены</div>
+                                ) : (
+                                    filteredShiftPersons.map((person) => {
+                                        const isSelected = selectedShiftPersonIds.has(Number(person.personID));
+                                        return (
+                                            <button
+                                                key={person.personID}
+                                                type="button"
+                                                className={`${styles.clientPickerItem} ${isSelected ? styles.shiftWorkerItemActive : ""}`}
+                                                onClick={() => toggleShiftPersonSelection(person)}
+                                                disabled={isLoading}
+                                            >
+                                                <span>
+                                                    <strong>{person.name}</strong>
+                                                </span>
+                                                <span>{isSelected ? "Выбран" : "Добавить"}</span>
+                                            </button>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+
+                        <div className={styles.modalActions}>
+                            <button
+                                className={`${styles.btn} ${styles.secondary}`}
+                                onClick={() => {
+                                    setShowShiftPersonModal(false);
+                                    setShiftPersonSearch("");
+                                }}
+                                disabled={isLoading}
+                            >
+                                Закрыть
+                            </button>
+                            <button
+                                className={`${styles.btn} ${styles.primary}`}
+                                onClick={() => setShowShiftPersonModal(false)}
+                                disabled={selectedShiftPersons.length === 0 || isLoading}
+                            >
+                                Готово
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -1699,7 +2126,7 @@ ${reportText}
                         <h3>Отчет по смене</h3>
                         {shiftReportLoading && <div style={{ marginTop: "10px" }}>Загрузка отчета...</div>}
                         {!shiftReportLoading && shiftReport?.error && (
-                            <div style={{ marginTop: "10px", color: "#991b1b" }}>{shiftReport.error}</div>
+                            <div style={{ marginTop: "10px", color: "#a43e1f" }}>{shiftReport.error}</div>
                         )}
                         {!shiftReportLoading && shiftReport && !shiftReport.error && (
                             <div style={{ marginTop: "10px", display: "grid", gap: "10px" }}>
@@ -1793,6 +2220,7 @@ ${reportText}
                 isOpen={modalOpen}
                 onClose={() => setModalOpen(false)}
                 dishes={allDishes}
+                dishSets={allDishSets}
                 categories={dishCategories}
                 initialItems={currentOrderItems}
                 onConfirm={(items) => setCurrentOrderItems(items)}

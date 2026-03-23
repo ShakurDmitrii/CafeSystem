@@ -21,6 +21,8 @@ const toTodayLocal = () => {
     return `${yyyy}-${mm}-${dd}`;
 };
 
+const normalizeDate = (value) => String(value || "").slice(0, 10);
+
 const formatMoney = (n) => `${toNum(n).toFixed(2)} ₽`;
 
 const getStockThreshold = (unit) => {
@@ -81,19 +83,37 @@ export default function HomePage({ auth }) {
                     persons.map((p) => [Number(p.personID), p.name || `ID ${p.personID}`])
                 );
 
-                const todayOrders = orders.filter((o) => String(o.date || "").slice(0, 10) === today);
-                const todayShiftIds = new Set(todayOrders.map((o) => Number(o.shiftId)).filter(Boolean));
-                const workers = [...todayShiftIds]
-                    .map((shiftId) => {
-                        const shift = shifts.find((s) => Number(s.shiftId) === shiftId);
-                        if (!shift) return null;
-                        return personsById.get(Number(shift.personCode)) || `Сотр. #${shift.personCode}`;
+                const availableOrderDates = orders
+                    .map((o) => normalizeDate(o.date))
+                    .filter(Boolean);
+                const availableShiftDates = shifts
+                    .map((s) => normalizeDate(s.data))
+                    .filter(Boolean);
+                const latestBusinessDate = [...availableOrderDates, ...availableShiftDates]
+                    .sort()
+                    .at(-1) || today;
+                const dashboardDate = availableOrderDates.includes(today) || availableShiftDates.includes(today)
+                    ? today
+                    : latestBusinessDate;
+
+                const dashboardOrders = orders.filter((o) => normalizeDate(o.date) === dashboardDate);
+                const dashboardShifts = shifts.filter((s) => normalizeDate(s.data) === dashboardDate);
+                const workers = dashboardShifts
+                    .flatMap((shift) => {
+                        if (Array.isArray(shift.personNames) && shift.personNames.length > 0) {
+                            return shift.personNames;
+                        }
+                        if (Array.isArray(shift.personIds) && shift.personIds.length > 0) {
+                            return shift.personIds
+                                .map((id) => personsById.get(Number(id)) || `Сотр. #${id}`);
+                        }
+                        return [personsById.get(Number(shift.personCode)) || `Сотр. #${shift.personCode}`];
                     })
                     .filter(Boolean);
 
                 const dishRowsByOrderId = new Map();
                 await Promise.all(
-                    todayOrders.map(async (o) => {
+                    dashboardOrders.map(async (o) => {
                         if (!o?.orderId) {
                             dishRowsByOrderId.set(o?.orderId, []);
                             return;
@@ -107,11 +127,11 @@ export default function HomePage({ auth }) {
                     })
                 );
 
-                const revenue = todayOrders.reduce((sum, o) => sum + toNum(o.amount), 0);
-                const ordersCount = todayOrders.length;
+                const revenue = dashboardOrders.reduce((sum, o) => sum + toNum(o.amount), 0);
+                const ordersCount = dashboardOrders.length;
                 const avgCheck = ordersCount > 0 ? revenue / ordersCount : 0;
 
-                const deliveryOrders = todayOrders.filter((o) => o.type === true);
+                const deliveryOrders = dashboardOrders.filter((o) => o.type === true);
                 const deliveryCount = deliveryOrders.length;
                 const deliverySum = deliveryOrders.reduce((sum, o) => {
                     const explicit = toNum(o.deliveryCost);
@@ -123,16 +143,16 @@ export default function HomePage({ auth }) {
                     return sum + estimatedDelivery;
                 }, 0);
 
-                const unpaidCount = todayOrders.filter((o) => {
+                const unpaidCount = dashboardOrders.filter((o) => {
                     const p = String(o.paymentType || "").toLowerCase();
                     return !(o.paid === true || p === "cash" || p === "transfer");
                 }).length;
 
                 const avgPrepMinutes = ordersCount > 0
-                    ? todayOrders.reduce((s, o) => s + toNum(o.time), 0) / ordersCount
+                    ? dashboardOrders.reduce((s, o) => s + toNum(o.time), 0) / ordersCount
                     : 0;
 
-                const delayedOrdersCount = todayOrders.filter((o) => toNum(o.timeDelay) > 0).length;
+                const delayedOrdersCount = dashboardOrders.filter((o) => toNum(o.timeDelay) > 0).length;
 
                 const topMap = new Map();
                 for (const rows of dishRowsByOrderId.values()) {
@@ -153,38 +173,51 @@ export default function HomePage({ auth }) {
                         warehouses.map(async (w) => {
                             try {
                                 const list = await fetchJson(`${API_WAREHOUSES}/${w.warehouseId}/products`);
-                                return Array.isArray(list) ? list : [];
+                                return Array.isArray(list)
+                                    ? list.map((row) => ({
+                                        ...row,
+                                        warehouseName: w.warehouseName || `Склад #${w.warehouseId}`,
+                                        warehouseId: Number(w.warehouseId),
+                                        isMain: Boolean(w.isMain)
+                                    }))
+                                    : [];
                             } catch {
                                 return [];
                             }
                         })
                     );
                     const allWhProducts = whRows.flat();
+                    const productById = new Map(
+                        products.map((p) => [Number(p.productId), p])
+                    );
 
-                    const qtyByProduct = new Map();
-                    allWhProducts.forEach((row) => {
-                        const pid = Number(row.productId);
-                        qtyByProduct.set(pid, (qtyByProduct.get(pid) || 0) + toNum(row.quantity));
-                    });
+                    criticalStocks = allWhProducts
+                        .map((row) => {
+                            const pid = Number(row.productId);
+                            const product = productById.get(pid);
+                            if (!product) return null;
 
-                    criticalStocks = products
-                        .map((p) => {
-                            const pid = Number(p.productId);
-                            const qty = toNum(qtyByProduct.get(pid));
-                            const unit = p.unit || p.baseUnit || "pcs";
+                            const qty = toNum(row.quantity);
+                            const unit = product.baseUnit || product.unit || "pcs";
                             const threshold = getStockThreshold(unit);
                             const level = qty <= threshold ? "critical" : (qty <= threshold * 2 ? "warning" : "normal");
                             return {
+                                key: `${pid}-${row.warehouseId}`,
                                 productId: pid,
-                                productName: p.productName || `Товар #${pid}`,
+                                warehouseId: Number(row.warehouseId),
+                                warehouseName: row.warehouseName || `Склад #${row.warehouseId}`,
+                                isMain: Boolean(row.isMain),
+                                productName: product.productName || `Товар #${pid}`,
                                 qty,
                                 unit,
                                 threshold,
                                 level
                             };
                         })
+                        .filter(Boolean)
                         .filter((x) => x.level !== "normal")
                         .sort((a, b) => {
+                            if (a.isMain !== b.isMain) return a.isMain ? -1 : 1;
                             const rank = { critical: 0, warning: 1 };
                             if (rank[a.level] !== rank[b.level]) return rank[a.level] - rank[b.level];
                             return a.qty - b.qty;
@@ -194,7 +227,7 @@ export default function HomePage({ auth }) {
 
                 if (!cancelled) {
                     setData({
-                        today,
+                        today: dashboardDate,
                         workers: [...new Set(workers)],
                         revenue,
                         ordersCount,
@@ -300,9 +333,16 @@ export default function HomePage({ auth }) {
                     ) : (
                         <ul className={styles.list}>
                             {data.criticalStocks.map((x) => (
-                                <li key={x.productId} className={styles.listItem}>
+                                <li key={x.key || `${x.productId}-${x.warehouseId || "wh"}`} className={styles.listItem}>
                                     <span className={`${styles.stockDot} ${x.level === "critical" ? styles.dangerDot : styles.warnDot}`}></span>
-                                    <span className={styles.itemName}>{x.productName}</span>
+                                    <div className={styles.itemMeta}>
+                                        <span className={styles.itemName}>{x.productName}</span>
+                                        <span className={styles.itemSubtext}>
+                                            {x.isMain
+                                                ? `Главный склад: ${x.warehouseName || "без названия"}`
+                                                : x.warehouseName || "Склад не указан"}
+                                        </span>
+                                    </div>
                                     <span className={styles.itemValue}>
                                         {x.qty.toFixed(2)} {x.unit}
                                     </span>

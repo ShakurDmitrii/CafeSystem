@@ -87,6 +87,21 @@
     cursor: pointer;
 }
 
+.cancelBtn {
+    height: 38px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.formActions {
+    display: flex;
+    gap: 0.5rem;
+}
+
 .hint {
     font-size: 0.85rem;
     color: #475467;
@@ -136,7 +151,7 @@
 .table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 760px;
+    min-width: 920px;
 }
 
 .table th,
@@ -157,6 +172,22 @@
     border-radius: 8px;
     object-fit: cover;
     border: 1px solid #dbe2ea;
+}
+
+.rowActions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.editBtn {
+    border: 1px solid #0284c7;
+    background: #e0f2fe;
+    color: #075985;
+    border-radius: 8px;
+    padding: 0.45rem 0.75rem;
+    cursor: pointer;
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 .error {

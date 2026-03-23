@@ -7,14 +7,9 @@ import com.shakur.cafehelp.DTO.TechProductDTO;
 import com.shakur.cafehelp.Service.DishService;
 import com.shakur.cafehelp.Service.ProductService;
 import com.shakur.cafehelp.Service.TechProductService;
-import jooqdata.tables.Dish;
-import jooqdata.tables.Product;
-import jooqdata.tables.Techproduct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.DSLContext;
-import org.jooq.Field;
-import org.jooq.Record4;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -29,10 +24,6 @@ import java.util.ArrayList;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Locale;
-
-import static org.jooq.impl.DSL.countDistinct;
-import static org.jooq.impl.DSL.lower;
-import static org.jooq.impl.DSL.when;
 
 @Slf4j
 @Service
@@ -49,7 +40,8 @@ public class PredictionService {
     private final TechProductService techProductService;
     private final DSLContext dsl;
 
-    @Value("${ml.service.url:http://localhost:8000}")
+    // Prefer explicit ml.service.url, but fall back to training/python settings used elsewhere.
+    @Value("${ml.service.url:${ml.python.service.url:${python.api.url:http://localhost:8000}}}")
     private String mlServiceUrl;
 
     /**
@@ -82,7 +74,7 @@ public class PredictionService {
      */
     public BatchPredictionResponseDTO batchPredict(BatchPredictionRequestDTO request) {
         try {
-            String url = mlServiceUrl + "/api/ml/batch-predict";
+            String url = mlServiceUrl + "/api/ml/predict/batch";
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -113,7 +105,31 @@ public class PredictionService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            HttpEntity<OptimizationRequestDTO> entity = new HttpEntity<>(request, headers);
+            // Python optimizer needs ingredient pool/menu/sales to compute costs and novelty.
+            LocalDate endDate = LocalDate.now();
+            LocalDate startDate = endDate.minusDays(90);
+            var sales = salesService.getSalesForMLOptimized(startDate, endDate);
+            var menu = menuService.getAllMenuItems();
+            var ingredients = inventoryService.getAllIngredients();
+
+            Map<String, Object> constraints = new HashMap<>();
+            constraints.put("minIngredients", request.getMinIngredients());
+            constraints.put("maxIngredients", request.getMaxIngredients());
+            constraints.put("maxCost", request.getMaxCost());
+            constraints.put("minProfitMargin", request.getMinProfitMargin());
+            constraints.put("mustInclude", request.getMustInclude());
+            constraints.put("excludedIngredients", request.getExcludedIngredients());
+            constraints.put("populationSize", request.getPopulationSize());
+            constraints.put("generations", request.getGenerations());
+            constraints.put("numResults", request.getNumResults());
+
+            Map<String, Object> body = new HashMap<>();
+            body.put("constraints", constraints);
+            body.put("salesRecords", sales);
+            body.put("menuItems", menu);
+            body.put("ingredients", ingredients);
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
             ResponseEntity<OptimizationResponseDTO> response = restTemplate.exchange(
                     url, HttpMethod.POST, entity, OptimizationResponseDTO.class
@@ -292,40 +308,35 @@ public class PredictionService {
         if (requestedIngredients == null || requestedIngredients.isEmpty()) {
             return null;
         }
-
-        Dish dish = Dish.DISH;
-        Techproduct tech = Techproduct.TECHPRODUCT;
-        Product product = Product.PRODUCT;
-
-        Field<String> productNameLower = lower(product.PRODUCTNAME);
-        Field<Integer> dishIngredientsCount = countDistinct(productNameLower).as("dish_ingredients_count");
-        Field<Integer> intersectionCount = countDistinct(
-                when(productNameLower.in(requestedIngredients), productNameLower)
-        ).as("intersection_count");
-
-        List<Record4<Integer, String, Integer, Integer>> rows = dsl
-                .select(dish.DISHID, dish.DISHNAME, dishIngredientsCount, intersectionCount)
-                .from(dish)
-                .join(tech).on(tech.DISHID.eq(dish.DISHID))
-                .join(product).on(product.PRODUCTID.eq(tech.PRODUCTID))
-                .groupBy(dish.DISHID, dish.DISHNAME)
-                .having(intersectionCount.gt(0))
-                .fetch();
-
-        int requestedCount = requestedIngredients.size();
         DuplicateCheckResult best = null;
+        int requestedCount = requestedIngredients.size();
 
-        for (Record4<Integer, String, Integer, Integer> row : rows) {
-            int dishCount = row.get(dishIngredientsCount) != null ? row.get(dishIngredientsCount) : 0;
-            int intersection = row.get(intersectionCount) != null ? row.get(intersectionCount) : 0;
+        for (DishDTO dish : dishService.getAll()) {
+            Set<String> dishIngredients = menuService.getDishIngredients(dish.getDishId())
+                    .stream()
+                    .map(name -> name == null ? "" : name.trim().toLowerCase(Locale.ROOT))
+                    .filter(name -> !name.isBlank())
+                    .collect(java.util.stream.Collectors.toSet());
+
+            int dishCount = dishIngredients.size();
+            if (dishCount == 0) continue;
+
+            int intersection = 0;
+            for (String ingredient : dishIngredients) {
+                if (requestedIngredients.contains(ingredient)) {
+                    intersection++;
+                }
+            }
+            if (intersection == 0) continue;
+
             int union = requestedCount + dishCount - intersection;
             if (union <= 0) continue;
 
             double similarity = (double) intersection / union;
             if (similarity >= DUPLICATE_SIMILARITY_THRESHOLD) {
                 DuplicateCheckResult candidate = new DuplicateCheckResult(
-                        row.get(dish.DISHID),
-                        row.get(dish.DISHNAME),
+                        dish.getDishId(),
+                        dish.getDishName(),
                         similarity
                 );
                 if (best == null || candidate.similarity() > best.similarity()) {

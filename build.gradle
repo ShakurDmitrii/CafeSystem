@@ -15,6 +15,14 @@ java {
     }
 }
 
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java/jooq'
+        }
+    }
+}
+
 repositories {
     mavenCentral()
 }

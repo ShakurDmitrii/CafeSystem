@@ -4,7 +4,9 @@ public class TechProductDTO {
 
     private Integer techProductId;
     private Integer dishId;
+    private Integer preparationId;
     private Integer productId;
+    private Integer ingredientPreparationId;
     private Double waste;
     private Double weight;
 
@@ -24,12 +26,28 @@ public class TechProductDTO {
         this.dishId = dishId;
     }
 
+    public Integer getPreparationId() {
+        return preparationId;
+    }
+
+    public void setPreparationId(Integer preparationId) {
+        this.preparationId = preparationId;
+    }
+
     public Integer getProductId() {
         return productId;
     }
 
     public void setProductId(Integer productId) {
         this.productId = productId;
+    }
+
+    public Integer getIngredientPreparationId() {
+        return ingredientPreparationId;
+    }
+
+    public void setIngredientPreparationId(Integer ingredientPreparationId) {
+        this.ingredientPreparationId = ingredientPreparationId;
     }
 
     public Double getWaste() {

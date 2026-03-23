@@ -23,7 +23,7 @@ public class OrderDTO {
     public Double timeDelay;
     public LocalDateTime created_at;
     public LocalDate debt_payment_date;
-    public LocalDateTime date_issue;
+    public LocalDate date_issue;
     public String deliveryPhone;
     public String deliveryAddress;
     public String paymentType;
@@ -38,11 +38,11 @@ public class OrderDTO {
         this.debt_payment_date = debt_payment_date;
     }
 
-    public LocalDateTime getDate_issue() {
+    public LocalDate getDate_issue() {
         return date_issue;
     }
 
-    public void setDate_issue(LocalDateTime date_issue) {
+    public void setDate_issue(LocalDate date_issue) {
         this.date_issue = date_issue;
     }
 

@@ -105,7 +105,14 @@ export const ApiClient = {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                let msg = `HTTP error! status: ${response.status}`;
+                try {
+                    const errData = await response.json();
+                    msg = errData?.errorMessage || errData?.error || errData?.message || msg;
+                } catch (_) {
+                    // ignore parse errors
+                }
+                throw new Error(msg);
             }
 
             const data = await response.json();
@@ -141,9 +148,18 @@ export const ApiClient = {
         try {
             console.log('Optimizing with constraints:', constraints);
 
+            // Java endpoint `/api/ml/predict/optimize` expects OptimizationRequestDTO fields at top-level,
+            // not wrapped into `constraints`.
             const requestData = {
-                constraints: constraints,
-                optimizationType: "profit_maximization"
+                minIngredients: constraints.minIngredients,
+                maxIngredients: constraints.maxIngredients,
+                maxCost: constraints.maxCost,
+                minProfitMargin: constraints.minProfitMargin,
+                mustInclude: constraints.mustInclude,
+                excludedIngredients: constraints.excludedIngredients ?? constraints.exclude ?? [],
+                populationSize: constraints.populationSize,
+                generations: constraints.generations,
+                numResults: constraints.numResults
             };
 
             const response = await fetch(`${API_BASE}/predict/optimize`, {
@@ -156,7 +172,14 @@ export const ApiClient = {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                let msg = `HTTP error! status: ${response.status}`;
+                try {
+                    const errData = await response.json();
+                    msg = errData?.errorMessage || errData?.error || errData?.message || msg;
+                } catch (_) {
+                    // ignore parse errors
+                }
+                throw new Error(msg);
             }
 
             const data = await response.json();

@@ -3,6 +3,7 @@ package com.shakur.cafehelp.DTO;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 
 public class ShiftDTO {
     public int shiftId;
@@ -13,6 +14,9 @@ public class ShiftDTO {
     public Double income;
     public BigDecimal expenses;
     public int personCode;
+    public String personName;
+    public List<Integer> personIds;
+    public List<String> personNames;
 
     public int getShiftId() {
         return shiftId;
@@ -83,5 +87,29 @@ public class ShiftDTO {
 
     public void setPersonCode(int personCode) {
         this.personCode = personCode;
+    }
+
+    public String getPersonName() {
+        return personName;
+    }
+
+    public void setPersonName(String personName) {
+        this.personName = personName;
+    }
+
+    public List<Integer> getPersonIds() {
+        return personIds;
+    }
+
+    public void setPersonIds(List<Integer> personIds) {
+        this.personIds = personIds;
+    }
+
+    public List<String> getPersonNames() {
+        return personNames;
+    }
+
+    public void setPersonNames(List<String> personNames) {
+        this.personNames = personNames;
     }
 }

@@ -11,6 +11,11 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 @Configuration
 public class SecurityConfig {
@@ -30,6 +35,8 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Let browser preflight requests through
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/bootstrap",
@@ -64,7 +71,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/product/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers(HttpMethod.GET, "/api/shifts/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers(HttpMethod.POST, "/api/shifts/open", "/api/shifts/*/close").hasAnyRole("WORKER", "OWNER")
-                        .requestMatchers(HttpMethod.GET, "/api/tech-products/**").hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers("/api/tech-products/**").hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers("/api/preparations/**").hasAnyRole("WORKER", "OWNER")
 
                         // Любой прочий endpoint backend требует JWT
                         .anyRequest().authenticated()
@@ -72,5 +80,22 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    /**
+     * CORS configuration for Spring Security (preflight requests included).
+     * WebMvcConfigurer CORS can be bypassed by the Security filter chain without this.
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(List.of("http://localhost:3000"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 }

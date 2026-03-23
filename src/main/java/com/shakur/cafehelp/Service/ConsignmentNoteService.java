@@ -2,16 +2,18 @@ package com.shakur.cafehelp.Service;
 
 import com.shakur.cafehelp.DTO.ConsProductDTO;
 import com.shakur.cafehelp.DTO.ConsignmentNoteDTO;
+import com.shakur.cafehelp.DTO.MovementRequestDTO;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.records.ConsignmentnoteRecord;
+import jooqdata.tables.records.ConsproductRecord;
 import org.jooq.DSLContext;
-import org.jooq.Result;
+import org.jooq.Field;
+import org.jooq.Table;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static jooqdata.Tables.PRODUCT;
@@ -20,8 +22,17 @@ import static jooqdata.tables.Consproduct.CONSPRODUCT;
 
 @Service
 public class ConsignmentNoteService {
-    private DSLContext  dsl;
-    public ConsignmentNoteService(DSLContext dsl) {this.dsl = dsl;}
+    private static final Table<?> INVENTORY_DOCUMENTS = DSL.table(DSL.name("sales", "inventory_documents"));
+    private static final Field<String> INVENTORY_DOC_TYPE = DSL.field(DSL.name("doc_type"), String.class);
+    private static final Field<String> INVENTORY_COMMENT = DSL.field(DSL.name("comment"), String.class);
+
+    private final DSLContext dsl;
+    private final MovementService movementService;
+
+    public ConsignmentNoteService(DSLContext dsl, MovementService movementService) {
+        this.dsl = dsl;
+        this.movementService = movementService;
+    }
 
     public ConsignmentNoteDTO createConsignmentNote(ConsignmentNoteDTO dto) {
         ConsignmentnoteRecord record = dsl.newRecord(CONSIGNMENTNOTE);
@@ -99,8 +110,61 @@ public class ConsignmentNoteService {
                 }).toList();
     }
 
+    public boolean isPosted(int consignmentId) {
+        return dsl.fetchExists(
+                dsl.selectOne()
+                        .from(INVENTORY_DOCUMENTS)
+                        .where(INVENTORY_DOC_TYPE.eq("receipt")
+                                .and(INVENTORY_COMMENT.eq(buildMovementComment(consignmentId))))
+        );
+    }
+
+    @Transactional
+    public void postConsignmentNote(int consignmentId, int warehouseId) {
+        if (warehouseId <= 0) {
+            throw new IllegalArgumentException("Warehouse ID is required");
+        }
+        if (isPosted(consignmentId)) {
+            throw new IllegalStateException("Накладная уже проведена");
+        }
+
+        ConsignmentnoteRecord note = dsl.selectFrom(CONSIGNMENTNOTE)
+                .where(CONSIGNMENTNOTE.CONSIGNMENTID.eq(consignmentId))
+                .fetchOne();
+        if (note == null) {
+            throw new RuntimeException("ConsignmentNote not found " + consignmentId);
+        }
+
+        List<ConsproductRecord> lines = dsl.selectFrom(CONSPRODUCT)
+                .where(CONSPRODUCT.CONSIGNMENTID.eq(consignmentId))
+                .fetch();
+        if (lines.isEmpty()) {
+            throw new IllegalStateException("В накладной нет товаров для проведения");
+        }
+
+        for (ConsproductRecord line : lines) {
+            MovementRequestDTO movement = new MovementRequestDTO();
+            movement.setDocType("receipt");
+            movement.setDocDate(note.getDate() != null ? note.getDate().atStartOfDay() : null);
+            movement.setToWarehouseId(warehouseId);
+            movement.setProductId(line.getProductid());
+            movement.setQuantity(line.getQuantity());
+            movement.setSupplierId(note.getSupplierid());
+            movement.setUnitPrice(line.getGross());
+            movement.setComment(buildMovementComment(consignmentId));
+            movement.setCreatedBy("consignment-ui");
+
+            if (movementService.createMovement(movement) == null) {
+                throw new IllegalStateException("Не удалось провести накладную");
+            }
+        }
+    }
+
     @Transactional
     public boolean deleteConsignmentNote(int consignmentId) {
+        if (isPosted(consignmentId)) {
+            throw new IllegalStateException("Проведенную накладную удалять нельзя");
+        }
         dsl.deleteFrom(CONSPRODUCT)
                 .where(CONSPRODUCT.CONSIGNMENTID.eq(consignmentId))
                 .execute();
@@ -151,6 +215,10 @@ public class ConsignmentNoteService {
         noteDto.items = products;
 
         return noteDto;
+    }
+
+    private String buildMovementComment(int consignmentId) {
+        return "consignment-note:" + consignmentId;
     }
 
 

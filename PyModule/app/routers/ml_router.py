@@ -6,11 +6,13 @@ from pydantic import BaseModel
 
 from app.services import service
 from app.services.dish_generator import generate_new_dish
+from app.services.dish_generator import optimize_rolls
 
 router = APIRouter(prefix="/api/ml", tags=["ML"])
 
 class MLRequest(BaseModel):
     ingredients: List[str]
+    date: str | None = None
 
 class BatchMLRequest(BaseModel):
     rolls: List[MLRequest]
@@ -22,15 +24,24 @@ class GenerateDishRequest(BaseModel):
     ingredients: List[dict]
     constraints: dict = {}
 
+class OptimizeRequest(BaseModel):
+    constraints: dict = {}
+    # Optional context so Java can pass inventory/menu/sales directly (recommended).
+    ingredients: List[dict] = []
+    menuItems: List[dict] = []
+    salesRecords: List[dict] = []
+
 @router.post("/predict")
 async def predict_single_endpoint(request: MLRequest):
     """Эндпоинт предсказания для одного ролла"""
     try:
-        prediction = service.predict_single(request.ingredients)
+        prediction = service.predict_single(request.ingredients, request.date)
         return {
-            "predicted_sales": prediction,
+            # Java/Frontend DTO expects camelCase
+            "predictedSales": float(prediction),
             "ingredients": request.ingredients,
-            "confidence": 0.85
+            "confidenceScore": 0.85,
+            "modelVersion": "1.0",
         }
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -42,9 +53,21 @@ async def predict_single_endpoint(request: MLRequest):
 async def predict_batch_endpoint(request: BatchMLRequest):
     """Пакетное предсказание"""
     try:
-        rolls = [r.ingredients for r in request.rolls]
+        rolls = [{"ingredients": r.ingredients, "date": r.date} for r in request.rolls]
         results = service.predict_batch(rolls)
-        return {"results": results}
+        # Normalize to camelCase keys used in frontend/Java DTOs
+        normalized = []
+        for r in results:
+            if "error" in r:
+                normalized.append(r)
+                continue
+            normalized.append({
+                "ingredients": r.get("ingredients"),
+                "predictedSales": r.get("predicted_sales"),
+                "confidenceScore": 0.85,
+                "modelVersion": "1.0",
+            })
+        return {"results": normalized}
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
@@ -82,5 +105,21 @@ async def generate_dish_endpoint(request: GenerateDishRequest):
             ingredients=request.ingredients,
             constraints=request.constraints,
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/optimize")
+async def optimize_endpoint(request: OptimizeRequest):
+    """Оптимизация составов роллов под ограничения"""
+    try:
+        return optimize_rolls(
+            constraints=request.constraints or {},
+            ingredients=request.ingredients or [],
+            menu_items=request.menuItems or [],
+            sales_records=request.salesRecords or [],
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -53,12 +53,7 @@ public class ShiftController {
     @PostMapping("/open")
     public ShiftDTO openShift(@RequestParam int personCode) {
         var shiftRecord = shiftService.openShift(personCode);
-        ShiftDTO dto = new ShiftDTO();
-        dto.shiftId = shiftRecord.getId();
-        dto.personCode = shiftRecord.getPersoncode();
-        dto.startTime = shiftRecord.getStarttime();
-        dto.data = shiftRecord.getData();
-        return dto;
+        return shiftService.getShiftById(shiftRecord.getId());
     }
 
     // ============================
@@ -70,16 +65,7 @@ public class ShiftController {
             @RequestParam BigDecimal expenses
     ) {
         var shiftRecord = shiftService.closeShift(id, expenses);
-        ShiftDTO dto = new ShiftDTO();
-        dto.shiftId = shiftRecord.getId();
-        dto.personCode = shiftRecord.getPersoncode();
-        dto.startTime = shiftRecord.getStarttime();
-        dto.endTime = shiftRecord.getEndtime();
-        dto.data = shiftRecord.getData();
-        dto.expenses = shiftRecord.getExpenses();
-        dto.income = shiftRecord.getIncome();
-        dto.profit = shiftRecord.getProfit();
-        return dto;
+        return shiftService.getShiftById(shiftRecord.getId());
     }
 @GetMapping("/getDish/{id}")
     public List<DishDTO> getDish(@PathVariable int id) {

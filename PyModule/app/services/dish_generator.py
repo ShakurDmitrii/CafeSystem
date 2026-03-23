@@ -135,6 +135,18 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / union
 
 
+def _max_similarity(current_set: set[str], existing_dishes: list[set[str]]) -> float:
+    if not existing_dishes or not current_set:
+        return 0.0
+    return max(_jaccard(current_set, dish) for dish in existing_dishes)
+
+
+def _is_too_similar(current_set: set[str], existing_dishes: list[set[str]], threshold: float) -> bool:
+    if threshold <= 0:
+        return False
+    return _max_similarity(current_set, existing_dishes) >= threshold
+
+
 def _evaluate_candidate(
     ingredients: list[str],
     ingredient_costs: dict[str, float],
@@ -159,10 +171,7 @@ def _evaluate_candidate(
     popularity = sum(sales_weights.get(ing, 0.0) for ing in unique_ingredients)
     predicted_sales = round(8.0 + popularity / 10.0, 2)
 
-    if existing_dishes:
-        max_similarity = max(_jaccard(current_set, dish) for dish in existing_dishes)
-    else:
-        max_similarity = 0.0
+    max_similarity = _max_similarity(current_set, existing_dishes)
     novelty_score = round(max(0.0, 1.0 - max_similarity), 4)
 
     estimated_profit = round(predicted_sales * margin, 2)
@@ -341,6 +350,18 @@ def generate_new_dish(
     sales_weights = _build_sales_weights(sales_records)
     existing_dishes = _existing_dish_sets(menu_items)
 
+    # Hard protection against generating (too) existing dishes.
+    protection = constraints.get("existingDishProtection")
+    if isinstance(protection, dict):
+        protect_enabled = bool(protection.get("enabled", True))
+        max_allowed_similarity = _safe_float(protection.get("maxSimilarity"), 0.9)
+    else:
+        # Default: enabled with fairly strict threshold.
+        protect_enabled = True
+        max_allowed_similarity = _safe_float(constraints.get("maxExistingSimilarity"), 0.9)
+    if max_allowed_similarity <= 0:
+        protect_enabled = False
+
     markup = _safe_float(constraints.get("markup"), 2.35)
     if markup < 1.3:
         markup = 1.3
@@ -349,7 +370,10 @@ def generate_new_dish(
         total_weight_grams = DEFAULT_TOTAL_WEIGHT_GRAMS
 
     population: list[list[str]] = []
-    while len(population) < population_size:
+    attempts = 0
+    max_attempts = population_size * 50
+    while len(population) < population_size and attempts < max_attempts:
+        attempts += 1
         c = _make_random_candidate(
             ingredient_names,
             min_ingredients,
@@ -357,8 +381,21 @@ def generate_new_dish(
             must_include,
             excluded,
         )
-        if c:
-            population.append(c)
+        if not c:
+            continue
+        c = _enforce_constraints(c, ingredient_names, min_ingredients, max_ingredients, must_include, excluded)
+        if not c:
+            continue
+        if protect_enabled and existing_dishes:
+            if _is_too_similar(set(c), existing_dishes, max_allowed_similarity):
+                continue
+        population.append(c)
+
+    if len(population) < max(2, population_size // 4):
+        return {
+            "status": "failed",
+            "errorMessage": "Не удалось сформировать популяцию: слишком строгая защита от существующих блюд или мало ингредиентов",
+        }
 
     best: Candidate | None = None
     history: list[float] = []
@@ -393,7 +430,10 @@ def generate_new_dish(
         elite_count = max(2, population_size // 10)
         next_population = [s.ingredients for s in scored[:elite_count]]
 
-        while len(next_population) < population_size:
+        child_attempts = 0
+        child_max_attempts = population_size * 50
+        while len(next_population) < population_size and child_attempts < child_max_attempts:
+            child_attempts += 1
             parent_a = random.choice(scored[: max(5, population_size // 3)]).ingredients
             parent_b = random.choice(scored[: max(5, population_size // 3)]).ingredients
             child = _crossover(parent_a, parent_b, min_ingredients, max_ingredients)
@@ -414,8 +454,38 @@ def generate_new_dish(
                 must_include,
                 excluded,
             )
-            if child:
-                next_population.append(child)
+            if not child:
+                continue
+
+            if protect_enabled and existing_dishes:
+                # Repair loop: try a few mutations to escape similarity
+                repair_tries = 0
+                while _is_too_similar(set(child), existing_dishes, max_allowed_similarity) and repair_tries < 6:
+                    repair_tries += 1
+                    child = _mutate(
+                        child,
+                        ingredient_names,
+                        min_ingredients,
+                        max_ingredients,
+                        must_include,
+                        excluded,
+                    )
+                    child = _enforce_constraints(
+                        child,
+                        ingredient_names,
+                        min_ingredients,
+                        max_ingredients,
+                        must_include,
+                        excluded,
+                    )
+                    if not child:
+                        break
+                if not child:
+                    continue
+                if _is_too_similar(set(child), existing_dishes, max_allowed_similarity):
+                    continue
+
+            next_population.append(child)
         population = next_population[:population_size]
 
     if best is None:
@@ -459,5 +529,348 @@ def generate_new_dish(
             "usedSalesRecords": len(sales_records or []),
             "usedMenuItems": len(menu_items or []),
             "usedIngredients": len(ingredient_names),
+            "existingDishProtection": {
+                "enabled": protect_enabled,
+                "maxAllowedSimilarity": max_allowed_similarity,
+                "existingDishesCount": len(existing_dishes),
+            },
+        },
+    }
+
+
+def optimize_rolls(
+    constraints: dict[str, Any] | None,
+    ingredients: list[dict] | None,
+    menu_items: list[dict] | None,
+    sales_records: list[dict] | None,
+) -> dict[str, Any]:
+    """
+    Lightweight optimizer for roll compositions.
+    Returns a shape compatible with the existing frontend (optimizedRolls) and partially with Java DTOs (results).
+    """
+    constraints = constraints or {}
+    ingredient_names, ingredient_costs, ingredient_grams_per_unit, _units = _ingredient_pool(ingredients or [])
+    if not ingredient_names:
+        return {"status": "failed", "errorMessage": "Нет пула ингредиентов для оптимизации"}
+
+    min_ingredients = max(2, _safe_int(constraints.get("minIngredients"), 3))
+    max_ingredients = max(min_ingredients, _safe_int(constraints.get("maxIngredients"), 6))
+    num_results = max(1, _safe_int(constraints.get("numResults"), 5))
+    population_size = max(20, _safe_int(constraints.get("populationSize"), 80))
+    generations = max(5, _safe_int(constraints.get("generations"), 40))
+
+    must_include = _normalize_ingredients(constraints.get("mustInclude") or [])
+    excluded = set(_normalize_ingredients(constraints.get("excludedIngredients") or constraints.get("exclude") or []))
+
+    max_cost = _safe_float(constraints.get("maxCost"), 0.0)
+    min_profit_margin = _safe_float(constraints.get("minProfitMargin"), 0.0)
+    markup = _safe_float(constraints.get("markup"), 2.35)
+    if markup < 1.3:
+        markup = 1.3
+
+    total_weight_grams = _safe_float(constraints.get("totalWeightGrams"), DEFAULT_TOTAL_WEIGHT_GRAMS)
+    if total_weight_grams <= 0:
+        total_weight_grams = DEFAULT_TOTAL_WEIGHT_GRAMS
+
+    sales_weights = _build_sales_weights(sales_records or [])
+    existing_dishes = _existing_dish_sets(menu_items or [])
+
+    # Optional: use trained ML model (XGBoost) to estimate sales instead of heuristic.
+    use_trained_model = bool(constraints.get("useTrainedModelSales", True))
+    ml_predict = None
+    if use_trained_model:
+        try:
+            # Local import to avoid import-time cycles.
+            from app.services import service as ml_service  # type: ignore
+
+            if getattr(ml_service, "model", None) is None or getattr(ml_service, "mlb", None) is None:
+                # Try loading if not loaded yet.
+                try:
+                    ml_service.load_model()
+                except Exception:
+                    pass
+
+            if getattr(ml_service, "model", None) is not None and getattr(ml_service, "mlb", None) is not None:
+                ml_predict = ml_service.predict_single
+        except Exception:
+            ml_predict = None
+
+    # Similarity protection (reuse same knobs as generator)
+    protection = constraints.get("existingDishProtection")
+    if isinstance(protection, dict):
+        protect_enabled = bool(protection.get("enabled", True))
+        max_allowed_similarity = _safe_float(protection.get("maxSimilarity"), 0.9)
+    else:
+        protect_enabled = True
+        max_allowed_similarity = _safe_float(constraints.get("maxExistingSimilarity"), 0.9)
+    if max_allowed_similarity <= 0:
+        protect_enabled = False
+
+    # Focus optimization around existing dishes (default: enabled).
+    # This makes optimizer suggest "variants" of existing menu items instead of random combos.
+    focus = constraints.get("existingDishFocus")
+    if isinstance(focus, dict):
+        focus_enabled = bool(focus.get("enabled", True))
+        min_focus_similarity = _safe_float(focus.get("minSimilarity"), 0.35)
+        max_focus_similarity = _safe_float(focus.get("maxSimilarity"), max_allowed_similarity if protect_enabled else 0.98)
+        focus_weight = _safe_float(focus.get("weight"), 0.35)
+    else:
+        focus_enabled = True
+        min_focus_similarity = _safe_float(constraints.get("minExistingSimilarity"), 0.35)
+        max_focus_similarity = _safe_float(constraints.get("maxExistingSimilarityFocus"), max_allowed_similarity if protect_enabled else 0.98)
+        focus_weight = _safe_float(constraints.get("existingSimilarityWeight"), 0.35)
+
+    min_focus_similarity = max(0.0, min(1.0, min_focus_similarity))
+    max_focus_similarity = max(0.0, min(1.0, max_focus_similarity))
+    focus_weight = max(0.0, min(1.0, focus_weight))
+    if not existing_dishes:
+        focus_enabled = False
+
+    def score(candidate_ing: list[str], generation_idx: int) -> Candidate | None:
+        candidate_ing = _enforce_constraints(
+            candidate_ing, ingredient_names, min_ingredients, max_ingredients, must_include, excluded
+        )
+        if not candidate_ing:
+            return None
+        if protect_enabled and existing_dishes and _is_too_similar(set(candidate_ing), existing_dishes, max_allowed_similarity):
+            return None
+
+        similarity = _max_similarity(set(candidate_ing), existing_dishes) if existing_dishes else 0.0
+        if focus_enabled:
+            # Enforce that candidates are "variants" of existing dishes.
+            if similarity < min_focus_similarity or similarity > max_focus_similarity:
+                return None
+
+        c = _evaluate_candidate(
+            candidate_ing,
+            ingredient_costs,
+            ingredient_grams_per_unit,
+            sales_weights,
+            existing_dishes,
+            markup,
+            generation_idx,
+            total_weight_grams,
+        )
+
+        # Replace heuristic predicted sales with trained model prediction when available.
+        if ml_predict is not None:
+            try:
+                ml_sales = float(ml_predict(c.ingredients, None))
+                # Keep it non-negative and within a sane range.
+                if ml_sales < 0:
+                    ml_sales = 0.0
+                margin = max(c.recommended_price - c.estimated_cost, 0.0)
+                est_profit = round(ml_sales * margin, 2)
+                # Recompute fitness using the same novelty weighting as in _evaluate_candidate
+                fitness = round(est_profit * (0.6 + 0.4 * c.novelty_score), 4)
+                c = Candidate(
+                    ingredients=c.ingredients,
+                    fitness=fitness,
+                    predicted_sales=round(ml_sales, 2),
+                    estimated_cost=c.estimated_cost,
+                    recommended_price=c.recommended_price,
+                    estimated_profit=est_profit,
+                    novelty_score=c.novelty_score,
+                    generation_found=c.generation_found,
+                )
+            except Exception:
+                # If ML model isn't trained/compatible, silently keep heuristic.
+                pass
+
+        # Shift fitness from "novelty" to "similarity to existing menu" when focus is enabled.
+        if focus_enabled:
+            # Original: profit * (0.6 + 0.4 * novelty)
+            # Focused: profit * (0.65 + focus_weight * similarity + (0.35 - focus_weight) * novelty)
+            novelty = c.novelty_score
+            focused_multiplier = 0.65 + focus_weight * similarity + max(0.0, (0.35 - focus_weight)) * novelty
+            c = Candidate(
+                ingredients=c.ingredients,
+                fitness=round(c.estimated_profit * focused_multiplier, 4),
+                predicted_sales=c.predicted_sales,
+                estimated_cost=c.estimated_cost,
+                recommended_price=c.recommended_price,
+                estimated_profit=c.estimated_profit,
+                novelty_score=c.novelty_score,
+                generation_found=c.generation_found,
+            )
+
+        # Apply hard business constraints.
+        if max_cost > 0 and c.estimated_cost > max_cost:
+            return None
+        if min_profit_margin > 0:
+            margin = 0.0
+            if c.recommended_price > 0:
+                margin = max(c.recommended_price - c.estimated_cost, 0.0) / c.recommended_price
+            if margin < min_profit_margin:
+                return None
+        return c
+
+    # init population
+    population: list[list[str]] = []
+    # Seed population with existing menu items to keep focus on existing dishes.
+    if focus_enabled and menu_items:
+        for item in menu_items:
+            if not isinstance(item, dict):
+                continue
+            seed = _normalize_ingredients(item.get("ingredients"))
+            seed = _enforce_constraints(seed, ingredient_names, min_ingredients, max_ingredients, must_include, excluded)
+            if seed:
+                population.append(seed)
+
+    # Ensure diversity: also add "nearby" variants of menu seeds.
+    if focus_enabled and population:
+        seeds_snapshot = population[: min(len(population), max(10, population_size // 2))]
+        for s in seeds_snapshot:
+            v = _mutate(s, ingredient_names, min_ingredients, max_ingredients, must_include, excluded)
+            v = _enforce_constraints(v, ingredient_names, min_ingredients, max_ingredients, must_include, excluded)
+            if v:
+                population.append(v)
+
+    attempts = 0
+    while len(population) < population_size and attempts < population_size * 80:
+        attempts += 1
+        cand = _make_random_candidate(ingredient_names, min_ingredients, max_ingredients, must_include, excluded)
+        if cand:
+            population.append(cand)
+    population = population[:population_size]
+    if not population:
+        return {"status": "failed", "errorMessage": "Не удалось сформировать стартовую популяцию"}
+
+    best_candidates: list[Candidate] = []
+    for gen in range(1, generations + 1):
+        scored: list[Candidate] = []
+        for cand in population:
+            s = score(cand, gen)
+            if s:
+                scored.append(s)
+        if not scored:
+            # if constraints too strict, relax similarity protection a bit for this generation
+            if protect_enabled and max_allowed_similarity < 0.99:
+                max_allowed_similarity = min(0.99, max_allowed_similarity + 0.02)
+                continue
+            if focus_enabled and min_focus_similarity > 0.0:
+                # relax focus if too strict
+                min_focus_similarity = max(0.0, min_focus_similarity - 0.05)
+                continue
+            return {"status": "failed", "errorMessage": "Слишком строгие ограничения: не осталось допустимых вариантов"}
+
+        scored.sort(key=lambda x: x.fitness, reverse=True)
+        best_candidates = scored[: max(num_results * 10, 30)]
+
+        elite = [c.ingredients for c in scored[: max(2, population_size // 10)]]
+        next_population = list(elite)
+        while len(next_population) < population_size:
+            parent_a = random.choice(best_candidates).ingredients
+            parent_b = random.choice(best_candidates).ingredients
+            child = _crossover(parent_a, parent_b, min_ingredients, max_ingredients)
+            if random.random() < 0.45:
+                child = _mutate(child, ingredient_names, min_ingredients, max_ingredients, must_include, excluded)
+            next_population.append(child)
+        population = next_population
+
+    # build response
+    unique_by_set: dict[frozenset[str], Candidate] = {}
+    for c in best_candidates:
+        key = frozenset(c.ingredients)
+        if key not in unique_by_set or c.fitness > unique_by_set[key].fitness:
+            unique_by_set[key] = c
+    final_sorted = sorted(unique_by_set.values(), key=lambda x: x.fitness, reverse=True)
+
+    # Ensure we return exactly num_results if possible by generating extra diversified candidates.
+    # Diversity rule: do not include two candidates with Jaccard similarity >= 0.9.
+    final: list[Candidate] = []
+    for c in final_sorted:
+        s = set(c.ingredients)
+        if any(_jaccard(s, set(x.ingredients)) >= 0.9 for x in final):
+            continue
+        final.append(c)
+        if len(final) >= num_results:
+            break
+
+    # If still not enough, allow closer variants (relax diversity threshold) but keep uniqueness.
+    if len(final) < num_results:
+        for c in final_sorted:
+            if c in final:
+                continue
+            final.append(c)
+            if len(final) >= num_results:
+                break
+
+    # If still not enough results, actively generate more candidates by mutating the best ones.
+    # We keep hard business constraints, but gradually relax "focus on existing dishes" and diversity.
+    if len(final) < num_results:
+        base_parents = final_sorted[: max(10, num_results * 10)] if final_sorted else []
+        relax_steps = [
+            # (min_focus_similarity_delta, diversity_threshold)
+            (0.0, 0.95),
+            (-0.05, 0.97),
+            (-0.10, 0.99),
+            (-0.20, 1.0),
+        ]
+        for delta, diversity_th in relax_steps:
+            if len(final) >= num_results:
+                break
+            local_min_focus = min_focus_similarity + delta
+            local_min_focus = max(0.0, min(1.0, local_min_focus))
+
+            attempts = 0
+            max_attempts = 800
+            while len(final) < num_results and attempts < max_attempts:
+                attempts += 1
+                if base_parents:
+                    parent = random.choice(base_parents).ingredients
+                else:
+                    parent = _make_random_candidate(
+                        ingredient_names, min_ingredients, max_ingredients, must_include, excluded
+                    )
+                child = _mutate(parent, ingredient_names, min_ingredients, max_ingredients, must_include, excluded)
+                s = score(child, generations + 1)
+                if s is None:
+                    continue
+
+                if focus_enabled:
+                    sim = _max_similarity(set(s.ingredients), existing_dishes) if existing_dishes else 0.0
+                    if sim < local_min_focus:
+                        continue
+
+                if any(frozenset(s.ingredients) == frozenset(x.ingredients) for x in final):
+                    continue
+                if diversity_th < 1.0 and any(_jaccard(set(s.ingredients), set(x.ingredients)) >= diversity_th for x in final):
+                    continue
+                final.append(s)
+
+    optimized_rolls = []
+    for idx, c in enumerate(final, start=1):
+        margin = 0.0
+        if c.recommended_price > 0:
+            margin = max(c.recommended_price - c.estimated_cost, 0.0) / c.recommended_price
+        optimized_rolls.append(
+            {
+                "id": str(idx),
+                "name": f"Оптимизированный ролл {idx}",
+                "ingredients": c.ingredients,
+                "predictedSales": c.predicted_sales,
+                "confidenceScore": 0.85,
+                "cost": c.estimated_cost,
+                "estimatedCost": c.estimated_cost,
+                "estimatedProfit": c.estimated_profit,
+                "profitMargin": round(margin, 4),
+                "noveltyScore": c.novelty_score,
+                "score": round(min(1.0, c.fitness / max(1.0, final[0].fitness if final else 1.0)), 4),
+                "fitnessScore": c.fitness,
+                "generationFound": c.generation_found,
+                "explanation": "Подобрано по максимуму прибыли с учетом новизны и ограничений",
+            }
+        )
+
+    return {
+        "status": "completed",
+        # For current frontend
+        "optimizedRolls": optimized_rolls,
+        # For Java DTO compatibility
+        "results": optimized_rolls,
+        "statistics": {
+            "populationSize": population_size,
+            "generations": generations,
         },
     }

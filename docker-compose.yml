@@ -28,7 +28,14 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/postgres
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: "2002"
+      # URLs to Python service must use docker DNS name (not localhost).
+      # Spring relaxed binding will map these env vars to properties:
+      # - python.api.url
+      # - ml.python.service.url
+      # - ml.service.url
       PYTHON_API_URL: http://pymodule:8000
+      ML_PYTHON_SERVICE_URL: http://pymodule:8000
+      ML_SERVICE_URL: http://pymodule:8000
       STORAGE_MINIO_ENDPOINT: http://minio:9000
       STORAGE_MINIO_ACCESS_KEY: minioadmin
       STORAGE_MINIO_SECRET_KEY: minioadmin123

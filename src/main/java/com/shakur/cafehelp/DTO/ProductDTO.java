@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 
 public class ProductDTO {
     public int productId;
-    public int supplierId;
+    public Integer supplierId;
     public String productName;
     public BigDecimal productPrice;
     public Double waste;
@@ -23,11 +23,11 @@ public class ProductDTO {
         this.productId = productId;
     }
 
-    public int getSupplierId() {
+    public Integer getSupplierId() {
         return supplierId;
     }
 
-    public void setSupplierId(int supplierId) {
+    public void setSupplierId(Integer supplierId) {
         this.supplierId = supplierId;
     }
 

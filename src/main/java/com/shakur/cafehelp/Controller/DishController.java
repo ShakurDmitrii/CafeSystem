@@ -3,6 +3,7 @@ package com.shakur.cafehelp.Controller;
 import com.shakur.cafehelp.DTO.DishDTO;
 import com.shakur.cafehelp.Service.DishService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -43,8 +44,12 @@ public class DishController {
 
     // Удаление блюда
     @DeleteMapping("/{id}")
-    public boolean deleteDish(@PathVariable int id) {
-       return dishService.deleteDish(id);
+    public ResponseEntity<Void> deleteDish(@PathVariable int id) {
+       boolean deleted = dishService.deleteDish(id);
+       if (!deleted) {
+           return ResponseEntity.notFound().build();
+       }
+       return ResponseEntity.noContent().build();
     }
 
 }

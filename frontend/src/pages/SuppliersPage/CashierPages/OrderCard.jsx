@@ -8,12 +8,23 @@ async function loadOrderDishes(orderId) {
         return [];
     }
     try {
-        console.log("Загружаем блюда для orderId:", orderId);
+        console.log("Загружаем позиции заказа для orderId:", orderId);
+
+        const orderRes = await fetch(`${API_BASE_URL}/api/orders/${orderId}`);
+        if (orderRes.ok) {
+            const orderText = await orderRes.text();
+            const order = orderText ? JSON.parse(orderText) : null;
+            if (Array.isArray(order?.items) && order.items.length > 0) {
+                console.log("Получили позиции заказа из /api/orders/{id}:", order.items);
+                return order.items;
+            }
+        }
+
         const res = await fetch(`${API_BASE_URL}/api/shifts/getDish/${orderId}`);
         if (!res.ok) throw new Error(`Ошибка загрузки блюд ${res.status}`);
         const text = await res.text();
         const dishes = text ? JSON.parse(text) : [];
-        console.log("Получили блюда с сервера:", dishes);
+        console.log("Получили блюда со старого endpoint:", dishes);
         return Array.isArray(dishes) ? dishes : [];
     } catch (e) {
         console.error("Ошибка при fetch блюд:", e);
@@ -65,11 +76,16 @@ export default function OrderCard({
     markOrderReady,
     onPrintOrderNumber,
     onPrintOrderDetails,
-    onUpdatePayment
+    onUpdatePayment,
+    onIssueOrder
 }) {
+    const isIssued = Boolean(order?.date_issue || order?.dateIssue);
+    const hasUsableInlineItems = Array.isArray(order.items)
+        && order.items.length > 0
+        && order.items.some((item) => item?.dishName || item?.name || item?.title);
     const [items, setItems] = useState(() => (Array.isArray(order.items) ? order.items : []));
     const [itemsLoaded, setItemsLoaded] = useState(
-        Array.isArray(order.items) && order.items.length > 0
+        hasUsableInlineItems
     );
     const [secondsPassed, setSecondsPassed] = useState(0);
     const [isDelayed, setIsDelayed] = useState(false);
@@ -85,6 +101,16 @@ export default function OrderCard({
     const debtStatus = getDebtStatus(order.debtPaymentDate);
 
     // Загрузка блюд
+    useEffect(() => {
+        if (hasUsableInlineItems) {
+            setItems(Array.isArray(order.items) ? order.items : []);
+            setItemsLoaded(true);
+        } else if (Array.isArray(order.items) && order.items.length === 0) {
+            setItems([]);
+            setItemsLoaded(false);
+        }
+    }, [order.items, hasUsableInlineItems]);
+
     useEffect(() => {
         if (itemsLoaded) return;
         let cancelled = false;
@@ -236,9 +262,10 @@ export default function OrderCard({
             const { minutes, seconds } = delay;
             return (
                 <div style={{
-                    color: "#ff0000",
+                    color: "#a43e1f",
                     fontWeight: "bold",
-                    backgroundColor: "#ffebee",
+                    backgroundColor: "#fff0ed",
+                    border: "1px solid #f0b3a8",
                     padding: "5px",
                     borderRadius: "4px",
                     margin: "5px 0"
@@ -257,7 +284,8 @@ export default function OrderCard({
                 <div style={{
                     margin: "5px 0",
                     padding: "5px",
-                    backgroundColor: "#e3f2fd",
+                    backgroundColor: "#fff4e8",
+                    border: "1px solid #f2d5b7",
                     borderRadius: "4px"
                 }}>
                     ⏱ Осталось: {remainingMinutes.toString().padStart(2, '0')}:
@@ -290,35 +318,35 @@ export default function OrderCard({
         if (order.status) {
             if (unpaid) {
                 return {
-                    borderLeft: "4px solid #f59e0b",
-                    backgroundColor: "#fffbeb",
+                    borderLeft: "4px solid #cf8b42",
+                    backgroundColor: "#fff7e8",
                     position: "relative"
                 };
             }
             return {
-                borderLeft: "4px solid #4caf50",
-                backgroundColor: "#e8f5e9",
+                borderLeft: "4px solid #6b8f5d",
+                backgroundColor: "#f1f8ec",
                 position: "relative"
             };
         }
         if (isDelayed) {
             return {
                 borderLeft: "4px solid #f44336",
-                backgroundColor: "#ffebee",
+                backgroundColor: "#fff0ed",
                 animation: "pulse 1.5s infinite",
                 position: "relative"
             };
         }
         if (unpaid) {
             return {
-                borderLeft: "4px solid #f59e0b",
-                backgroundColor: "#fffbeb",
+                borderLeft: "4px solid #cf8b42",
+                backgroundColor: "#fff7e8",
                 position: "relative"
             };
         }
         return {
-            borderLeft: "4px solid #2196f3",
-            backgroundColor: "#e3f2fd",
+            borderLeft: "4px solid #d1773d",
+            backgroundColor: "#fff6ef",
             position: "relative"
         };
     };
@@ -336,13 +364,13 @@ export default function OrderCard({
                 };
             case 'today':
                 return {
-                    background: "linear-gradient(135deg, #ff9800, #ff5722)",
+                    background: "linear-gradient(135deg, #cf8b42, #d97f42)",
                     color: "white",
                     fontWeight: "bold"
                 };
             case 'future':
                 return {
-                    background: "linear-gradient(135deg, #4caf50, #2e7d32)",
+                    background: "linear-gradient(135deg, #7ea06f, #5f8153)",
                     color: "white"
                 };
             default:
@@ -431,7 +459,7 @@ export default function OrderCard({
                         borderRadius: "12px",
                         fontSize: "12px",
                         fontWeight: "600",
-                        backgroundColor: "#ff9800",
+                        background: "linear-gradient(135deg, #cf8b42, #e0a458)",
                         color: "white",
                         boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
                     }}>
@@ -479,7 +507,7 @@ export default function OrderCard({
                 {formatTime()}
 
                 {/* Информация о времени */}
-                <div style={{ fontSize: "0.9em", color: "#666", marginBottom: "10px" }}>
+                <div style={{ fontSize: "0.9em", color: "#7c6a59", marginBottom: "10px" }}>
                     Время приготовления: {order.time || 0} мин
                     {getDisplayDelayParts().minutes > 0 && (() => {
                         const { minutes, seconds } = getDisplayDelayParts();
@@ -513,7 +541,7 @@ export default function OrderCard({
                 <div style={{
                     marginTop: "10px",
                     paddingTop: "10px",
-                    borderTop: "1px dashed #ccc",
+                    borderTop: "1px dashed #e1c1a4",
                     display: "flex",
                     justifyContent: "space-between",
                     fontWeight: "bold"
@@ -527,7 +555,7 @@ export default function OrderCard({
                     gap: "15px",
                     marginTop: "8px",
                     fontSize: "0.85em",
-                    color: "#555"
+                    color: "#7c6a59"
                 }}>
                     <span>Тип: {order.type ? "🚚 Доставка" : "🏠 По месту"}</span>
                     <span>Статус: {order.status ? "✅ ГОТОВ" : "👨‍🍳 ГОТОВИТСЯ"}</span>
@@ -539,7 +567,8 @@ export default function OrderCard({
                     <div style={{
                         marginTop: "8px",
                         padding: "6px",
-                        backgroundColor: "#f5f5f5",
+                        backgroundColor: "#fff8f1",
+                        border: "1px solid #efd8c0",
                         borderRadius: "4px",
                         fontSize: "0.85em"
                     }}>
@@ -596,6 +625,35 @@ export default function OrderCard({
                         </button>
                     </>
                 )}
+
+                {order.status && !isIssued && (
+                    <button
+                        className={`${styles.btn} ${styles.secondary}`}
+                        onClick={() => onIssueOrder?.(order.orderId)}
+                        style={{ minWidth: "120px" }}
+                    >
+                        Выдан
+                    </button>
+                )}
+
+                {isIssued && (
+                    <span
+                        style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            minWidth: "120px",
+                            justifyContent: "center",
+                            padding: "10px 14px",
+                            borderRadius: "14px",
+                            background: "#f2f4f7",
+                            border: "1px solid #d7dee7",
+                            color: "#5f6b7a",
+                            fontWeight: 700
+                        }}
+                    >
+                        Выдан
+                    </span>
+                )}
             </div>
 
             {printMessage && (
@@ -603,9 +661,9 @@ export default function OrderCard({
                     style={{
                         marginTop: "8px",
                         fontSize: "12px",
-                        color: printMessage.type === "success" ? "#166534" : "#991b1b",
-                        background: printMessage.type === "success" ? "#dcfce7" : "#fee2e2",
-                        border: `1px solid ${printMessage.type === "success" ? "#bbf7d0" : "#fecaca"}`,
+                        color: printMessage.type === "success" ? "#386641" : "#a43e1f",
+                        background: printMessage.type === "success" ? "#eef8ec" : "#fff0ed",
+                        border: `1px solid ${printMessage.type === "success" ? "#cce6c3" : "#f0b3a8"}`,
                         borderRadius: "6px",
                         padding: "6px 8px"
                     }}

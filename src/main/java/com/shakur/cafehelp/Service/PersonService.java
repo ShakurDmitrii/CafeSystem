@@ -6,8 +6,10 @@ import jooqdata.tables.UserAccount;
 import jooqdata.tables.records.PersonRecord;
 
 import org.jooq.DSLContext;
+import org.jooq.Field;
 import org.jooq.Record1;
 import org.jooq.Select;
+import org.jooq.impl.DSL;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,7 @@ import java.util.Set;
 @Service
 public class PersonService {
     private static final Set<String> ALLOWED_ROLES = Set.of("OWNER", "WORKER");
+    private static final Field<Boolean> PERSON_ARCHIVED = DSL.field(DSL.name("archived"), Boolean.class);
     private static DSLContext dsl;
     private final BCryptPasswordEncoder passwordEncoder;
     public PersonService(DSLContext dsl, BCryptPasswordEncoder passwordEncoder) {
@@ -31,6 +34,7 @@ public class PersonService {
 
     public List<PersonDTO> findAll() {
         return dsl.selectFrom(Person.PERSON)
+                .where(PERSON_ARCHIVED.eq(false))
                 .fetch()
                 .stream()
                 .map(record -> {
@@ -49,6 +53,7 @@ public class PersonService {
     public PersonDTO getPersonById(int id) {
         return dsl.selectFrom(Person.PERSON)
                 .where(Person.PERSON.PERSONID.eq(id))
+                .and(PERSON_ARCHIVED.eq(false))
                 .fetchOne(record -> {
                     PersonDTO dto = new PersonDTO();
                     dto.setPersonID(record.getPersonid());
@@ -63,6 +68,7 @@ public class PersonService {
     public List<PersonDTO> findByName(String name) {
         return dsl.selectFrom(Person.PERSON)
                 .where(Person.PERSON.NAME.eq(name))
+                .and(PERSON_ARCHIVED.eq(false))
                 .fetch()
                 .stream()
                 .map(personRecord -> {
@@ -83,6 +89,10 @@ public class PersonService {
         record.setNumdays(dto.numDays);
         record.setSalaryperday(dto.salaryPerDay != null ? dto.salaryPerDay : BigDecimal.ZERO);
         record.store();
+        dsl.update(Person.PERSON)
+                .set(PERSON_ARCHIVED, false)
+                .where(Person.PERSON.PERSONID.eq(record.getPersonid()))
+                .execute();
         dto.personID = record.getPersonid();
         return dto;
     }
@@ -104,6 +114,10 @@ public class PersonService {
         personRecord.setNumdays(dto.numDays != null ? dto.numDays : 0);
         personRecord.setSalaryperday(dto.salaryPerDay != null ? dto.salaryPerDay : BigDecimal.ZERO);
         personRecord.store();
+        dsl.update(Person.PERSON)
+                .set(PERSON_ARCHIVED, false)
+                .where(Person.PERSON.PERSONID.eq(personRecord.getPersonid()))
+                .execute();
 
         Integer personId = personRecord.getPersonid();
         if (personId == null) {
@@ -147,8 +161,24 @@ public class PersonService {
 
 
     // Удаление сотрудника
+    @Transactional
     public boolean deletePerson(int id) {
-        return dsl.deleteFrom(Person.PERSON)
+        boolean personExists = dsl.fetchExists(
+                dsl.selectOne()
+                        .from(Person.PERSON)
+                        .where(Person.PERSON.PERSONID.eq(id))
+                        .and(PERSON_ARCHIVED.eq(false))
+        );
+        if (!personExists) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Сотрудник не найден");
+        }
+
+        dsl.deleteFrom(UserAccount.USER_ACCOUNT)
+                .where(UserAccount.USER_ACCOUNT.PERSONID.eq(id))
+                .execute();
+
+        return dsl.update(Person.PERSON)
+                .set(PERSON_ARCHIVED, true)
                 .where(Person.PERSON.PERSONID.eq(id))
                 .execute() > 0;
     }

@@ -86,6 +86,19 @@ public class OrderController {
         }
     }
 
+    @PatchMapping("/{orderId}/issue")
+    public ResponseEntity<?> markIssued(@PathVariable int orderId) {
+        try {
+            return ResponseEntity.ok(orderService.markOrderIssued(orderId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Ошибка выдачи заказа: " + e.getMessage()));
+        }
+    }
+
     public static class StatusUpdateRequest {
         private Boolean status;
         public Boolean getStatus() { return status; }
@@ -206,6 +219,34 @@ public class OrderController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Ошибка печати заказа: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{orderId}/kitchen-payload")
+    public ResponseEntity<?> getKitchenPayload(
+            @PathVariable int orderId,
+            @RequestBody(required = false) PrintKitchenRequest request
+    ) {
+        try {
+            String paymentType = request != null ? request.getPaymentType() : null;
+            Double deliveryCost = request != null ? request.getDeliveryCost() : null;
+            String deliveryPhone = request != null ? request.getDeliveryPhone() : null;
+            String deliveryAddress = request != null ? request.getDeliveryAddress() : null;
+
+            Map<String, Object> payload = orderService.getOrderKitchenPrintPayload(
+                    orderId,
+                    paymentType,
+                    deliveryCost,
+                    deliveryPhone,
+                    deliveryAddress
+            );
+            return ResponseEntity.ok(payload);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Ошибка подготовки данных для печати: " + e.getMessage()));
         }
     }
 

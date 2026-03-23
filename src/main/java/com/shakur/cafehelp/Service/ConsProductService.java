@@ -12,10 +12,12 @@ import java.util.Objects;
 @Service
 public class ConsProductService {
 
-    private DSLContext dsl;
+    private final DSLContext dsl;
+    private final ConsignmentNoteService consignmentNoteService;
 
-    public ConsProductService(DSLContext dsl) {
+    public ConsProductService(DSLContext dsl, ConsignmentNoteService consignmentNoteService) {
         this.dsl = dsl;
+        this.consignmentNoteService = consignmentNoteService;
     }
 
     public List<ConsProductDTO> getConsProduct() {
@@ -61,6 +63,13 @@ public class ConsProductService {
     }
 
     public ConsProductDTO createConsProduct(ConsProductDTO consProductDTO) {
+        if (consProductDTO.consignmentId <= 0) {
+            throw new IllegalArgumentException("consignmentId is required");
+        }
+        if (consignmentNoteService.isPosted(consProductDTO.consignmentId)) {
+            throw new IllegalStateException("Проведенную накладную нельзя редактировать");
+        }
+
         ConsproductRecord record = dsl.newRecord(Consproduct.CONSPRODUCT);
 
         // Обязательно устанавливаем только нужные поля
@@ -88,26 +97,23 @@ public class ConsProductService {
 
 
     public ConsProductDTO deleteConsProduct(int consProductId) {
-        boolean exist = dsl.fetchExists(
-                dsl.selectOne()
-                        .from(Consproduct.CONSPRODUCT)
-                        .where(Consproduct.CONSPRODUCT.CONSPRODUCTID.eq(consProductId))
-        );
-        if (!exist) {
+        ConsproductRecord existingRecord = dsl.selectFrom(Consproduct.CONSPRODUCT)
+                .where(Consproduct.CONSPRODUCT.CONSPRODUCTID.eq(consProductId))
+                .fetchOne();
+
+        if (existingRecord == null) {
             throw new RuntimeException("No such Product with id " + consProductId);
         }
+        if (consignmentNoteService.isPosted(existingRecord.getConsignmentid())) {
+            throw new IllegalStateException("Проведенную накладную нельзя редактировать");
+        }
 
-        ConsProductDTO deleteConsProduct = dsl.selectFrom(Consproduct.CONSPRODUCT)
-                .where(Consproduct.CONSPRODUCT.CONSPRODUCTID.eq(consProductId))
-                .fetchOne(record -> {
-                    ConsProductDTO dto = new ConsProductDTO();
-                    dto.consProductId = record.getConsproductid();
-                    dto.consignmentId = record.getConsignmentid();
-                    dto.productId = record.getProductid();
-                    dto.GROSS = record.getGross();
-                    dto.quantity = record.getQuantity();
-                    return dto;
-                });
+        ConsProductDTO deleteConsProduct = new ConsProductDTO();
+        deleteConsProduct.consProductId = existingRecord.getConsproductid();
+        deleteConsProduct.consignmentId = existingRecord.getConsignmentid();
+        deleteConsProduct.productId = existingRecord.getProductid();
+        deleteConsProduct.GROSS = existingRecord.getGross();
+        deleteConsProduct.quantity = existingRecord.getQuantity();
 
         dsl.deleteFrom(Consproduct.CONSPRODUCT)
                 .where(Consproduct.CONSPRODUCT.CONSPRODUCTID.eq(consProductId))

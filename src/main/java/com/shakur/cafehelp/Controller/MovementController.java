@@ -62,7 +62,7 @@ public class MovementController {
 
     @GetMapping("/report")
     public ResponseEntity<List<MovementReportRowDTO>> getReceiptReport(
-            @RequestParam Integer productId,
+            @RequestParam(required = false) Integer productId,
             @RequestParam LocalDate dateFrom,
             @RequestParam LocalDate dateTo
     ) {

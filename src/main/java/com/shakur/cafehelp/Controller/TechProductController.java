@@ -26,6 +26,12 @@
             return ResponseEntity.ok(items);
         }
 
+        @GetMapping("/preparation/{preparationId}")
+        public ResponseEntity<List<TechProductDTO>> getByPreparation(@PathVariable int preparationId) {
+            List<TechProductDTO> items = techProductService.getByPreparationId(preparationId);
+            return ResponseEntity.ok(items);
+        }
+
         // ===============================
         // GET ONE INGREDIENT
         // ===============================

@@ -50,6 +50,7 @@ public class OptimizedRollDTO {
 
     // Helper
     public Double getConfidenceIntervalWidth() {
+        if (upperBound == null || lowerBound == null) return null;
         return upperBound - lowerBound;
     }
 }

@@ -5,6 +5,8 @@ import styles from "./PersonPage.module.css";
 export default function PersonPage() {
     const [persons, setPersons] = useState([]);
     const [workDaysByPerson, setWorkDaysByPerson] = useState({});
+    const [deletingPersonId, setDeletingPersonId] = useState(null);
+    const [deleteError, setDeleteError] = useState("");
     const [salaryPayments, setSalaryPayments] = useState(() => {
         try {
             const raw = localStorage.getItem("salaryPayments");
@@ -47,9 +49,14 @@ export default function PersonPage() {
             shiftsArray
                 .filter(s => s && s.endTime) // считаем только закрытые смены
                 .forEach(s => {
-                    const personKey = s.personCode;
-                    if (personKey == null) return;
-                    daysMap[personKey] = (daysMap[personKey] ?? 0) + 1;
+                    const workerIds = Array.isArray(s.personIds) && s.personIds.length > 0
+                        ? s.personIds
+                        : [s.personCode];
+
+                    [...new Set(workerIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id >= 0))]
+                        .forEach((personId) => {
+                            daysMap[personId] = (daysMap[personId] ?? 0) + 1;
+                        });
                 });
 
             setWorkDaysByPerson(daysMap);
@@ -87,15 +94,82 @@ export default function PersonPage() {
         });
     };
 
+    const handleDeletePerson = async (person) => {
+        if (!person?.personID && person?.personID !== 0) return;
+        if (!window.confirm(`Отправить сотрудника ${person.name} в архив? Он исчезнет из обычных списков, но история смен сохранится.`)) return;
+
+        setDeleteError("");
+        setDeletingPersonId(person.personID);
+        try {
+            const response = await fetch(`http://localhost:8080/api/persons/${person.personID}`, {
+                method: "DELETE"
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                let message = `Не удалось отправить сотрудника в архив (${response.status})`;
+                if (text) {
+                    try {
+                        const parsed = JSON.parse(text);
+                        message = parsed.message || parsed.error || message;
+                    } catch {
+                        message = text;
+                    }
+                }
+                throw new Error(message);
+            }
+
+            setSalaryPayments((prev) => {
+                const next = { ...prev };
+                delete next[person.personID];
+                return next;
+            });
+            await loadPersons();
+        } catch (err) {
+            console.error("Ошибка архивирования сотрудника:", err);
+            setDeleteError(err.message || "Не удалось отправить сотрудника в архив");
+        } finally {
+            setDeletingPersonId(null);
+        }
+    };
+
     return (
         <div className={styles.page}>
-            <AddPersonForm onPersonAdded={() => loadPersons()} />
+            <section className={styles.hero}>
+                <div>
+                    <p className={styles.eyebrow}>Команда</p>
+                    <h1 className={styles.title}>Персонал и выплаты</h1>
+                    <p className={styles.subtitle}>
+                        Управляйте сотрудниками в той же тёплой рабочей палитре: добавляйте новых, отслеживайте дни к выплате и архивируйте тех, кто больше не работает.
+                    </p>
+                </div>
+                <div className={styles.heroNote}>
+                    <strong>{persons.length}</strong>
+                    <span>активных сотрудников сейчас в системе</span>
+                </div>
+            </section>
+
+            <section className={styles.formSection}>
+                <div className={styles.sectionHeading}>
+                    <div>
+                        <h2>Новый сотрудник</h2>
+                        <p>Зарегистрируйте сотрудника и сразу создайте ему аккаунт для входа.</p>
+                    </div>
+                </div>
+                <AddPersonForm onPersonAdded={() => loadPersons()} />
+            </section>
 
             <div className={styles.tableCard}>
                 <div className={styles.tableHeader}>
                     <h2>Список сотрудников</h2>
                     <span className={styles.counter}>Всего: {persons.length}</span>
                 </div>
+
+                {deleteError && (
+                    <div className={styles.errorBanner}>
+                        {deleteError}
+                    </div>
+                )}
 
                 <div className={styles.tableWrap}>
                     <table className={styles.table}>
@@ -133,13 +207,22 @@ export default function PersonPage() {
                                     <td>{formatMoney(totalPaid)} ₽</td>
                                     <td>{formatDateTime(lastPaidAt)}</td>
                                     <td>
-                                        <button
-                                            className={styles.payBtn}
-                                            disabled={amountToPay <= 0}
-                                            onClick={() => handlePaySalary(p, calculatedDays, amountToPay)}
-                                        >
-                                            Выдать ЗП
-                                        </button>
+                                        <div className={styles.actionButtons}>
+                                            <button
+                                                className={styles.payBtn}
+                                                disabled={amountToPay <= 0 || deletingPersonId === p.personID}
+                                                onClick={() => handlePaySalary(p, calculatedDays, amountToPay)}
+                                            >
+                                                Выдать ЗП
+                                            </button>
+                                            <button
+                                                className={styles.deleteBtn}
+                                                disabled={deletingPersonId === p.personID}
+                                                onClick={() => handleDeletePerson(p)}
+                                            >
+                                                {deletingPersonId === p.personID ? "Архивируем..." : "В архив"}
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             );

@@ -1,0 +1,20 @@
+1. Скопируйте папку проекта и папку `backups/2026-03-24` на другой компьютер.
+
+2. Загрузите Docker-образы:
+   docker load -i cafehelp-images-2026-03-24.tar
+
+3. Поднимите контейнеры:
+   docker compose up -d
+
+4. Остановите сервисы приложения перед восстановлением данных:
+   docker compose stop backend frontend pymodule
+
+5. Восстановите базу данных:
+   docker cp cafehelp-postgres-2026-03-24.dump cafehelp-db:/tmp/restore.dump
+   docker exec -e PGPASSWORD=2002 cafehelp-db pg_restore -U postgres -d postgres --clean --if-exists /tmp/restore.dump
+
+6. Восстановите файлы MinIO:
+   docker run --rm -v cafehelp_minio_data:/data -v /ABS/PATH/TO/backups/2026-03-24:/backup alpine sh -c "rm -rf /data/* && tar -xzf /backup/cafehelp-minio-data-2026-03-24.tar.gz -C /data"
+
+7. Поднимите сервисы обратно:
+   docker compose restart
