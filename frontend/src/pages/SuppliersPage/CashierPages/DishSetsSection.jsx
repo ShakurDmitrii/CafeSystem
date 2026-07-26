@@ -71,6 +71,8 @@ const buildSetPayload = (form) => ({
     }))
 });
 
+const normalizeSetName = (value) => String(value || "").trim().toLocaleLowerCase("ru-RU");
+
 export default function DishSetsSection({ dishes = [], categories = [] }) {
     const [dishSets, setDishSets] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -99,6 +101,18 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
         }, 0)
     ), [dishCostMap]);
 
+    const hasDuplicateSetName = useCallback((setName, excludedSetId = null) => {
+        const normalized = normalizeSetName(setName);
+        if (!normalized) return false;
+
+        return dishSets.some((setItem) => {
+            if (excludedSetId != null && Number(setItem.setId) === Number(excludedSetId)) {
+                return false;
+            }
+            return normalizeSetName(setItem.setName) === normalized;
+        });
+    }, [dishSets]);
+
     const loadSets = useCallback(async () => {
         setLoading(true);
         try {
@@ -106,6 +120,9 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
             const text = await res.text();
             const data = parseJsonSafe(text);
             if (!res.ok) {
+                if (res.status === 409) {
+                    throw new Error(data?.message || "Набор с таким названием уже существует");
+                }
                 throw new Error(data?.message || `Не удалось загрузить наборы (${res.status})`);
             }
             setDishSets(Array.isArray(data) ? data.map(normalizeSet) : []);
@@ -203,6 +220,11 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
             return;
         }
 
+        if (hasDuplicateSetName(payload.setName)) {
+            setCreateError("Набор с таким названием уже существует");
+            return;
+        }
+
         setCreateLoading(true);
         setCreateError("");
         try {
@@ -262,6 +284,11 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
 
         if (!payload.items.length) {
             setEditError("Добавьте в набор хотя бы одно блюдо");
+            return;
+        }
+
+        if (hasDuplicateSetName(payload.setName, editingSet.setId)) {
+            setEditError("Набор с таким названием уже существует");
             return;
         }
 
@@ -338,8 +365,10 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                         <span>Название набора</span>
                         <input
                             type="text"
+                            name="createSetName"
                             className={styles.input}
-                            placeholder="Например, сет Филадельфия"
+                            placeholder="Например, сет Филадельфия…"
+                            autoComplete="off"
                             value={createForm.setName}
                             onChange={(e) => setCreateForm((prev) => ({ ...prev, setName: e.target.value }))}
                         />
@@ -349,7 +378,10 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                         <span>Цена, ₽</span>
                         <input
                             type="number"
+                            name="createSetPrice"
+                            inputMode="decimal"
                             className={styles.input}
+                            autoComplete="off"
                             min="0"
                             step="0.01"
                             value={createForm.price}
@@ -361,6 +393,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                         <span>Себестоимость, ₽</span>
                         <input
                             type="text"
+                            name="createSetCost"
                             className={styles.input}
                             value={`${formatMoney(createSetCost)} ₽`}
                             readOnly
@@ -385,7 +418,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                         <>
                             <div className={styles.compositionSummary}>
                                 {summarizeSetItems(createForm.items)}
-                                {createForm.items.length > 4 ? "..." : ""}
+                                {createForm.items.length > 4 ? "…" : ""}
                             </div>
                             <div className={styles.compositionChips}>
                                 {normalizeSetItems(createForm.items).map((item) => (
@@ -407,7 +440,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                         <div className={styles.imageHeading}>Фото набора</div>
                         <div className={styles.imageHint}>
                             {createImageUploading
-                                ? "Загружаем изображение..."
+                                ? "Загружаем изображение…"
                                 : createForm.imageUrl
                                     ? "Изображение набора загружено и будет сохранено вместе с карточкой."
                                     : "Добавьте фото, чтобы сет красиво смотрелся в меню."}
@@ -417,12 +450,20 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                     <div className={styles.imageControls}>
                         <input
                             type="file"
+                            name="createSetImage"
                             accept="image/*"
                             className={styles.fileInput}
+                            aria-label="Фото нового набора"
                             onChange={(e) => handleCreateImageUpload(e.target.files?.[0])}
                         />
                         {createForm.imageUrl ? (
-                            <img src={createForm.imageUrl} alt="Превью набора" className={styles.previewImage} />
+                            <img
+                                src={createForm.imageUrl}
+                                alt="Превью набора"
+                                className={styles.previewImage}
+                                width="96"
+                                height="96"
+                            />
                         ) : (
                             <div className={styles.previewPlaceholder}>Нет фото</div>
                         )}
@@ -436,11 +477,11 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                         onClick={handleCreateSet}
                         disabled={createLoading || createImageUploading}
                     >
-                        {createLoading ? "Создание..." : "Создать набор"}
+                        {createLoading ? "Создаём набор…" : "Создать набор"}
                     </button>
                 </div>
 
-                {createError && <div className={styles.errorBox}>{createError}</div>}
+                {createError && <div className={styles.errorBox} role="alert">{createError}</div>}
             </section>
 
             <section className={styles.listSection}>
@@ -452,7 +493,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                 </div>
 
                 {loading ? (
-                    <div className={styles.emptyState}>Загрузка наборов...</div>
+                    <div className={styles.emptyState} role="status">Загружаем наборы…</div>
                 ) : dishSets.length === 0 ? (
                     <div className={styles.emptyState}>
                         Пока нет ни одного набора. Создайте первый сверху и соберите его состав из блюд.
@@ -463,7 +504,14 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                             <article key={setItem.setId} className={styles.card}>
                                 <div className={styles.cardMedia}>
                                     {setItem.imageUrl ? (
-                                        <img src={setItem.imageUrl} alt={setItem.setName} className={styles.cardImage} />
+                                        <img
+                                            src={setItem.imageUrl}
+                                            alt={setItem.setName}
+                                            className={styles.cardImage}
+                                            width="480"
+                                            height="320"
+                                            loading="lazy"
+                                        />
                                     ) : (
                                         <div className={styles.previewPlaceholder}>Нет фото</div>
                                     )}
@@ -522,7 +570,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                                         onClick={() => deleteSet(setItem)}
                                         disabled={deletingSetId === setItem.setId}
                                     >
-                                        {deletingSetId === setItem.setId ? "Удаление..." : "Удалить"}
+                                        {deletingSetId === setItem.setId ? "Удаляем…" : "Удалить"}
                                     </button>
                                 </div>
                             </article>
@@ -533,11 +581,17 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
 
             {editModalOpen && editingSet && (
                 <div className={styles.modalOverlay} onClick={closeEditModal}>
-                    <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+                    <div
+                        className={styles.modal}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="edit-set-title"
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <div className={styles.modalHeader}>
                             <div>
                                 <p className={styles.eyebrow}>Редактирование набора</p>
-                                <h3 className={styles.modalTitle}>{editingSet.setName}</h3>
+                                <h2 id="edit-set-title" className={styles.modalTitle}>{editingSet.setName}</h2>
                                 <p className={styles.modalSubtitle}>
                                     Обновите название, цену, фото и состав набора. Себестоимость пересчитается автоматически по блюдам внутри.
                                 </p>
@@ -553,7 +607,9 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                                     <span>Название набора</span>
                                     <input
                                         type="text"
+                                        name="editSetName"
                                         className={styles.input}
+                                        autoComplete="off"
                                         value={editForm.setName}
                                         onChange={(e) => setEditForm((prev) => ({ ...prev, setName: e.target.value }))}
                                     />
@@ -563,7 +619,10 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                                     <span>Цена, ₽</span>
                                     <input
                                         type="number"
+                                        name="editSetPrice"
+                                        inputMode="decimal"
                                         className={styles.input}
+                                        autoComplete="off"
                                         min="0"
                                         step="0.01"
                                         value={editForm.price}
@@ -575,6 +634,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                                     <span>Себестоимость, ₽</span>
                                     <input
                                         type="text"
+                                        name="editSetCost"
                                         className={styles.input}
                                         value={`${formatMoney(editSetCost)} ₽`}
                                         readOnly
@@ -615,7 +675,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                                     <div className={styles.imageHeading}>Фото набора</div>
                                     <div className={styles.imageHint}>
                                         {editImageUploading
-                                            ? "Загружаем новое изображение..."
+                                            ? "Загружаем новое изображение…"
                                             : editForm.imageUrl
                                                 ? "Фото набора обновится после сохранения."
                                                 : "Можно добавить или заменить фото прямо отсюда."}
@@ -625,19 +685,27 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                                 <div className={styles.imageControls}>
                                     <input
                                         type="file"
+                                        name="editSetImage"
                                         accept="image/*"
                                         className={styles.fileInput}
+                                        aria-label="Новое фото набора"
                                         onChange={(e) => handleEditImageUpload(e.target.files?.[0])}
                                     />
                                     {editForm.imageUrl ? (
-                                        <img src={editForm.imageUrl} alt="Превью набора" className={styles.previewImage} />
+                                        <img
+                                            src={editForm.imageUrl}
+                                            alt="Превью набора"
+                                            className={styles.previewImage}
+                                            width="96"
+                                            height="96"
+                                        />
                                     ) : (
                                         <div className={styles.previewPlaceholder}>Нет фото</div>
                                     )}
                                 </div>
                             </div>
 
-                            {editError && <div className={styles.errorBox}>{editError}</div>}
+                            {editError && <div className={styles.errorBox} role="alert">{editError}</div>}
                         </div>
 
                         <div className={styles.modalActions}>
@@ -655,7 +723,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                                 onClick={handleSaveSet}
                                 disabled={editLoading || editImageUploading}
                             >
-                                {editLoading ? "Сохранение..." : "Сохранить изменения"}
+                                {editLoading ? "Сохраняем…" : "Сохранить изменения"}
                             </button>
                         </div>
                     </div>

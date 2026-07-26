@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './App.css';
 import { API_BASE_URL, clearAuth, getAuth, hasRole } from "./auth";
+import AppShell from "./components/layout/AppShell";
 
 // Страницы
 import SuppliersPage from './pages/SuppliersPage/SuppliersPage';
@@ -28,63 +29,17 @@ function ProtectedRoute({ auth, roles, element }) {
     return element;
 }
 
-function AppLayout({ auth, setAuth, burgerOpen, setBurgerOpen }) {
+function AppLayout({ auth, setAuth }) {
     const location = useLocation();
-    const toggleBurger = () => setBurgerOpen(!burgerOpen);
-    const isOwner = hasRole(auth, ["OWNER"]);
-    const isWorkerOrOwner = hasRole(auth, ["WORKER", "OWNER"]);
     const isKitchenDisplay = location.pathname.startsWith("/kitchen-display");
 
     const handleLogout = () => {
         clearAuth();
         setAuth(null);
-        setBurgerOpen(false);
     };
 
-    return (
-        <div className="App">
-            {!isKitchenDisplay && auth && (
-                <header className="App-header">
-                    <nav className="App-nav">
-                        <Link to="/" className="App-link">Домашняя</Link>
-                        {isWorkerOrOwner && <Link to="/cashier" className="App-link">Касса</Link>}
-                        {isWorkerOrOwner && <Link to="/dish" className="App-link">Меню</Link>}
-                        {isOwner && <Link to="/products" className="App-link">Продукты</Link>}
-                        {isOwner && <Link to="/preparations" className="App-link">Заготовки</Link>}
-                        {isOwner && <Link to="/warehouse" className="App-link">Склады</Link>}
-                        {isOwner && <Link to="/movements" className="App-link">Движения</Link>}
-                        {isWorkerOrOwner && <Link to="/clients" className="App-link">Клиенты</Link>}
-                    </nav>
-
-                    <div className="user-bar">
-                        <span className="user-chip">{auth.personName || auth.username} ({auth.role})</span>
-                        <button className="logout-btn" onClick={handleLogout}>Выйти</button>
-                    </div>
-
-                    <div className="burger-menu">
-                        <button className={`burger-button ${burgerOpen ? 'open' : ''}`} onClick={toggleBurger}>
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                        </button>
-
-                        <div className={`burger-overlay ${burgerOpen ? 'show' : ''}`} onClick={toggleBurger}></div>
-
-                        <div className={`burger-dropdown ${burgerOpen ? 'show' : ''}`}>
-                            {isOwner && <Link to="/suppliers" className="App-link" onClick={toggleBurger}>Поставщики</Link>}
-                            {isOwner && <Link to="/products" className="App-link" onClick={toggleBurger}>Продукты</Link>}
-                            {isOwner && <Link to="/preparations" className="App-link" onClick={toggleBurger}>Заготовки</Link>}
-                            {isOwner && <Link to="/person" className="App-link" onClick={toggleBurger}>Персонал</Link>}
-                            {isOwner && <Link to="/consigment" className="App-link" onClick={toggleBurger}>Создать накладную</Link>}
-                            {isOwner && <Link to="/ml" className="App-link" onClick={toggleBurger}>AI Аналитика</Link>}
-                            <button className="logout-btn burger-logout" onClick={handleLogout}>Выйти</button>
-                        </div>
-                    </div>
-                </header>
-            )}
-
-            <main className={`App-content ${isKitchenDisplay ? "App-content--full" : ""}`}>
-                <Routes>
+    const appRoutes = (
+        <Routes>
                     <Route path="/login" element={auth ? <Navigate to="/" replace /> : <LoginPage onSuccess={setAuth} />} />
                     <Route path="/consignment-notes/print/:id" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<PrintConsignmentNotePage />} />} />
                     <Route path="/tech-card/:dishId" element={<ProtectedRoute auth={auth} roles={["WORKER", "OWNER"]} element={<TechCardPage />} />} />
@@ -104,14 +59,27 @@ function AppLayout({ auth, setAuth, burgerOpen, setBurgerOpen }) {
                     <Route path="/ml" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<MlPage />} />} />
                     <Route path="/" element={<ProtectedRoute auth={auth} element={<HomePage auth={auth} />} />} />
                     <Route path="*" element={<Navigate to={auth ? "/" : "/login"} replace />} />
-                </Routes>
+        </Routes>
+    );
+
+    if (auth && !isKitchenDisplay) {
+        return (
+            <AppShell auth={auth} onLogout={handleLogout}>
+                {appRoutes}
+            </AppShell>
+        );
+    }
+
+    return (
+        <div className="App">
+            <main className={`App-content ${isKitchenDisplay ? "App-content--full" : "App-content--auth"}`}>
+                {appRoutes}
             </main>
         </div>
     );
 }
 
 function App() {
-    const [burgerOpen, setBurgerOpen] = useState(false);
     const [auth, setAuth] = useState(getAuth());
 
     React.useEffect(() => {
@@ -141,12 +109,7 @@ function App() {
 
     return (
         <Router>
-            <AppLayout
-                auth={auth}
-                setAuth={setAuth}
-                burgerOpen={burgerOpen}
-                setBurgerOpen={setBurgerOpen}
-            />
+            <AppLayout auth={auth} setAuth={setAuth} />
         </Router>
     );
 }
