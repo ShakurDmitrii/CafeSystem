@@ -1,423 +1,325 @@
-// src/pages/SuppliersPage/SuppliersPage.jsx
-import React, { useState, useEffect } from 'react';
-import styles from './SuppliersPage.module.css';
-import { useNavigate } from "react-router-dom";
+import {
+    useCallback,
+    useDeferredValue,
+    useEffect,
+    useMemo,
+    useState
+} from "react";
+import { useSearchParams } from "react-router-dom";
+import { API_BASE_URL } from "../../auth";
+import ConfirmSupplierDelete from "./supplier-page/ConfirmSupplierDelete";
+import SupplierEditor from "./supplier-page/SupplierEditor";
+import SuppliersCatalog from "./supplier-page/SuppliersCatalog";
+import SuppliersHero from "./supplier-page/SuppliersHero";
+import styles from "./SuppliersPage.module.css";
 
-const SuppliersPage = () => {
+const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
+const SORT_OPTIONS = new Set(["name_asc", "name_desc", "id_desc"]);
+
+const createEmptyForm = () => ({
+    name: "",
+    communication: ""
+});
+
+const normalizeSupplier = (supplier) => {
+    const id = Number(
+        supplier?.supplierID
+        ?? supplier?.supplierId
+        ?? supplier?.id
+        ?? 0
+    );
+
+    return {
+        ...supplier,
+        id,
+        name: String(supplier?.supplierName ?? supplier?.name ?? "").trim(),
+        communication: String(supplier?.communication ?? "").trim()
+    };
+};
+
+const parseJsonSafe = (raw) => {
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+};
+
+const getResponseMessage = (raw, fallback) => {
+    const data = parseJsonSafe(raw);
+    return data?.message || data?.detail || raw || fallback;
+};
+
+export default function SuppliersPage() {
+    const [searchParams, setSearchParams] = useSearchParams();
     const [suppliers, setSuppliers] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [search, setSearch] = useState('');
-    const [formData, setFormData] = useState({
-        name: '',
-        communication: ''
-    });
+    const [pageError, setPageError] = useState("");
+    const [statusMessage, setStatusMessage] = useState("");
 
-    // Состояния для модалки редактирования
-    const [editModalOpen, setEditModalOpen] = useState(false);
-    const [editingSupplier, setEditingSupplier] = useState(null);
-    const [editFormData, setEditFormData] = useState({
-        name: '',
-        communication: ''
-    });
+    const [form, setForm] = useState(createEmptyForm);
+    const [editingSupplierId, setEditingSupplierId] = useState(null);
+    const [formError, setFormError] = useState("");
+    const [saving, setSaving] = useState(false);
+    const [supplierToDelete, setSupplierToDelete] = useState(null);
+    const [deleting, setDeleting] = useState(false);
+    const [deleteError, setDeleteError] = useState("");
 
-    const navigate = useNavigate();
+    const search = searchParams.get("q") ?? "";
+    const requestedSort = searchParams.get("sort") ?? "name_asc";
+    const sortBy = SORT_OPTIONS.has(requestedSort) ? requestedSort : "name_asc";
+    const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase("ru"));
 
-    // Получить всех поставщиков
-    const fetchSuppliers = async () => {
+    const loadSuppliers = useCallback(async () => {
+        setLoading(true);
+        setPageError("");
+
         try {
-            setLoading(true);
-            setError('');
+            const response = await fetch(API_SUPPLIERS);
+            const raw = await response.text();
+            if (!response.ok) {
+                throw new Error(
+                    getResponseMessage(raw, `Не удалось загрузить поставщиков (${response.status}).`)
+                );
+            }
 
-            const response = await fetch('http://localhost:8080/api/supplier');
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-            const data = await response.json();
-            setSuppliers(Array.isArray(data) ? data : []);
-        } catch (err) {
-            console.error(err);
-            setError('Failed to load suppliers: ' + err.message);
+            const data = parseJsonSafe(raw);
+            setSuppliers(
+                Array.isArray(data)
+                    ? data.map(normalizeSupplier).filter((supplier) => supplier.id > 0)
+                    : []
+            );
+        } catch (error) {
+            console.error("Ошибка загрузки поставщиков:", error);
+            setPageError(
+                error.message
+                || "Не удалось загрузить поставщиков. Проверьте соединение и повторите попытку."
+            );
             setSuppliers([]);
         } finally {
             setLoading(false);
         }
-    };
-
-    // Создать нового поставщика
-    const createSupplier = async (supplierData) => {
-        try {
-            const requestData = {
-                supplierName: supplierData.name,
-                communication: supplierData.communication
-            };
-
-            const response = await fetch('http://localhost:8080/api/supplier', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestData)
-            });
-
-            if (!response.ok) {
-                const text = await response.text();
-                throw new Error(`Backend error: ${response.status} - ${text}`);
-            }
-
-            const data = await response.json();
-            setSuppliers(prev => [...prev, data]);
-            return true;
-        } catch (err) {
-            console.error(err);
-            setError('Failed to create supplier: ' + err.message);
-            return false;
-        }
-    };
-
-    // Обновить поставщика
-    const updateSupplier = async (id, supplierData) => {
-        try {
-            const requestData = {
-                supplierName: supplierData.name,
-                communication: supplierData.communication
-            };
-
-            const response = await fetch(`http://localhost:8080/api/supplier/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestData)
-            });
-
-            if (!response.ok) {
-                const text = await response.text();
-                throw new Error(`Backend error: ${response.status} - ${text}`);
-            }
-
-            const data = await response.json();
-
-            // Обновляем поставщика в списке
-            setSuppliers(prev => prev.map(s =>
-                (s.supplierID === id || s.id === id) ? data : s
-            ));
-
-            return true;
-        } catch (err) {
-            console.error(err);
-            setError('Failed to update supplier: ' + err.message);
-            return false;
-        }
-    };
-
-    // Удалить поставщика
-    const deleteSupplier = async (id) => {
-        if (!window.confirm('Are you sure you want to delete this supplier?')) return;
-
-        try {
-            const response = await fetch(`http://localhost:8080/api/supplier/${id}`, { method: 'DELETE' });
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-            setSuppliers(prev => prev.filter(s => s.supplierID !== id && s.id !== id));
-            setError('');
-        } catch (err) {
-            console.error(err);
-            setError('Failed to delete supplier: ' + err.message);
-        }
-    };
-
-    // Обработчик изменения полей формы
-    const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setFormData({ ...formData, [name]: value });
-    };
-
-    // Обработчик изменения полей формы редактирования
-    const handleEditInputChange = (e) => {
-        const { name, value } = e.target;
-        setEditFormData({ ...editFormData, [name]: value });
-    };
-
-    // Открыть модалку редактирования
-    const openEditModal = (supplier) => {
-        setEditingSupplier(supplier);
-        setEditFormData({
-            name: supplier.name || supplier.supplierName || '',
-            communication: supplier.communication || ''
-        });
-        setEditModalOpen(true);
-    };
-
-    // Закрыть модалку редактирования
-    const closeEditModal = () => {
-        setEditModalOpen(false);
-        setEditingSupplier(null);
-        setEditFormData({ name: '', communication: '' });
-    };
-
-    // Сохранить изменения
-    const handleEditSubmit = async (e) => {
-        e.preventDefault();
-        if (!editFormData.name.trim()) {
-            alert('Please fill supplier name');
-            return;
-        }
-
-        const supplierId = editingSupplier?.supplierID || editingSupplier?.id;
-        if (!supplierId) {
-            alert('Cannot update: Supplier ID not found');
-            return;
-        }
-
-        const success = await updateSupplier(supplierId, editFormData);
-        if (success) {
-            alert('Supplier updated successfully!');
-            closeEditModal();
-        }
-    };
-
-    // Загрузить данные при монтировании
-    useEffect(() => {
-        fetchSuppliers();
     }, []);
 
-    // Обработчик формы добавления
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!formData.name.trim()) {
-            alert('Please fill supplier name');
+    useEffect(() => {
+        loadSuppliers();
+    }, [loadSuppliers]);
+
+    const filteredSuppliers = useMemo(() => {
+        const result = deferredSearch
+            ? suppliers.filter((supplier) => (
+                supplier.name.toLocaleLowerCase("ru").includes(deferredSearch)
+                || supplier.communication.toLocaleLowerCase("ru").includes(deferredSearch)
+                || String(supplier.id).includes(deferredSearch)
+            ))
+            : [...suppliers];
+
+        result.sort((first, second) => {
+            if (sortBy === "id_desc") return second.id - first.id;
+            const comparison = first.name.localeCompare(second.name, "ru");
+            return sortBy === "name_desc" ? -comparison : comparison;
+        });
+
+        return result;
+    }, [deferredSearch, sortBy, suppliers]);
+
+    const suppliersWithContacts = suppliers.filter(
+        (supplier) => Boolean(supplier.communication)
+    ).length;
+
+    const updateSearchParam = (key, value, defaultValue = "") => {
+        setSearchParams((current) => {
+            const next = new URLSearchParams(current);
+            if (!value || value === defaultValue) next.delete(key);
+            else next.set(key, value);
+            return next;
+        }, { replace: true });
+    };
+
+    const resetEditor = () => {
+        setForm(createEmptyForm());
+        setEditingSupplierId(null);
+        setFormError("");
+    };
+
+    const handleFormChange = (field, value) => {
+        setFormError("");
+        setForm((current) => ({ ...current, [field]: value }));
+    };
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        const name = form.name.trim();
+        const communication = form.communication.trim();
+
+        if (!name) {
+            setFormError("Введите название компании.");
             return;
         }
 
-        const success = await createSupplier(formData);
-        if (success) {
-            alert('Supplier added successfully!');
-            setFormData({ name: '', communication: '' });
+        const editing = editingSupplierId != null;
+        setSaving(true);
+        setFormError("");
+        setStatusMessage("");
+
+        try {
+            const response = await fetch(
+                editing ? `${API_SUPPLIERS}/${editingSupplierId}` : API_SUPPLIERS,
+                {
+                    method: editing ? "PUT" : "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        supplierName: name,
+                        communication
+                    })
+                }
+            );
+            const raw = await response.text();
+            if (!response.ok) {
+                throw new Error(
+                    getResponseMessage(
+                        raw,
+                        editing
+                            ? "Не удалось сохранить изменения."
+                            : "Не удалось добавить поставщика."
+                    )
+                );
+            }
+
+            resetEditor();
+            await loadSuppliers();
+            setStatusMessage(
+                editing
+                    ? `Данные поставщика «${name}» обновлены.`
+                    : `Поставщик «${name}» добавлен.`
+            );
+        } catch (error) {
+            console.error("Ошибка сохранения поставщика:", error);
+            setFormError(error.message || "Не удалось сохранить поставщика.");
+        } finally {
+            setSaving(false);
         }
     };
 
-    // Очистить форму добавления
-    const clearForm = () => setFormData({ name: '', communication: '' });
+    const startEditing = (supplier) => {
+        setEditingSupplierId(supplier.id);
+        setForm({
+            name: supplier.name,
+            communication: supplier.communication
+        });
+        setFormError("");
+        setStatusMessage("");
+        document.getElementById("supplier-editor")?.scrollIntoView();
+    };
 
-    // Фильтрация
-    const filteredSuppliers = Array.isArray(suppliers)
-        ? suppliers.filter(supplier => {
-            if (!supplier) return false;
-            const searchLower = search.toLowerCase();
-            const nameMatch = supplier.name?.toLowerCase().includes(searchLower) ||
-                supplier.supplierName?.toLowerCase().includes(searchLower);
-            const idMatch = supplier.supplierID?.toString().includes(search) ||
-                supplier.id?.toString().includes(search);
-            const communicationMatch = supplier.communication?.toLowerCase().includes(searchLower);
-            return nameMatch || communicationMatch || idMatch;
-        })
-        : [];
+    const requestDelete = (supplier) => {
+        setSupplierToDelete(supplier);
+        setDeleteError("");
+    };
 
-    if (loading) {
-        return (
-            <div className={styles.loadingContainer}>
-                <div className={styles.spinner}></div>
-                <p>Loading suppliers...</p>
-            </div>
-        );
-    }
+    const closeDeleteDialog = () => {
+        if (deleting) return;
+        setSupplierToDelete(null);
+        setDeleteError("");
+    };
 
-    const totalSuppliers = suppliers.length;
+    const confirmDelete = async () => {
+        if (!supplierToDelete) return;
+        setDeleting(true);
+        setDeleteError("");
+        setStatusMessage("");
+
+        try {
+            const response = await fetch(
+                `${API_SUPPLIERS}/${supplierToDelete.id}`,
+                { method: "DELETE" }
+            );
+            const raw = await response.text();
+            if (!response.ok) {
+                throw new Error(
+                    getResponseMessage(
+                        raw,
+                        "Не удалось удалить поставщика. Проверьте связанные продукты и накладные."
+                    )
+                );
+            }
+
+            const deletedName = supplierToDelete.name;
+            setSuppliers((current) => (
+                current.filter((supplier) => supplier.id !== supplierToDelete.id)
+            ));
+            if (editingSupplierId === supplierToDelete.id) resetEditor();
+            setSupplierToDelete(null);
+            setStatusMessage(`Поставщик «${deletedName}» удалён.`);
+        } catch (error) {
+            console.error("Ошибка удаления поставщика:", error);
+            setDeleteError(
+                error.message
+                || "Не удалось удалить поставщика. Уберите связанные данные и повторите попытку."
+            );
+        } finally {
+            setDeleting(false);
+        }
+    };
 
     return (
-        <div className={styles.container}>
-            {/* Модальное окно редактирования */}
-            {editModalOpen && (
-                <div className={styles.modalOverlay} onClick={closeEditModal}>
-                    <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-                        <div className={styles.modalHeader}>
-                            <h3>✏️ Edit Supplier #{editingSupplier?.supplierID || editingSupplier?.id}</h3>
-                            <button onClick={closeEditModal} className={styles.closeModal} aria-label="Close">
-                                ×
-                            </button>
-                        </div>
+        <div className={styles.page}>
+            <SuppliersHero
+                total={suppliers.length}
+                withContacts={suppliersWithContacts}
+                withoutContacts={suppliers.length - suppliersWithContacts}
+            />
 
-                        <div className={styles.modalContent}>
-                            <form onSubmit={handleEditSubmit}>
-                                <div className={styles.formGroup}>
-                                    <label htmlFor="edit-name">
-                                        Supplier Name *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        id="edit-name"
-                                        name="name"
-                                        placeholder="Enter company name"
-                                        value={editFormData.name}
-                                        onChange={handleEditInputChange}
-                                        required
-                                        className={styles.modalInput}
-                                        autoFocus
-                                    />
-                                </div>
-
-                                <div className={styles.formGroup}>
-                                    <label htmlFor="edit-communication">
-                                        Contact Information
-                                    </label>
-                                    <input
-                                        type="text"
-                                        id="edit-communication"
-                                        name="communication"
-                                        placeholder="Email or phone number"
-                                        value={editFormData.communication}
-                                        onChange={handleEditInputChange}
-                                        className={styles.modalInput}
-                                    />
-                                </div>
-
-                                <div className={styles.modalButtons}>
-                                    <button
-                                        type="button"
-                                        onClick={closeEditModal}
-                                        className={`${styles.submitBtn} ${styles.secondary}`}
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        className={`${styles.submitBtn} ${styles.primary}`}
-                                    >
-                                        Save Changes
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
+            {statusMessage ? (
+                <div className={styles.statusMessage} role="status" aria-live="polite">
+                    <span>{statusMessage}</span>
+                    <button
+                        type="button"
+                        onClick={() => setStatusMessage("")}
+                        aria-label="Скрыть сообщение"
+                    >
+                        Закрыть
+                    </button>
                 </div>
-            )}
+            ) : null}
 
-            <div className={styles.header}>
-                <h1 className={styles.title}>📦 Supplier Management</h1>
-                <div className={styles.stats}>Total: {totalSuppliers}</div>
+            <div className={styles.workspaceGrid}>
+                <SupplierEditor
+                    form={form}
+                    editingSupplierId={editingSupplierId}
+                    saving={saving}
+                    error={formError}
+                    onChange={handleFormChange}
+                    onSubmit={handleSubmit}
+                    onCancel={resetEditor}
+                />
+
+                <SuppliersCatalog
+                    suppliers={filteredSuppliers}
+                    total={suppliers.length}
+                    search={search}
+                    sortBy={sortBy}
+                    loading={loading}
+                    error={pageError}
+                    onSearchChange={(value) => updateSearchParam("q", value)}
+                    onSortChange={(value) => updateSearchParam("sort", value, "name_asc")}
+                    onRetry={loadSuppliers}
+                    onEdit={startEditing}
+                    onDelete={requestDelete}
+                    onClearSearch={() => updateSearchParam("q", "")}
+                />
             </div>
 
-            <div className={styles.card}>
-                {error && (
-                    <div className={`${styles.alert} ${styles.errorAlert}`}>
-                        {error}
-                        <button onClick={() => setError('')} className={styles.closeError}>×</button>
-                    </div>
-                )}
-
-                <div className={styles.toolbar}>
-                    <input
-                        type="text"
-                        placeholder="🔍 Search by name, ID or contact..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className={styles.searchInput}
-                    />
-                    <button onClick={fetchSuppliers} className={styles.refreshBtn}>🔄 Refresh</button>
-                </div>
-
-                {/* Форма добавления */}
-                <div className={styles.addSupplierForm}>
-                    <h3>➕ Add New Supplier</h3>
-                    <form onSubmit={handleSubmit}>
-                        <div className={styles.formGrid}>
-                            <div className={styles.formGroup}>
-                                <label htmlFor="name">Supplier Name: *</label>
-                                <input
-                                    type="text"
-                                    id="name"
-                                    name="name"
-                                    placeholder="Company name"
-                                    value={formData.name}
-                                    onChange={handleInputChange}
-                                    required
-                                />
-                            </div>
-                            <div className={styles.formGroup}>
-                                <label htmlFor="communication">Contact Info:</label>
-                                <input
-                                    type="text"
-                                    id="communication"
-                                    name="communication"
-                                    placeholder="Email or phone"
-                                    value={formData.communication}
-                                    onChange={handleInputChange}
-                                />
-                            </div>
-                        </div>
-                        <div className={styles.formButtons}>
-                            <button type="submit" className={`${styles.submitBtn} ${styles.primary}`}>Add Supplier</button>
-                            <button type="button" onClick={clearForm} className={`${styles.submitBtn} ${styles.secondary}`}>Clear Form</button>
-                        </div>
-                    </form>
-                </div>
-
-                {/* Карточки поставщиков */}
-                <div className={styles.suppliersList}>
-                    {filteredSuppliers.length > 0 ? (
-                        filteredSuppliers.map(supplier => {
-                            const displayId = supplier.supplierID || supplier.id || 'N/A';
-                            const displayName = supplier.name || supplier.supplierName || 'N/A';
-                            const displayContact = supplier.communication || 'N/A';
-                            const deleteId = supplier.supplierID || supplier.id;
-
-                            return (
-                                <div key={displayId} className={styles.supplierCard}>
-                                    <div className={styles.supplierHeader}>
-                                        <span className={styles.supplierID}>#{displayId}</span>
-                                        <span
-                                            className={styles.supplierName}
-                                            onClick={() => navigate(`/suppliers/${deleteId}`)}
-                                        >
-                                            {displayName}
-                                        </span>
-                                    </div>
-
-                                    <div className={styles.contactInfo}>
-                                        {displayContact !== 'N/A' ? (
-                                            displayContact.includes('@') ? (
-                                                <a href={`mailto:${displayContact}`} className={styles.emailLink}>📧 {displayContact}</a>
-                                            ) : (
-                                                <a href={`tel:${displayContact}`} className={styles.phoneLink}>📞 {displayContact}</a>
-                                            )
-                                        ) : <span>No contact</span>}
-                                    </div>
-
-                                    <div className={styles.actionButtons}>
-                                        <button
-                                            className={styles.editBtn}
-                                            onClick={() => openEditModal(supplier)}
-                                        >
-                                            Edit
-                                        </button>
-                                        <button
-                                            className={styles.deleteBtn}
-                                            onClick={() => deleteSupplier(deleteId)}
-                                        >
-                                            Delete
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })
-                    ) : (
-                        <div className={styles.emptyState}>
-                            {search ? (
-                                <>
-                                    <div className={styles.emptyIcon}>🔍</div>
-                                    <h4>No suppliers found</h4>
-                                    <p>No suppliers match "{search}"</p>
-                                    <button onClick={() => setSearch('')} className={styles.clearSearchBtn}>Clear search</button>
-                                </>
-                            ) : (
-                                <>
-                                    <div className={styles.emptyIcon}>📦</div>
-                                    <h4>No suppliers yet</h4>
-                                    <p>Add your first supplier using the form above</p>
-                                </>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </div>
+            {supplierToDelete ? (
+                <ConfirmSupplierDelete
+                    supplier={supplierToDelete}
+                    deleting={deleting}
+                    error={deleteError}
+                    onConfirm={confirmDelete}
+                    onClose={closeDeleteDialog}
+                />
+            ) : null}
         </div>
     );
-};
-
-export default SuppliersPage;
+}

@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../../../auth";
 import DishSetsSection from "./DishSetsSection";
+import DishCreatePanel from "./dish-page/DishCreatePanel";
+import DishEditModal from "./dish-page/DishEditModal";
+import DishList from "./dish-page/DishList";
+import DishPageHeader from "./dish-page/DishPageHeader";
 import styles from "./DishPage.module.css";
 
 const API_DISHES = `${API_BASE_URL}/api/dishes`;
@@ -73,6 +77,7 @@ export default function DishPage() {
     const [dishes, setDishes] = useState([]);
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState("");
     const [createForm, setCreateForm] = useState(createDishForm);
     const [createLoading, setCreateLoading] = useState(false);
     const [createError, setCreateError] = useState("");
@@ -92,6 +97,7 @@ export default function DishPage() {
 
     const loadPage = useCallback(async () => {
         setLoading(true);
+        setLoadError("");
         try {
             const [dishesRes, categoriesRes] = await Promise.all([
                 fetch(API_DISHES),
@@ -115,6 +121,7 @@ export default function DishPage() {
             setCategories(Array.isArray(categoriesData) ? categoriesData : []);
         } catch (err) {
             console.error("Ошибка загрузки блюд:", err);
+            setLoadError(err.message || "Проверьте соединение и попробуйте снова.");
         } finally {
             setLoading(false);
         }
@@ -328,410 +335,67 @@ export default function DishPage() {
 
     return (
         <div className={styles.page}>
-            <section className={styles.hero}>
-                <div>
-                    <p className={styles.eyebrow}>Меню</p>
-                    <h1 className={styles.title}>Блюда, карточки и наборы</h1>
-                    <p className={styles.subtitle}>
-                        Создавайте блюда, держите карточки меню в порядке и редактируйте цену, вес, категорию и фото в одном аккуратном окне, а ниже собирайте наборы из уже готовых блюд.
-                    </p>
-                </div>
-                <div className={styles.heroNote}>
-                    Переключайтесь между блюдами и наборами через свитч ниже: в каждом режиме останется только свой сценарий работы без визуальной каши.
-                </div>
-            </section>
-
-            <section className={styles.switchCard}>
-                <div className={styles.switchGroup}>
-                    <button
-                        type="button"
-                        className={`${styles.switchButton} ${activeView === "dishes" ? styles.switchButtonActive : ""}`}
-                        onClick={() => setActiveView("dishes")}
-                    >
-                        Блюда
-                    </button>
-                    <button
-                        type="button"
-                        className={`${styles.switchButton} ${activeView === "sets" ? styles.switchButtonActive : ""}`}
-                        onClick={() => setActiveView("sets")}
-                    >
-                        Наборы
-                    </button>
-                </div>
-                <div className={styles.switchHint}>
-                    {activeView === "dishes"
-                        ? `Сейчас открыт режим блюд: ${dishes.length} поз.`
-                        : "Сейчас открыт режим наборов: создание и управление сеттами."}
-                </div>
-            </section>
+            <DishPageHeader
+                activeView={activeView}
+                dishCount={dishes.length}
+                categoryCount={sortedCategories.length}
+                onViewChange={setActiveView}
+            />
 
             {activeView === "dishes" ? (
-                <>
-                    <section className={styles.createCard}>
-                        <div className={styles.sectionHeading}>
-                            <div>
-                                <h2>Новое блюдо</h2>
-                                <p>Соберите карточку блюда сразу с ценой, категорией и фото, а затем перейдите к техкарте.</p>
-                            </div>
-                            <div className={styles.counterChip}>{dishes.length} шт.</div>
-                        </div>
-
-                        <div className={styles.formGrid}>
-                            <label className={styles.field}>
-                                <span>Название блюда</span>
-                                <input
-                                    type="text"
-                                    className={styles.input}
-                                    placeholder="Например, бургер классик"
-                                    value={createForm.dishName}
-                                    onChange={(e) => setCreateForm((prev) => ({ ...prev, dishName: e.target.value }))}
-                                />
-                            </label>
-
-                            <label className={styles.field}>
-                                <span>Цена, ₽</span>
-                                <input
-                                    type="number"
-                                    className={styles.input}
-                                    min="0"
-                                    step="0.01"
-                                    value={createForm.price}
-                                    onChange={(e) => setCreateForm((prev) => ({ ...prev, price: e.target.value }))}
-                                />
-                            </label>
-
-                            <label className={styles.field}>
-                                <span>Вес, г</span>
-                                <input
-                                    type="number"
-                                    className={styles.input}
-                                    min="0"
-                                    step="0.01"
-                                    value={createForm.weight}
-                                    onChange={(e) => setCreateForm((prev) => ({ ...prev, weight: e.target.value }))}
-                                />
-                            </label>
-
-                            <label className={styles.field}>
-                                <span>Себестоимость, ₽</span>
-                                <input
-                                    type="number"
-                                    className={styles.input}
-                                    min="0"
-                                    step="0.01"
-                                    value={createForm.firstCost}
-                                    onChange={(e) => setCreateForm((prev) => ({ ...prev, firstCost: e.target.value }))}
-                                />
-                            </label>
-
-                            <label className={styles.field}>
-                                <span>Категория из списка</span>
-                                <select
-                                    className={styles.select}
-                                    value={createForm.selectedCategoryId}
-                                    onChange={(e) => setCreateForm((prev) => ({ ...prev, selectedCategoryId: e.target.value }))}
-                                >
-                                    <option value="">Без категории</option>
-                                    {sortedCategories.map((category) => (
-                                        <option key={category.categoryId} value={category.categoryId}>
-                                            {category.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-
-                            <label className={styles.field}>
-                                <span>Новая категория</span>
-                                <input
-                                    type="text"
-                                    className={styles.input}
-                                    placeholder="Например, сезонное меню"
-                                    value={createForm.customCategory}
-                                    onChange={(e) => setCreateForm((prev) => ({ ...prev, customCategory: e.target.value }))}
-                                />
-                            </label>
-                        </div>
-
-                        <div className={styles.imagePanel}>
-                            <div className={styles.imageInfo}>
-                                <div className={styles.imageHeading}>Фото блюда</div>
-                                <div className={styles.imageHint}>
-                                    {createImageUploading
-                                        ? "Загружаем изображение..."
-                                        : createForm.imageUrl
-                                            ? "Изображение загружено и будет сохранено вместе с блюдом."
-                                            : "Загрузите фото, чтобы карточка меню выглядела аккуратно."}
-                                </div>
-                            </div>
-
-                            <div className={styles.imageControls}>
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    className={styles.fileInput}
-                                    onChange={(e) => handleCreateImageUpload(e.target.files?.[0])}
-                                />
-                                {createForm.imageUrl ? (
-                                    <img src={createForm.imageUrl} alt="Превью блюда" className={styles.previewImage} />
-                                ) : (
-                                    <div className={styles.previewPlaceholder}>Нет фото</div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className={styles.formActions}>
-                            <button
-                                type="button"
-                                className={styles.primaryButton}
-                                onClick={handleCreateDish}
-                                disabled={createLoading || createImageUploading}
-                            >
-                                {createLoading ? "Создание..." : "Создать блюдо"}
-                            </button>
-                        </div>
-
-                        {createError && <div className={styles.errorBox}>{createError}</div>}
-                    </section>
-
-                    <section className={styles.listSection}>
-                        <div className={styles.sectionHeading}>
-                            <div>
-                                <h2>Все блюда</h2>
-                                <p>Открывайте техкарты, редактируйте карточки меню и удаляйте блюда, которые больше не используются.</p>
-                            </div>
-                        </div>
-
-                        {loading ? (
-                            <div className={styles.emptyState}>Загрузка блюд...</div>
-                        ) : dishes.length === 0 ? (
-                            <div className={styles.emptyState}>
-                                Пока нет ни одного блюда. Создайте первое сверху, и после сохранения сразу откроется техкарта.
-                            </div>
-                        ) : (
-                            <div className={styles.cardsGrid}>
-                                {dishes.map((dish) => (
-                                    <article key={dish.dishId} className={styles.card}>
-                                        <div className={styles.cardMedia}>
-                                            {dish.imageUrl ? (
-                                                <img src={dish.imageUrl} alt={dish.dishName} className={styles.cardImage} />
-                                            ) : (
-                                                <div className={styles.previewPlaceholder}>Нет фото</div>
-                                            )}
-                                        </div>
-
-                                        <div className={styles.cardHeader}>
-                                            <div>
-                                                <div className={styles.cardId}>#{dish.dishId}</div>
-                                                <h3 className={styles.cardTitle}>{dish.dishName}</h3>
-                                            </div>
-                                            <div className={styles.priceChip}>{formatMoney(dish.price)} ₽</div>
-                                        </div>
-
-                                        <div className={styles.metricsRow}>
-                                            <div className={styles.metric}>
-                                                <span className={styles.metricLabel}>Вес</span>
-                                                <strong>{formatWeight(dish.weight)} г</strong>
-                                            </div>
-                                            <div className={styles.metric}>
-                                                <span className={styles.metricLabel}>Себестоимость</span>
-                                                <strong>{formatMoney(dish.firstCost)} ₽</strong>
-                                            </div>
-                                        </div>
-
-                                        <div className={styles.metaList}>
-                                            <div className={styles.metaRow}>
-                                                <span className={styles.metaLabel}>Категория</span>
-                                                <span>{dish.categoryName || dish.category || "Не указана"}</span>
-                                            </div>
-                                            <div className={styles.metaRow}>
-                                                <span className={styles.metaLabel}>Фото</span>
-                                                <span>{dish.imageUrl ? "Загружено" : "Не добавлено"}</span>
-                                            </div>
-                                        </div>
-
-                                        <div className={styles.cardActions}>
-                                            <button
-                                                type="button"
-                                                className={styles.secondaryButton}
-                                                onClick={() => openEditModal(dish)}
-                                            >
-                                                Редактировать
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={styles.techButton}
-                                                onClick={() => navigate(`/tech-card/${dish.dishId}`)}
-                                            >
-                                                Техкарта
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={styles.dangerButton}
-                                                onClick={() => deleteDish(dish)}
-                                                disabled={deletingDishId === dish.dishId}
-                                            >
-                                                {deletingDishId === dish.dishId ? "Удаление..." : "Удалить"}
-                                            </button>
-                                        </div>
-                                    </article>
-                                ))}
-                            </div>
-                        )}
-                    </section>
-                </>
+                <div
+                    id="dishes-panel"
+                    role="tabpanel"
+                    aria-labelledby="dishes-tab"
+                    className={styles.viewPanel}
+                >
+                    <DishCreatePanel
+                        dishCount={dishes.length}
+                        form={createForm}
+                        categories={sortedCategories}
+                        error={createError}
+                        isCreating={createLoading}
+                        isImageUploading={createImageUploading}
+                        onFormChange={setCreateForm}
+                        onImageChange={handleCreateImageUpload}
+                        onCreate={handleCreateDish}
+                    />
+                    <DishList
+                        dishes={dishes}
+                        loading={loading}
+                        error={loadError}
+                        deletingDishId={deletingDishId}
+                        formatMoney={formatMoney}
+                        formatWeight={formatWeight}
+                        onEdit={openEditModal}
+                        onDelete={deleteDish}
+                        onRetry={loadPage}
+                    />
+                </div>
             ) : (
-                <DishSetsSection dishes={dishes} categories={sortedCategories} />
+                <div
+                    id="sets-panel"
+                    role="tabpanel"
+                    aria-labelledby="sets-tab"
+                    className={styles.viewPanel}
+                >
+                    <DishSetsSection dishes={dishes} categories={sortedCategories} />
+                </div>
             )}
 
             {editModalOpen && editingDish && (
-                <div className={styles.modalOverlay} onClick={closeEditModal}>
-                    <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-                        <div className={styles.modalHeader}>
-                            <div>
-                                <p className={styles.eyebrow}>Редактирование блюда</p>
-                                <h3 className={styles.modalTitle}>{editingDish.dishName}</h3>
-                                <p className={styles.modalSubtitle}>
-                                    Здесь можно поправить название, цену, вес, себестоимость, категорию и изображение блюда.
-                                </p>
-                            </div>
-                            <button type="button" className={styles.closeButton} onClick={closeEditModal}>
-                                Закрыть
-                            </button>
-                        </div>
-
-                        <div className={styles.modalBody}>
-                            <div className={styles.formGrid}>
-                                <label className={styles.field}>
-                                    <span>Название блюда</span>
-                                    <input
-                                        type="text"
-                                        className={styles.input}
-                                        value={editForm.dishName}
-                                        onChange={(e) => setEditForm((prev) => ({ ...prev, dishName: e.target.value }))}
-                                    />
-                                </label>
-
-                                <label className={styles.field}>
-                                    <span>Цена, ₽</span>
-                                    <input
-                                        type="number"
-                                        className={styles.input}
-                                        min="0"
-                                        step="0.01"
-                                        value={editForm.price}
-                                        onChange={(e) => setEditForm((prev) => ({ ...prev, price: e.target.value }))}
-                                    />
-                                </label>
-
-                                <label className={styles.field}>
-                                    <span>Вес, г</span>
-                                    <input
-                                        type="number"
-                                        className={styles.input}
-                                        min="0"
-                                        step="0.01"
-                                        value={editForm.weight}
-                                        onChange={(e) => setEditForm((prev) => ({ ...prev, weight: e.target.value }))}
-                                    />
-                                </label>
-
-                                <label className={styles.field}>
-                                    <span>Себестоимость, ₽</span>
-                                    <input
-                                        type="number"
-                                        className={styles.input}
-                                        min="0"
-                                        step="0.01"
-                                        value={editForm.firstCost}
-                                        onChange={(e) => setEditForm((prev) => ({ ...prev, firstCost: e.target.value }))}
-                                    />
-                                </label>
-
-                                <label className={styles.field}>
-                                    <span>Категория из списка</span>
-                                    <select
-                                        className={styles.select}
-                                        value={editForm.selectedCategoryId}
-                                        onChange={(e) => setEditForm((prev) => ({ ...prev, selectedCategoryId: e.target.value }))}
-                                    >
-                                        <option value="">Без категории</option>
-                                        {sortedCategories.map((category) => (
-                                            <option key={category.categoryId} value={category.categoryId}>
-                                                {category.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-
-                                <label className={styles.field}>
-                                    <span>Новая категория</span>
-                                    <input
-                                        type="text"
-                                        className={styles.input}
-                                        placeholder="Оставьте пустым, чтобы использовать категорию из списка"
-                                        value={editForm.customCategory}
-                                        onChange={(e) => setEditForm((prev) => ({ ...prev, customCategory: e.target.value }))}
-                                    />
-                                </label>
-                            </div>
-
-                            <div className={styles.imagePanel}>
-                                <div className={styles.imageInfo}>
-                                    <div className={styles.imageHeading}>Фото блюда</div>
-                                    <div className={styles.imageHint}>
-                                        {editImageUploading
-                                            ? "Загружаем новое изображение..."
-                                            : editForm.imageUrl
-                                                ? "Фото обновится после сохранения блюда."
-                                                : "Можно добавить или заменить фото прямо отсюда."}
-                                    </div>
-                                </div>
-
-                                <div className={styles.imageControls}>
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        className={styles.fileInput}
-                                        onChange={(e) => handleEditImageUpload(e.target.files?.[0])}
-                                    />
-                                    {editForm.imageUrl ? (
-                                        <img src={editForm.imageUrl} alt="Превью блюда" className={styles.previewImage} />
-                                    ) : (
-                                        <div className={styles.previewPlaceholder}>Нет фото</div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {editError && <div className={styles.errorBox}>{editError}</div>}
-                        </div>
-
-                        <div className={styles.modalActions}>
-                            <button
-                                type="button"
-                                className={styles.secondaryButton}
-                                onClick={() => navigate(`/tech-card/${editingDish.dishId}`)}
-                            >
-                                Открыть техкарту
-                            </button>
-                            <button
-                                type="button"
-                                className={styles.closeButton}
-                                onClick={closeEditModal}
-                                disabled={editLoading || editImageUploading}
-                            >
-                                Отмена
-                            </button>
-                            <button
-                                type="button"
-                                className={styles.primaryButton}
-                                onClick={handleSaveDish}
-                                disabled={editLoading || editImageUploading}
-                            >
-                                {editLoading ? "Сохранение..." : "Сохранить изменения"}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <DishEditModal
+                    dish={editingDish}
+                    form={editForm}
+                    categories={sortedCategories}
+                    error={editError}
+                    isSaving={editLoading}
+                    isImageUploading={editImageUploading}
+                    onFormChange={setEditForm}
+                    onImageChange={handleEditImageUpload}
+                    onClose={closeEditModal}
+                    onSave={handleSaveDish}
+                />
             )}
         </div>
     );

@@ -1,61 +1,593 @@
 .page {
-    min-height: 70vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1rem;
-}
-
-.card {
+    display: grid;
     width: 100%;
-    max-width: 420px;
-    background: #fff;
-    border: 1px solid #d9e2ec;
-    border-radius: 14px;
-    padding: 1.5rem;
-    box-shadow: 0 14px 30px rgba(16, 24, 40, 0.08);
+    min-width: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    grid-template-columns: minmax(420px, 1.08fr) minmax(460px, 0.92fr);
+    overflow: hidden;
+    background: var(--color-canvas);
+}
+
+.story {
+    position: relative;
     display: flex;
+    min-width: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
     flex-direction: column;
-    gap: 0.75rem;
-}
-
-.title {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.5rem;
-    color: #123;
-}
-
-.label {
-    font-size: 0.95rem;
-    color: #344054;
-}
-
-.input {
-    height: 42px;
-    border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    padding: 0 0.75rem;
-    font-size: 1rem;
-}
-
-.button {
-    height: 44px;
-    margin-top: 0.5rem;
-    border: none;
-    border-radius: 10px;
-    background: #0ea5e9;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 78% 16%, rgba(91, 161, 124, 0.18), transparent 27%),
+        var(--color-ink);
+    padding:
+        max(clamp(30px, 5vw, 68px), env(safe-area-inset-top))
+        clamp(30px, 6vw, 82px)
+        max(clamp(30px, 5vw, 62px), env(safe-area-inset-bottom));
     color: #fff;
-    font-weight: 600;
-    cursor: pointer;
 }
 
-.button:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
+.story::before,
+.story::after {
+    position: absolute;
+    border: 1px solid rgba(135, 202, 165, 0.11);
+    border-radius: 50%;
+    content: "";
+    pointer-events: none;
+}
+
+.story::before {
+    right: -220px;
+    bottom: -230px;
+    width: 580px;
+    height: 580px;
+    box-shadow:
+        0 0 0 54px rgba(135, 202, 165, 0.025),
+        0 0 0 108px rgba(135, 202, 165, 0.018);
+}
+
+.story::after {
+    top: 15%;
+    right: -90px;
+    width: 240px;
+    height: 240px;
+}
+
+.brand,
+.mobileBrand {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 12px;
+}
+
+.brandMark {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+    place-items: center;
+    border-radius: 14px 14px 5px 14px;
+    background: #fff;
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 800;
+}
+
+.brand > span:last-child,
+.mobileBrand > span:last-child {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+}
+
+.brand strong,
+.mobileBrand strong {
+    font-family: var(--font-display);
+    font-size: 20px;
+    letter-spacing: 0.01em;
+}
+
+.brand small,
+.mobileBrand small {
+    margin-top: 2px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 11px;
+}
+
+.storyCopy {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 690px);
+    margin: auto 0 clamp(36px, 6vh, 72px);
+    animation: revealStory 500ms ease both;
+}
+
+.kicker {
+    margin: 0;
+    color: #85d0a7;
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+}
+
+.storyCopy h2 {
+    max-width: 620px;
+    margin: 15px 0 18px;
+    font-family: var(--font-display);
+    font-size: clamp(44px, 6vw, 78px);
+    font-weight: 720;
+    letter-spacing: -0.04em;
+    line-height: 0.96;
+    text-wrap: balance;
+}
+
+.storyCopy > p:last-child {
+    max-width: 520px;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: clamp(15px, 1.5vw, 18px);
+    line-height: 1.65;
+    text-wrap: pretty;
+}
+
+.serviceFlow {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.serviceFlow::before {
+    position: absolute;
+    top: 16px;
+    right: 12%;
+    left: 12%;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.18);
+    content: "";
+}
+
+.serviceStep {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.stepMarker {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 50%;
+    background: var(--color-ink);
+    color: #85d0a7;
+    font-family: var(--font-data);
+    font-size: 9px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+}
+
+.serviceStep > span:last-child {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    padding-top: 1px;
+}
+
+.serviceStep strong {
+    overflow: hidden;
+    color: #fff;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.serviceStep small {
+    margin-top: 4px;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.storyFooter {
+    position: relative;
+    z-index: 1;
+    margin: clamp(28px, 5vh, 54px) 0 0;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 11px;
+}
+
+.formPane {
+    display: grid;
+    min-width: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    place-items: center;
+    padding:
+        max(clamp(28px, 5vw, 64px), env(safe-area-inset-top))
+        max(clamp(28px, 6vw, 86px), env(safe-area-inset-right))
+        max(clamp(28px, 5vw, 64px), env(safe-area-inset-bottom))
+        max(clamp(28px, 6vw, 86px), env(safe-area-inset-left));
+}
+
+.formWrap {
+    width: min(100%, 460px);
+    animation: revealForm 460ms 90ms ease both;
+}
+
+.mobileBrand {
+    display: none;
+}
+
+.formHeader h1 {
+    margin: 10px 0 12px;
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: clamp(30px, 3.7vw, 48px);
+    font-weight: 720;
+    letter-spacing: -0.035em;
+    line-height: 1.02;
+    text-wrap: balance;
+}
+
+.formHeader > p:last-child {
+    margin: 0;
+    color: var(--color-muted);
+    font-size: 14px;
+    line-height: 1.6;
+    text-wrap: pretty;
+}
+
+.form {
+    display: grid;
+    gap: 17px;
+    margin-top: 34px;
+}
+
+.field {
+    display: grid;
+    gap: 8px;
+}
+
+.field label {
+    color: var(--color-text);
+    font-size: 12px;
+    font-weight: 780;
+}
+
+.field input {
+    width: 100%;
+    min-width: 0;
+    height: 54px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    padding: 0 15px;
+    color: var(--color-ink);
+    font-size: 16px;
+    transition:
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        background-color 160ms ease;
+}
+
+.field input::placeholder {
+    color: #93a098;
+}
+
+.field input:hover {
+    border-color: #9eada2;
+}
+
+.field input:focus-visible {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 4px rgba(47, 118, 89, 0.11);
+}
+
+.field input[aria-invalid="true"] {
+    border-color: var(--color-danger);
+}
+
+.passwordControl {
+    position: relative;
+    min-width: 0;
+    border-radius: var(--radius-sm);
+}
+
+.passwordControl:focus-within {
+    box-shadow: 0 0 0 4px rgba(47, 118, 89, 0.11);
+}
+
+.passwordControl input {
+    padding-right: 95px;
+}
+
+.passwordControl input:focus-visible {
+    box-shadow: none;
+}
+
+.passwordToggle {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    min-width: 82px;
+    height: 44px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--color-canvas-strong);
+    color: var(--color-accent-strong);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 800;
+    transition:
+        background-color 160ms ease,
+        color 160ms ease;
+}
+
+.passwordToggle:hover {
+    background: var(--color-accent-soft);
+}
+
+.messageSlot {
+    min-height: 46px;
 }
 
 .error {
-    color: #b42318;
-    font-size: 0.9rem;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    border: 1px solid rgba(184, 72, 56, 0.22);
+    border-radius: var(--radius-sm);
+    background: var(--color-danger-soft);
+    padding: 11px 12px;
+    color: #8d3328;
 }
 
+.error > span {
+    display: grid;
+    width: 22px;
+    height: 22px;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(184, 72, 56, 0.13);
+    font-family: var(--font-data);
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.error p {
+    margin: 1px 0 0;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.submitButton {
+    display: flex;
+    width: 100%;
+    min-height: 54px;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--color-ink);
+    padding: 0 16px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 800;
+    transition:
+        background-color 160ms ease,
+        transform 160ms ease,
+        box-shadow 160ms ease;
+}
+
+.submitButton:hover:not(:disabled) {
+    background: var(--color-accent-strong);
+    box-shadow: 0 12px 28px rgba(23, 36, 31, 0.16);
+    transform: translateY(-1px);
+}
+
+.submitButton:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.submitButton:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+.submitArrow {
+    font-size: 17px;
+}
+
+.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.36);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 720ms linear infinite;
+}
+
+.helpText {
+    margin: 18px 0 0;
+    color: var(--color-muted);
+    font-size: 11px;
+    line-height: 1.5;
+    text-align: center;
+}
+
+@keyframes revealStory {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+}
+
+@keyframes revealForm {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (max-width: 940px) {
+    .page {
+        grid-template-columns: minmax(320px, 0.82fr) minmax(420px, 1.18fr);
+    }
+
+    .story {
+        padding-inline: 34px;
+    }
+
+    .storyCopy h2 {
+        font-size: clamp(40px, 6vw, 60px);
+    }
+
+    .serviceFlow {
+        grid-template-columns: 1fr;
+        gap: 13px;
+    }
+
+    .serviceFlow::before {
+        top: 12px;
+        bottom: 12px;
+        left: 15px;
+        width: 1px;
+        height: auto;
+    }
+}
+
+@media (max-width: 740px) {
+    .page {
+        display: block;
+        min-height: 100vh;
+        min-height: 100dvh;
+        overflow: visible;
+    }
+
+    .story {
+        display: none;
+    }
+
+    .formPane {
+        min-height: 100vh;
+        min-height: 100dvh;
+        align-items: start;
+        background:
+            radial-gradient(circle at 100% 0, rgba(47, 118, 89, 0.1), transparent 34%),
+            var(--color-canvas);
+        padding:
+            max(22px, env(safe-area-inset-top))
+            max(clamp(16px, 6vw, 32px), env(safe-area-inset-right))
+            max(24px, env(safe-area-inset-bottom))
+            max(clamp(16px, 6vw, 32px), env(safe-area-inset-left));
+    }
+
+    .formWrap {
+        width: min(100%, 520px);
+        margin: 0 auto;
+    }
+
+    .mobileBrand {
+        display: inline-flex;
+        margin-bottom: clamp(42px, 10vh, 82px);
+    }
+
+    .mobileBrand .brandMark {
+        width: 42px;
+        height: 42px;
+        flex-basis: 42px;
+        background: var(--color-ink);
+        color: #fff;
+        font-size: 19px;
+    }
+
+    .mobileBrand strong {
+        color: var(--color-ink);
+        font-size: 18px;
+    }
+
+    .mobileBrand small {
+        color: var(--color-muted);
+    }
+
+    .formHeader h1 {
+        font-size: clamp(31px, 9vw, 43px);
+    }
+}
+
+@media (max-width: 420px) {
+    .mobileBrand {
+        margin-bottom: 46px;
+    }
+
+    .formHeader > p:last-child {
+        font-size: 13px;
+    }
+
+    .form {
+        margin-top: 27px;
+    }
+}
+
+@media (max-height: 700px) and (min-width: 741px) {
+    .story,
+    .formPane {
+        min-height: 700px;
+    }
+
+    .storyCopy {
+        margin-bottom: 32px;
+    }
+
+    .storyFooter {
+        margin-top: 28px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .storyCopy,
+    .formWrap {
+        animation: none;
+    }
+
+    .submitButton,
+    .field input,
+    .passwordToggle {
+        transition: none;
+    }
+
+    .submitButton:hover:not(:disabled) {
+        transform: none;
+    }
+
+    .spinner {
+        animation-duration: 1.5s;
+    }
+}

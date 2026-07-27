@@ -60,6 +60,23 @@ public class SupplierService {
         return responseDTO;
     }
 
+    public SupplierDTO update(int id, SupplierDTO supplierDTO) {
+        SupplierRecord record = dsl.selectFrom(Supplier.SUPPLIER)
+                .where(Supplier.SUPPLIER.SUPPLIERID.eq(id))
+                .fetchOptional()
+                .orElseThrow(() -> new RuntimeException("Supplier Not Found"));
+
+        record.setSuppliername(supplierDTO.getSupplierName());
+        record.setCommunication(supplierDTO.getCommunication());
+        record.store();
+
+        SupplierDTO responseDTO = new SupplierDTO();
+        responseDTO.setSupplierID(record.getSupplierid());
+        responseDTO.setSupplierName(record.getSuppliername());
+        responseDTO.setCommunication(record.getCommunication());
+        return responseDTO;
+    }
+
     public SupplierDTO delete(int id) {
         // Проверяем существование поставщика
         boolean exists = dsl.fetchExists(

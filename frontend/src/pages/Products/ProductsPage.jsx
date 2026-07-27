@@ -1,10 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+    useCallback,
+    useDeferredValue,
+    useEffect,
+    useMemo,
+    useState
+} from "react";
+import { useSearchParams } from "react-router-dom";
 import { API_BASE_URL } from "../../auth";
+import ProductEditor from "./products-page/ProductEditor";
+import ProductsCatalog from "./products-page/ProductsCatalog";
+import ProductsHero from "./products-page/ProductsHero";
 import styles from "./ProductsPage.module.css";
 
 const API_PRODUCTS = `${API_BASE_URL}/api/product`;
 const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
 const API_UPLOAD = `${API_BASE_URL}/api/files/upload-image`;
+
 const UNIT_PRESETS = {
     g: { baseUnit: "g", unitFactor: "1" },
     kg: { baseUnit: "g", unitFactor: "1000" },
@@ -12,11 +23,22 @@ const UNIT_PRESETS = {
     l: { baseUnit: "ml", unitFactor: "1000" },
     pcs: { baseUnit: "pcs", unitFactor: "1" }
 };
+
+const UNIT_OPTIONS = [
+    { value: "g", label: "Граммы (g)" },
+    { value: "kg", label: "Килограммы (kg)" },
+    { value: "ml", label: "Миллилитры (ml)" },
+    { value: "l", label: "Литры (l)" },
+    { value: "pcs", label: "Штуки (pcs)" }
+];
+
+const SORT_OPTIONS = new Set(["name_asc", "name_desc", "price_asc", "price_desc"]);
+
 const createEmptyForm = () => ({
     supplierId: "",
     productName: "",
     productPrice: "",
-    waste: "",
+    waste: "0",
     isFavorite: false,
     unit: "g",
     baseUnit: "g",
@@ -24,155 +46,336 @@ const createEmptyForm = () => ({
     imageUrl: ""
 });
 
+const normalizeProduct = (product) => ({
+    ...product,
+    productId: Number(product?.productId ?? product?.id ?? 0),
+    supplierId: Number(product?.supplierId ?? product?.supplierID ?? 0),
+    productName: product?.productName ?? "",
+    productPrice: Number(product?.productPrice ?? 0),
+    waste: Number(product?.waste ?? 0),
+    isFavorite: Boolean(product?.isFavorite),
+    unit: product?.unit || product?.baseUnit || "g",
+    baseUnit: product?.baseUnit || product?.unit || "g",
+    unitFactor: Number(product?.unitFactor ?? 1),
+    averageStockPrice: product?.averageStockPrice,
+    imageUrl: product?.imageUrl ?? ""
+});
+
+const normalizeSupplier = (supplier) => {
+    const id = Number(supplier?.supplierId ?? supplier?.supplierID ?? supplier?.id ?? 0);
+    return {
+        id,
+        name: supplier?.supplierName ?? supplier?.name ?? `Поставщик #${id}`
+    };
+};
+
+const parseJsonSafe = (raw) => {
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+};
+
+const getResponseMessage = (raw, fallback) => {
+    const data = parseJsonSafe(raw);
+    return data?.message || data?.detail || raw || fallback;
+};
+
+const getSafeFactor = (value) => {
+    const factor = Number(value);
+    return Number.isFinite(factor) && factor > 0 ? factor : 1;
+};
+
+const formatNumber = (value, maximumFractionDigits = 4) => {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "0";
+    return number.toLocaleString("ru-RU", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits
+    });
+};
+
+const formatMoney = (value) => {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "—";
+    const digits = Math.abs(number) > 0 && Math.abs(number) < 1 ? 4 : 2;
+    return number.toLocaleString("ru-RU", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: digits
+    });
+};
+
 export default function ProductsPage() {
+    const [searchParams, setSearchParams] = useSearchParams();
     const [products, setProducts] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-    const [uploadingImage, setUploadingImage] = useState(false);
-    const [editingProductId, setEditingProductId] = useState(null);
-
-    const [search, setSearch] = useState("");
-    const [sortBy, setSortBy] = useState("name_asc");
+    const [pageError, setPageError] = useState("");
+    const [statusMessage, setStatusMessage] = useState("");
 
     const [form, setForm] = useState(createEmptyForm);
+    const [editingProductId, setEditingProductId] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [formError, setFormError] = useState("");
 
-    const loadData = async () => {
+    const search = searchParams.get("q") ?? "";
+    const requestedSort = searchParams.get("sort") ?? "name_asc";
+    const sortBy = SORT_OPTIONS.has(requestedSort) ? requestedSort : "name_asc";
+    const favoritesOnly = searchParams.get("favorites") === "1";
+    const deferredSearch = useDeferredValue(search);
+
+    const loadData = useCallback(async () => {
         setLoading(true);
-        setError("");
+        setPageError("");
+
         try {
-            const [productsRes, suppliersRes] = await Promise.all([
+            const [productsResponse, suppliersResponse] = await Promise.all([
                 fetch(API_PRODUCTS),
                 fetch(API_SUPPLIERS)
             ]);
 
-            if (!productsRes.ok) throw new Error(`Ошибка загрузки продуктов (${productsRes.status})`);
-            if (!suppliersRes.ok) throw new Error(`Ошибка загрузки поставщиков (${suppliersRes.status})`);
+            if (!productsResponse.ok || !suppliersResponse.ok) {
+                throw new Error("Проверьте подключение к серверу и повторите загрузку.");
+            }
 
-            const productsData = await productsRes.json().catch(() => []);
-            const suppliersData = await suppliersRes.json().catch(() => []);
+            const [productsData, suppliersData] = await Promise.all([
+                productsResponse.json().catch(() => []),
+                suppliersResponse.json().catch(() => [])
+            ]);
 
-            setProducts(Array.isArray(productsData) ? productsData : []);
-            setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
-        } catch (e) {
-            setError(e.message || "Ошибка загрузки данных");
+            setProducts(
+                Array.isArray(productsData)
+                    ? productsData.map(normalizeProduct)
+                    : []
+            );
+            setSuppliers(
+                Array.isArray(suppliersData)
+                    ? suppliersData.map(normalizeSupplier).filter((supplier) => supplier.id > 0)
+                    : []
+            );
+        } catch (error) {
+            console.error("Ошибка загрузки каталога продуктов:", error);
+            setPageError(error.message || "Не удалось получить продукты и поставщиков.");
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [loadData]);
 
-    const supplierMap = useMemo(() => {
-        const map = new Map();
-        suppliers.forEach((s) => {
-            const id = s.supplierId ?? s.supplierID ?? s.id;
-            const name = s.supplierName ?? s.name ?? `Поставщик #${id}`;
-            map.set(Number(id), name);
-        });
-        return map;
-    }, [suppliers]);
+    const supplierMap = useMemo(
+        () => new Map(suppliers.map((supplier) => [supplier.id, supplier.name])),
+        [suppliers]
+    );
 
     const filteredProducts = useMemo(() => {
-        const normalizedSearch = search.trim().toLowerCase();
-        let list = [...products];
+        const normalizedSearch = deferredSearch.trim().toLowerCase();
+        const list = products.filter((product) => {
+            if (favoritesOnly && !product.isFavorite) return false;
+            if (!normalizedSearch) return true;
+            return product.productName.toLowerCase().includes(normalizedSearch);
+        });
 
-        if (normalizedSearch) {
-            list = list.filter((p) =>
-                String(p.productName ?? "").toLowerCase().includes(normalizedSearch)
-            );
-        }
+        list.sort((left, right) => {
+            const leftName = left.productName.toLowerCase();
+            const rightName = right.productName.toLowerCase();
 
-        list.sort((a, b) => {
-            const nameA = String(a.productName ?? "").toLowerCase();
-            const nameB = String(b.productName ?? "").toLowerCase();
-            const priceA = Number(a.productPrice ?? 0);
-            const priceB = Number(b.productPrice ?? 0);
-
-            if (sortBy === "name_asc") return nameA.localeCompare(nameB);
-            if (sortBy === "name_desc") return nameB.localeCompare(nameA);
-            if (sortBy === "price_asc") return priceA - priceB;
-            return priceB - priceA;
+            if (sortBy === "name_asc") return leftName.localeCompare(rightName, "ru");
+            if (sortBy === "name_desc") return rightName.localeCompare(leftName, "ru");
+            if (sortBy === "price_asc") return left.productPrice - right.productPrice;
+            return right.productPrice - left.productPrice;
         });
 
         return list;
-    }, [products, search, sortBy]);
+    }, [deferredSearch, favoritesOnly, products, sortBy]);
+
+    const productRows = useMemo(() => (
+        filteredProducts.map((product) => {
+            const factor = getSafeFactor(product.unitFactor);
+            const fallbackBasePrice = product.productPrice / factor;
+            const averageStockPrice = Number(product.averageStockPrice);
+            const hasStockPrice = product.averageStockPrice != null
+                && Number.isFinite(averageStockPrice);
+            const basePrice = hasStockPrice ? averageStockPrice : fallbackBasePrice;
+
+            return {
+                id: product.productId,
+                name: product.productName || "Без названия",
+                initial: (product.productName || "П").slice(0, 1).toUpperCase(),
+                supplierName: supplierMap.get(product.supplierId)
+                    ?? (product.supplierId ? `Поставщик #${product.supplierId}` : "Поставщик не указан"),
+                favorite: product.isFavorite,
+                imageUrl: product.imageUrl,
+                purchasePriceLabel: `${formatMoney(product.productPrice)} ₽/${product.unit}`,
+                basePriceLabel: `${formatMoney(basePrice)} ₽/${product.baseUnit}`,
+                conversionLabel: factor === 1 && product.unit === product.baseUnit
+                    ? `Учёт в ${product.baseUnit}`
+                    : `1 ${product.unit} = ${formatNumber(factor)} ${product.baseUnit}`,
+                wasteLabel: `${formatNumber(product.waste, 2)}%`,
+                hasStockPrice,
+                source: product
+            };
+        })
+    ), [filteredProducts, supplierMap]);
+
+    const favoriteCount = useMemo(
+        () => products.filter((product) => product.isFavorite).length,
+        [products]
+    );
+
+    const basePricePreview = useMemo(() => {
+        const price = Number(form.productPrice);
+        const factor = Number(form.unitFactor);
+        if (!Number.isFinite(price) || !Number.isFinite(factor) || factor <= 0) {
+            return "Укажите цену и коэффициент";
+        }
+        return `${formatMoney(price / factor)} ₽ за 1 ${form.baseUnit}`;
+    }, [form.baseUnit, form.productPrice, form.unitFactor]);
+
+    const updateSearchParam = (key, value, defaultValue = "") => {
+        setSearchParams((current) => {
+            const next = new URLSearchParams(current);
+            if (value === defaultValue || value === "" || value === false) {
+                next.delete(key);
+            } else {
+                next.set(key, String(value));
+            }
+            return next;
+        }, { replace: true });
+    };
 
     const handleChange = (field, value) => {
-        setForm((prev) => {
+        setFormError("");
+        setForm((previous) => {
             if (field === "unit") {
                 const preset = UNIT_PRESETS[value];
                 if (preset) {
-                    return { ...prev, unit: value, baseUnit: preset.baseUnit, unitFactor: preset.unitFactor };
+                    return {
+                        ...previous,
+                        unit: value,
+                        baseUnit: preset.baseUnit,
+                        unitFactor: preset.unitFactor
+                    };
                 }
             }
-            return { ...prev, [field]: value };
+            return { ...previous, [field]: value };
         });
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setError("");
+    const resetEditor = () => {
+        setForm(createEmptyForm());
+        setEditingProductId(null);
+        setFormError("");
+    };
 
-        if (!form.supplierId || !form.productName.trim() || !form.productPrice.trim() || !form.waste.trim() || !form.unitFactor.trim()) {
-            setError("Заполните все поля формы");
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+
+        const supplierId = Number(form.supplierId);
+        const productName = form.productName.trim();
+        const productPrice = Number(form.productPrice);
+        const waste = Number(form.waste);
+        const unitFactor = Number(form.unitFactor);
+
+        if (!Number.isFinite(supplierId) || supplierId <= 0) {
+            setFormError("Выберите поставщика.");
+            return;
+        }
+        if (!productName) {
+            setFormError("Введите название продукта.");
+            return;
+        }
+        if (!Number.isFinite(productPrice) || productPrice < 0) {
+            setFormError("Укажите корректную закупочную цену.");
+            return;
+        }
+        if (!Number.isFinite(waste) || waste < 0 || waste > 100) {
+            setFormError("Отход должен быть от 0 до 100%.");
+            return;
+        }
+        if (!Number.isFinite(unitFactor) || unitFactor <= 0) {
+            setFormError("Коэффициент пересчёта должен быть больше 0.");
             return;
         }
 
+        const editing = editingProductId != null;
+        const endpoint = editing ? `${API_PRODUCTS}/${editingProductId}` : API_PRODUCTS;
         const payload = {
-            supplierId: Number(form.supplierId),
-            productName: form.productName.trim(),
-            productPrice: Number(form.productPrice),
-            waste: Number(form.waste),
-            isFavorite: !!form.isFavorite,
+            supplierId,
+            productName,
+            productPrice,
+            waste,
+            isFavorite: Boolean(form.isFavorite),
             unit: form.unit,
             baseUnit: form.baseUnit,
-            unitFactor: Number(form.unitFactor),
+            unitFactor,
             imageUrl: form.imageUrl || null
         };
 
+        setSaving(true);
+        setFormError("");
+        setStatusMessage("");
+
         try {
-            const res = await fetch(editingProductId ? `${API_PRODUCTS}/${editingProductId}` : API_PRODUCTS, {
-                method: editingProductId ? "PUT" : "POST",
+            const response = await fetch(endpoint, {
+                method: editing ? "PUT" : "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data?.message || `Ошибка сохранения (${res.status})`);
+            const raw = await response.text();
+            if (!response.ok) {
+                throw new Error(
+                    getResponseMessage(raw, "Не удалось сохранить продукт.")
+                );
             }
-            await res.json().catch(() => null);
-            setForm(createEmptyForm());
-            setEditingProductId(null);
+
+            resetEditor();
             await loadData();
-        } catch (e2) {
-            setError(e2.message || "Ошибка при сохранении продукта");
+            setStatusMessage(
+                editing
+                    ? `Карточка «${productName}» обновлена.`
+                    : `Продукт «${productName}» добавлен в каталог.`
+            );
+        } catch (error) {
+            console.error("Ошибка сохранения продукта:", error);
+            setFormError(error.message || "Не удалось сохранить продукт.");
+        } finally {
+            setSaving(false);
         }
     };
 
     const handleUploadImage = async (file) => {
         if (!file) return;
-        setError("");
+
         setUploadingImage(true);
+        setFormError("");
+
         try {
             const body = new FormData();
             body.append("file", file);
             body.append("folder", "products");
 
-            const res = await fetch(API_UPLOAD, {
+            const response = await fetch(API_UPLOAD, {
                 method: "POST",
                 body
             });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data?.message || `Ошибка загрузки изображения (${res.status})`);
+            const raw = await response.text();
+            if (!response.ok) {
+                throw new Error(
+                    getResponseMessage(raw, "Не удалось загрузить изображение.")
+                );
             }
-            const data = await res.json();
-            handleChange("imageUrl", data.url || "");
-        } catch (e) {
-            setError(e.message || "Ошибка загрузки изображения");
+
+            const data = parseJsonSafe(raw);
+            handleChange("imageUrl", data?.url || "");
+        } catch (error) {
+            console.error("Ошибка загрузки изображения продукта:", error);
+            setFormError(error.message || "Не удалось загрузить изображение.");
         } finally {
             setUploadingImage(false);
         }
@@ -180,212 +383,78 @@ export default function ProductsPage() {
 
     const startEditing = (product) => {
         setEditingProductId(product.productId);
-        setError("");
+        setFormError("");
+        setStatusMessage("");
         setForm({
-            supplierId: String(product.supplierId ?? ""),
-            productName: product.productName ?? "",
+            supplierId: String(product.supplierId || ""),
+            productName: product.productName || "",
             productPrice: String(product.productPrice ?? ""),
-            waste: String(product.waste ?? ""),
-            isFavorite: !!product.isFavorite,
-            unit: product.unit ?? "g",
-            baseUnit: product.baseUnit ?? "g",
+            waste: String(product.waste ?? "0"),
+            isFavorite: Boolean(product.isFavorite),
+            unit: product.unit || "g",
+            baseUnit: product.baseUnit || product.unit || "g",
             unitFactor: String(product.unitFactor ?? "1"),
-            imageUrl: product.imageUrl ?? ""
+            imageUrl: product.imageUrl || ""
         });
-        window.scrollTo({ top: 0, behavior: "smooth" });
-    };
-
-    const cancelEditing = () => {
-        setEditingProductId(null);
-        setError("");
-        setForm(createEmptyForm());
+        requestAnimationFrame(() => {
+            document.getElementById("product-editor")?.scrollIntoView({ block: "start" });
+        });
     };
 
     return (
         <div className={styles.page}>
-            <div className={styles.headerRow}>
-                <h2>Продукты</h2>
-                <button className={styles.reloadBtn} onClick={loadData} type="button">Обновить</button>
-            </div>
+            <ProductsHero
+                productCount={products.length}
+                favoriteCount={favoriteCount}
+                supplierCount={suppliers.length}
+            />
 
-            <form className={styles.form} onSubmit={handleSubmit}>
-                <h3>{editingProductId ? `Редактирование продукта #${editingProductId}` : "Добавить продукт"}</h3>
-                <div className={styles.formGrid}>
-                    <select
-                        value={form.supplierId}
-                        onChange={(e) => handleChange("supplierId", e.target.value)}
-                        required
-                    >
-                        <option value="">Поставщик</option>
-                        {suppliers.map((s) => {
-                            const id = s.supplierId ?? s.supplierID ?? s.id;
-                            const name = s.supplierName ?? s.name ?? `Поставщик #${id}`;
-                            return (
-                                <option key={id} value={id}>{name}</option>
-                            );
-                        })}
-                    </select>
-                    <input
-                        type="text"
-                        placeholder="Название"
-                        value={form.productName}
-                        onChange={(e) => handleChange("productName", e.target.value)}
-                        required
-                    />
-                    <input
-                        type="number"
-                        placeholder="Цена"
-                        step="0.01"
-                        min="0"
-                        value={form.productPrice}
-                        onChange={(e) => handleChange("productPrice", e.target.value)}
-                        required
-                    />
-                    <input
-                        type="number"
-                        placeholder="Waste"
-                        step="0.01"
-                        min="0"
-                        value={form.waste}
-                        onChange={(e) => handleChange("waste", e.target.value)}
-                        required
-                    />
-                    <select
-                        value={form.unit}
-                        onChange={(e) => handleChange("unit", e.target.value)}
-                    >
-                        <option value="g">g</option>
-                        <option value="kg">kg</option>
-                        <option value="ml">ml</option>
-                        <option value="l">l</option>
-                        <option value="pcs">pcs</option>
-                    </select>
-                    <select
-                        value={form.baseUnit}
-                        onChange={(e) => handleChange("baseUnit", e.target.value)}
-                    >
-                        <option value="g">g</option>
-                        <option value="ml">ml</option>
-                        <option value="pcs">pcs</option>
-                    </select>
-                    <input
-                        type="number"
-                        step="0.0001"
-                        min="0.0001"
-                        placeholder="Коэффициент в base"
-                        value={form.unitFactor}
-                        onChange={(e) => handleChange("unitFactor", e.target.value)}
-                        required
-                    />
-                    <input
-                        type="file"
-                        accept="image/*"
-                        className={styles.fileInput}
-                        onChange={(e) => handleUploadImage(e.target.files?.[0])}
-                    />
-                    <div className={styles.uploadStatus}>
-                        {uploadingImage ? "Загрузка изображения..." : (form.imageUrl ? "Изображение загружено" : "Изображение не выбрано")}
+            {statusMessage ? (
+                <div className={styles.statusBanner} role="status" aria-live="polite">
+                    <div>
+                        <strong>Операция выполнена</strong>
+                        <span>{statusMessage}</span>
                     </div>
-                    <div className={styles.hint}>
-                        Подсказка: для `kg` и `l` коэффициент обычно `1000`, для `g`, `ml`, `pcs` — `1`.
-                    </div>
-                    {form.imageUrl && (
-                        <img src={form.imageUrl} alt="Превью продукта" className={styles.previewImage} />
-                    )}
-                    <label className={styles.checkboxLabel}>
-                        <input
-                            type="checkbox"
-                            checked={form.isFavorite}
-                            onChange={(e) => handleChange("isFavorite", e.target.checked)}
-                        />
-                        Избранный
-                    </label>
-                    <div className={styles.formActions}>
-                        <button type="submit" className={styles.submitBtn}>
-                            {editingProductId ? "Сохранить" : "Создать"}
-                        </button>
-                        {editingProductId && (
-                            <button type="button" className={styles.cancelBtn} onClick={cancelEditing}>
-                                Отмена
-                            </button>
-                        )}
-                    </div>
+                    <button
+                        type="button"
+                        className={styles.statusDismiss}
+                        onClick={() => setStatusMessage("")}
+                    >
+                        Скрыть
+                    </button>
                 </div>
-            </form>
+            ) : null}
 
-            <div className={styles.controls}>
-                <input
-                    type="text"
-                    placeholder="Поиск по имени..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+            <div className={styles.workspace}>
+                <ProductEditor
+                    form={form}
+                    suppliers={suppliers}
+                    unitOptions={UNIT_OPTIONS}
+                    editingProductId={editingProductId}
+                    saving={saving}
+                    uploadingImage={uploadingImage}
+                    error={formError}
+                    basePricePreview={basePricePreview}
+                    onChange={handleChange}
+                    onSubmit={handleSubmit}
+                    onCancel={resetEditor}
+                    onUploadImage={handleUploadImage}
                 />
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                    <option value="name_asc">Имя: А-Я</option>
-                    <option value="name_desc">Имя: Я-А</option>
-                    <option value="price_asc">Цена: по возрастанию</option>
-                    <option value="price_desc">Цена: по убыванию</option>
-                </select>
+                <ProductsCatalog
+                    rows={productRows}
+                    totalCount={products.length}
+                    search={search}
+                    sortBy={sortBy}
+                    favoritesOnly={favoritesOnly}
+                    loading={loading}
+                    error={pageError}
+                    onSearchChange={(value) => updateSearchParam("q", value)}
+                    onSortChange={(value) => updateSearchParam("sort", value, "name_asc")}
+                    onFavoritesChange={(checked) => updateSearchParam("favorites", checked ? "1" : "")}
+                    onRetry={loadData}
+                    onEdit={startEditing}
+                />
             </div>
-
-            {error && <div className={styles.error}>{error}</div>}
-
-            {loading ? (
-                <div className={styles.info}>Загрузка...</div>
-            ) : filteredProducts.length === 0 ? (
-                <div className={styles.info}>Продукты не найдены</div>
-            ) : (
-                <div className={styles.tableWrap}>
-                    <table className={styles.table}>
-                        <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Название</th>
-                            <th>Поставщик</th>
-                            <th>Цена</th>
-                            <th>Waste</th>
-                            <th>Ед.</th>
-                            <th>Base</th>
-                            <th>Коэф.</th>
-                            <th>Фото</th>
-                            <th>Избранный</th>
-                            <th>Действия</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {filteredProducts.map((p) => (
-                            <tr key={p.productId}>
-                                <td>{p.productId}</td>
-                                <td>{p.productName}</td>
-                                <td>{supplierMap.get(Number(p.supplierId)) ?? `#${p.supplierId}`}</td>
-                                <td>{Number(p.productPrice ?? 0).toFixed(2)}</td>
-                                <td>{Number(p.waste ?? 0).toFixed(2)}</td>
-                                <td>{p.unit ?? "-"}</td>
-                                <td>{p.baseUnit ?? "-"}</td>
-                                <td>{Number(p.unitFactor ?? 1).toFixed(4)}</td>
-                                <td>
-                                    {p.imageUrl ? (
-                                        <img src={p.imageUrl} alt={p.productName} className={styles.tableThumb} />
-                                    ) : "—"}
-                                </td>
-                                <td>{p.isFavorite ? "Да" : "Нет"}</td>
-                                <td>
-                                    <div className={styles.rowActions}>
-                                        <button
-                                            type="button"
-                                            className={styles.editBtn}
-                                            onClick={() => startEditing(p)}
-                                        >
-                                            Редактировать
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
         </div>
     );
 }

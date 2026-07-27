@@ -31,6 +31,15 @@ public class SupplierController {
     public SupplierDTO getSupplierById(@PathVariable int id) {
         return supplierService.getSupplierById(id);
     }
+
+    @PutMapping("/{id}")
+    public SupplierDTO updateSupplier(
+            @PathVariable int id,
+            @RequestBody SupplierDTO supplierDTO
+    ) {
+        return supplierService.update(id, supplierDTO);
+    }
+
     @DeleteMapping("/{id}")
     public SupplierDTO deleteSupplierById(@PathVariable int id) {
         return supplierService.delete(id);
