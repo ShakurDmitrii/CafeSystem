@@ -158,23 +158,6 @@ public class PredictionService {
         }
     }
 
-    /**
-     * Локальное предсказание (fallback если Python сервис недоступен)
-     */
-    public RollPredictionResponseDTO predictLocal(RollPredictionRequestDTO request) {
-        log.warn("Using local fallback prediction (ML service unavailable)");
-
-        // Простая эвристика если Python сервис недоступен
-        double baseSales = 10.0; // Базовые продажи
-        double ingredientBonus = request.getIngredients().size() * 2.0;
-
-        return RollPredictionResponseDTO.builder()
-                .predictedSales(baseSales + ingredientBonus)
-                .confidenceScore(0.5)
-                .ingredients(request.getIngredients())
-                .build();
-    }
-
     public Map<String, Object> generateNewDish(GenerateDishRequestDTO request) {
         try {
             int days = request.getDays() != null ? request.getDays() : 90;

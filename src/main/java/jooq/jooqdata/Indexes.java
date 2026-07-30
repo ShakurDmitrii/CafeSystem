@@ -4,7 +4,12 @@
 package jooqdata;
 
 
+import jooqdata.tables.Dish;
+import jooqdata.tables.DishSetItem;
+import jooqdata.tables.Preparationwarehouse;
 import jooqdata.tables.Shift;
+import jooqdata.tables.TaxOutbox;
+import jooqdata.tables.Techproduct;
 
 import org.jooq.Index;
 import org.jooq.OrderField;
@@ -22,5 +27,16 @@ public class Indexes {
     // INDEX definitions
     // -------------------------------------------------------------------------
 
+    public static final Index DISH_CATEGORY_ID_IDX = Internal.createIndex(DSL.name("dish_category_id_idx"), Dish.DISH, new OrderField[] { Dish.DISH.CATEGORY_ID }, false);
+    public static final Index DISH_SET_ITEM_DISH_IDX = Internal.createIndex(DSL.name("dish_set_item_dish_idx"), DishSetItem.DISH_SET_ITEM, new OrderField[] { DishSetItem.DISH_SET_ITEM.DISH_ID }, false);
+    public static final Index DISH_SET_ITEM_SET_IDX = Internal.createIndex(DSL.name("dish_set_item_set_idx"), DishSetItem.DISH_SET_ITEM, new OrderField[] { DishSetItem.DISH_SET_ITEM.SET_ID }, false);
+    public static final Index PREPARATIONWAREHOUSE_PREP_IDX = Internal.createIndex(DSL.name("preparationwarehouse_prep_idx"), Preparationwarehouse.PREPARATIONWAREHOUSE, new OrderField[] { Preparationwarehouse.PREPARATIONWAREHOUSE.PREPARATIONID }, false);
+    public static final Index PREPARATIONWAREHOUSE_WH_IDX = Internal.createIndex(DSL.name("preparationwarehouse_wh_idx"), Preparationwarehouse.PREPARATIONWAREHOUSE, new OrderField[] { Preparationwarehouse.PREPARATIONWAREHOUSE.WAREHOUSEID }, false);
     public static final Index SHIFT_OPEN_UNIQUE_PERSON_IDX = Internal.createIndex(DSL.name("shift_open_unique_person_idx"), Shift.SHIFT, new OrderField[] { Shift.SHIFT.PERSONCODE }, true);
+    public static final Index TAX_OUTBOX_AGGREGATE_IDX = Internal.createIndex(DSL.name("tax_outbox_aggregate_idx"), TaxOutbox.TAX_OUTBOX, new OrderField[] { TaxOutbox.TAX_OUTBOX.AGGREGATE_TYPE, TaxOutbox.TAX_OUTBOX.AGGREGATE_ID }, false);
+    public static final Index TAX_OUTBOX_CREATED_IDX = Internal.createIndex(DSL.name("tax_outbox_created_idx"), TaxOutbox.TAX_OUTBOX, new OrderField[] { TaxOutbox.TAX_OUTBOX.CREATED_AT }, false);
+    public static final Index TAX_OUTBOX_EVENT_KEY_UQ_IDX = Internal.createIndex(DSL.name("tax_outbox_event_key_uq_idx"), TaxOutbox.TAX_OUTBOX, new OrderField[] { TaxOutbox.TAX_OUTBOX.EVENT_KEY }, true);
+    public static final Index TAX_OUTBOX_STATUS_AVAILABLE_IDX = Internal.createIndex(DSL.name("tax_outbox_status_available_idx"), TaxOutbox.TAX_OUTBOX, new OrderField[] { TaxOutbox.TAX_OUTBOX.STATUS, TaxOutbox.TAX_OUTBOX.AVAILABLE_AT }, false);
+    public static final Index TECHPRODUCT_PREPARATION_INGREDIENT_IDX = Internal.createIndex(DSL.name("techproduct_preparation_ingredient_idx"), Techproduct.TECHPRODUCT, new OrderField[] { Techproduct.TECHPRODUCT.INGREDIENT_PREPARATION_ID }, false);
+    public static final Index TECHPRODUCT_PREPARATION_OWNER_IDX = Internal.createIndex(DSL.name("techproduct_preparation_owner_idx"), Techproduct.TECHPRODUCT, new OrderField[] { Techproduct.TECHPRODUCT.PREPARATION_ID }, false);
 }

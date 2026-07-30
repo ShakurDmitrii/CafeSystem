@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import styles from "./DishPickerModal.module.css";
 
 const normalize = (v) => String(v || "").trim();
+const FOCUSABLE = [
+    "button:not([disabled])",
+    "input:not([disabled])",
+    "select:not([disabled])",
+    "textarea:not([disabled])",
+    "[tabindex]:not([tabindex='-1'])"
+].join(",");
 
 const toItemType = (item) =>
     item?.itemType === "set" || item?.setId != null ? "set" : "dish";
@@ -11,7 +18,7 @@ const toCategoryName = (dish) =>
         ? "Наборы"
         : dish?.categoryName || dish?.category || "Без категории";
 
-const toDishId = (dish) => dish?.dishId ?? dish?.id;
+const toDishId = (dish) => dish?.dishId ?? dish?.dishID ?? dish?.id;
 
 const toSetId = (item) => item?.setId;
 
@@ -70,6 +77,8 @@ export default function DishPickerModal({
     const [activeCategory, setActiveCategory] = useState("Все");
     const [cartItems, setCartItems] = useState([]);
     const [search, setSearch] = useState("");
+    const titleId = useId();
+    const modalRef = useRef(null);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -77,6 +86,45 @@ export default function DishPickerModal({
         setActiveCategory("Все");
         setSearch("");
     }, [isOpen, initialItems]);
+
+    useEffect(() => {
+        if (!isOpen) return undefined;
+
+        const previousFocus = document.activeElement;
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+
+        const modal = modalRef.current;
+        modal?.querySelector(FOCUSABLE)?.focus();
+
+        const handleKeyDown = (event) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                onClose?.();
+                return;
+            }
+            if (event.key !== "Tab" || !modal) return;
+
+            const focusable = [...modal.querySelectorAll(FOCUSABLE)];
+            if (focusable.length === 0) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown);
+            document.body.style.overflow = previousOverflow;
+            previousFocus?.focus?.();
+        };
+    }, [isOpen, onClose]);
 
     const catalogItems = useMemo(() => {
         const dishItems = dishes.map((dish) => ({
@@ -190,10 +238,16 @@ export default function DishPickerModal({
 
     return (
         <div className={styles.overlay}>
-            <div className={styles.modal}>
+            <div
+                ref={modalRef}
+                className={styles.modal}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+            >
                 <header className={styles.header}>
-                    <h2>Выбор позиций</h2>
-                    <button className={styles.closeBtn} onClick={onClose}>
+                    <h2 id={titleId}>Выбор позиций</h2>
+                    <button className={styles.closeBtn} type="button" onClick={onClose}>
                         Закрыть
                     </button>
                 </header>
@@ -223,8 +277,11 @@ export default function DishPickerModal({
                         </div>
                         <input
                             type="text"
+                            name="dishSearch"
+                            aria-label="Поиск по названию"
+                            autoComplete="off"
                             className={styles.searchInput}
-                            placeholder="Поиск по названию..."
+                            placeholder="Поиск по названию…"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
@@ -243,6 +300,9 @@ export default function DishPickerModal({
                                             <img
                                                 src={d.imageUrl}
                                                 alt={d.dishName}
+                                                width="320"
+                                                height="240"
+                                                loading="lazy"
                                                 className={styles.dishImg}
                                             />
                                         ) : (
@@ -302,12 +362,15 @@ export default function DishPickerModal({
                                                 className={styles.qtyBtn}
                                                 onClick={() => updateQty(i.entityKey, i.qty - 1)}
                                                 disabled={disabled}
+                                                aria-label={`Уменьшить количество: ${i.dishName}`}
                                             >
                                                 −
                                             </button>
                                             <input
                                                 type="number"
                                                 min="1"
+                                                name={`quantity-${i.entityKey}`}
+                                                aria-label={`Количество: ${i.dishName}`}
                                                 className={styles.qtyInput}
                                                 value={i.qty}
                                                 onChange={(e) =>
@@ -320,6 +383,7 @@ export default function DishPickerModal({
                                                 className={styles.qtyBtn}
                                                 onClick={() => updateQty(i.entityKey, i.qty + 1)}
                                                 disabled={disabled}
+                                                aria-label={`Увеличить количество: ${i.dishName}`}
                                             >
                                                 +
                                             </button>

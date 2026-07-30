@@ -4,6 +4,8 @@ import com.shakur.cafehelp.DTO.MlDTO.SalesRecordDTO;
 import jooqdata.tables.Order;
 import jooqdata.tables.records.OrderRecord;
 import org.jooq.DSLContext;
+import org.jooq.Field;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 
 import com.shakur.cafehelp.DTO.MlDTO.SalesRecordDTO;
@@ -11,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.jooq.DSLContext;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -25,6 +28,8 @@ import static jooqdata.tables.Techproduct.TECHPRODUCT;
 @Service
 @RequiredArgsConstructor
 public class SalesService {
+    private static final Field<LocalDateTime> ORDER_CANCELLED_AT =
+            DSL.field(DSL.name("cancelled_at"), LocalDateTime.class);
 
     private final DSLContext dsl;
 
@@ -39,6 +44,7 @@ public class SalesService {
         var orders = dsl.selectFrom(ORDER)
                 .where(ORDER.DATE.between(startDate, endDate))
                 .and(ORDER.STATUS.eq(true)) // только завершенные
+                .and(ORDER_CANCELLED_AT.isNull())
                 .fetch();
 
         return orders.stream()
@@ -75,6 +81,8 @@ public class SalesService {
                                 .quantity(orderItem.getQty())
                                 .totalAmount(calculateTotal(orderItem, dish))
                                 .pricePerUnit(dish.getPrice())
+                                .unitCost(dish.getFirstcost())
+                                .totalCost(orderItem.getQty() * dish.getFirstcost())
                                 .locationId(getLocationFromOrder(order))
                                 .build();
                     });
@@ -100,6 +108,7 @@ public class SalesService {
                 .join(PRODUCT).on(TECHPRODUCT.PRODUCTID.eq(PRODUCT.PRODUCTID))
                 .where(ORDER.DATE.greaterOrEqual(sinceDate))
                 .and(ORDER.STATUS.eq(true))
+                .and(ORDER_CANCELLED_AT.isNull())
                 .groupBy(PRODUCT.PRODUCTNAME)
                 .orderBy(org.jooq.impl.DSL.sum(ORDERDISH.QTY).desc())
                 .limit(limit)
@@ -124,6 +133,7 @@ public class SalesService {
                 .join(DISH).on(ORDERDISH.DISHID.eq(DISH.DISHID))
                 .where(ORDER.DATE.between(startDate, endDate))
                 .and(ORDER.STATUS.eq(true))
+                .and(ORDER_CANCELLED_AT.isNull())
                 .groupBy(DISH.DISHID, DISH.DISHNAME)
                 .fetch()
                 .stream()
@@ -169,6 +179,7 @@ public class SalesService {
                 .join(PRODUCT).on(TECHPRODUCT.PRODUCTID.eq(PRODUCT.PRODUCTID))
                 .where(ORDER.DATE.between(startDate, endDate))
                 .and(ORDER.STATUS.eq(true))
+                .and(ORDER_CANCELLED_AT.isNull())
                 .orderBy(ORDER.ORDERID, DISH.DISHID)
                 .fetch()
                 .stream()
@@ -191,6 +202,8 @@ public class SalesService {
                                             .quantity(firstRecord.get(ORDERDISH.QTY))
                                             .totalAmount(firstRecord.get(ORDERDISH.QTY) * firstRecord.get(DISH.PRICE))
                                             .pricePerUnit(firstRecord.get(DISH.PRICE))
+                                            .unitCost(firstRecord.get(DISH.FIRSTCOST))
+                                            .totalCost(firstRecord.get(ORDERDISH.QTY) * firstRecord.get(DISH.FIRSTCOST))
                                             .build();
                                 }
                         )

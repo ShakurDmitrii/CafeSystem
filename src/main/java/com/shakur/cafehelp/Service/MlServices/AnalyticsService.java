@@ -101,7 +101,7 @@ public class AnalyticsService {
     private DashboardDataDTO enrichWithJavaData(DashboardDataDTO dashboardData) {
         if (dashboardData == null) {
             log.error("Cannot enrich null dashboard data");
-            return createFallbackDashboard("week");
+            throw new IllegalStateException("Python analytics service returned no data");
         }
 
         try {
@@ -125,30 +125,6 @@ public class AnalyticsService {
             return dashboardData;
         }
     }
-    private DashboardDataDTO createFallbackDashboard(String timeRange) {
-        log.warn("Creating fallback dashboard data");
-        return DashboardDataDTO.builder()
-                .kpi(KpiDataDTO.builder()
-                        .totalProfit(0.0)
-                        .totalSales(0)
-                        .profitChange(0.0)
-                        .salesChange(0.0)
-                        .modelAccuracy(0.0)
-                        .dataSource("Fallback (Service Error)")
-                        .isFallback(true)
-                        .lastUpdated(LocalDateTime.now())
-                        .build())
-                .topRolls(List.of())
-                .salesTrend(List.of())
-                .insights(List.of())
-                .timeRange(timeRange)
-                .generatedAt(String.valueOf(LocalDateTime.now()))
-                .processedBy("Java Fallback Service")
-                .isFallback(true)
-                .errorMessage("Analytics service encountered an error")
-                .build();
-    }
-
     /**
      * Проверить доступность сервиса аналитики
      */

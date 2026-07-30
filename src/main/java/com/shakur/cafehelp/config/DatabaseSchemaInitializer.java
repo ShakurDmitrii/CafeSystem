@@ -2,9 +2,11 @@ package com.shakur.cafehelp.config;
 
 import jakarta.annotation.PostConstruct;
 import org.jooq.DSLContext;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Component;
 
 @Component
+@DependsOn("databaseMigrationRunner")
 public class DatabaseSchemaInitializer {
     private final DSLContext dsl;
 
@@ -21,6 +23,8 @@ public class DatabaseSchemaInitializer {
         ensurePreparationSchema();
         ensureDishSetSchema();
         ensureOrderDishSetSchema();
+        ensureShiftInventorySnapshotSchema();
+        ensureInventoryShiftReportSchema();
         fixPackAmountOvercount();
 
         dsl.execute("""
@@ -156,14 +160,16 @@ public class DatabaseSchemaInitializer {
                 false
             )
             """);
-        dsl.execute("""
-            ALTER TABLE sales.person
-            ALTER COLUMN personid SET DEFAULT nextval('sales.person_personid_seq')
-            """);
-        dsl.execute("""
-            ALTER SEQUENCE sales.person_personid_seq
-            OWNED BY sales.person.personid
-            """);
+        if (!isIdentityColumn("person", "personid")) {
+            dsl.execute("""
+                ALTER TABLE sales.person
+                ALTER COLUMN personid SET DEFAULT nextval('sales.person_personid_seq')
+                """);
+            dsl.execute("""
+                ALTER SEQUENCE sales.person_personid_seq
+                OWNED BY sales.person.personid
+                """);
+        }
     }
 
     private void ensureUserAccountIdentity() {
@@ -177,14 +183,16 @@ public class DatabaseSchemaInitializer {
                 false
             )
             """);
-        dsl.execute("""
-            ALTER TABLE sales.user_account
-            ALTER COLUMN id SET DEFAULT nextval('sales.user_account_id_seq')
-            """);
-        dsl.execute("""
-            ALTER SEQUENCE sales.user_account_id_seq
-            OWNED BY sales.user_account.id
-            """);
+        if (!isIdentityColumn("user_account", "id")) {
+            dsl.execute("""
+                ALTER TABLE sales.user_account
+                ALTER COLUMN id SET DEFAULT nextval('sales.user_account_id_seq')
+                """);
+            dsl.execute("""
+                ALTER SEQUENCE sales.user_account_id_seq
+                OWNED BY sales.user_account.id
+                """);
+        }
     }
 
     private void ensureShiftPersonIdentity() {
@@ -198,14 +206,34 @@ public class DatabaseSchemaInitializer {
                 false
             )
             """);
-        dsl.execute("""
-            ALTER TABLE sales.shiftperson
-            ALTER COLUMN shiftpersonid SET DEFAULT nextval('sales.shiftperson_shiftpersonid_seq')
-            """);
-        dsl.execute("""
-            ALTER SEQUENCE sales.shiftperson_shiftpersonid_seq
-            OWNED BY sales.shiftperson.shiftpersonid
-            """);
+        if (!isIdentityColumn("shiftperson", "shiftpersonid")) {
+            dsl.execute("""
+                ALTER TABLE sales.shiftperson
+                ALTER COLUMN shiftpersonid SET DEFAULT nextval('sales.shiftperson_shiftpersonid_seq')
+                """);
+            dsl.execute("""
+                ALTER SEQUENCE sales.shiftperson_shiftpersonid_seq
+                OWNED BY sales.shiftperson.shiftpersonid
+                """);
+        }
+    }
+
+    private boolean isIdentityColumn(String tableName, String columnName) {
+        var result = dsl.fetchOne(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'sales'
+                      AND table_name = ?
+                      AND column_name = ?
+                      AND is_identity = 'YES'
+                )
+                """,
+                tableName,
+                columnName
+        );
+        return result != null && Boolean.TRUE.equals(result.get(0, Boolean.class));
     }
 
     private void fixPackAmountOvercount() {
@@ -698,6 +726,554 @@ public class DatabaseSchemaInitializer {
                     ADD CONSTRAINT dish_set_item_dish_fk
                     FOREIGN KEY (dish_id)
                     REFERENCES sales.dish(dishid);
+                END IF;
+            END $$;
+            """);
+    }
+
+    private void ensureInventoryShiftReportSchema() {
+        dsl.execute("""
+            CREATE TABLE IF NOT EXISTS sales.inventory_shift_report (
+                id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                warehouse_id integer NOT NULL,
+                shift_id integer NOT NULL,
+                snapshot_available boolean NOT NULL DEFAULT false,
+                created_at timestamp NOT NULL DEFAULT now(),
+                updated_at timestamp NOT NULL DEFAULT now(),
+                applied_at timestamp NULL
+            )
+            """);
+
+        dsl.execute("""
+            CREATE TABLE IF NOT EXISTS sales.inventory_shift_report_line (
+                id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                report_id integer NOT NULL,
+                product_id integer NOT NULL,
+                product_name varchar(255) NOT NULL,
+                unit varchar(50) NOT NULL DEFAULT 'g',
+                opening_qty double precision NOT NULL DEFAULT 0,
+                movement_in_qty double precision NOT NULL DEFAULT 0,
+                movement_out_qty double precision NOT NULL DEFAULT 0,
+                movement_net_qty double precision NOT NULL DEFAULT 0,
+                sold_qty double precision NOT NULL DEFAULT 0,
+                expected_qty double precision NOT NULL DEFAULT 0,
+                system_qty double precision NOT NULL DEFAULT 0,
+                actual_qty double precision NULL,
+                discrepancy_qty double precision NULL,
+                shortage_qty double precision NOT NULL DEFAULT 0,
+                shortage_flag boolean NOT NULL DEFAULT false,
+                sort_order integer NOT NULL DEFAULT 0
+            )
+            """);
+
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ADD COLUMN IF NOT EXISTS warehouse_id integer
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ADD COLUMN IF NOT EXISTS shift_id integer
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ADD COLUMN IF NOT EXISTS snapshot_available boolean
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ADD COLUMN IF NOT EXISTS created_at timestamp
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ADD COLUMN IF NOT EXISTS updated_at timestamp
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ADD COLUMN IF NOT EXISTS applied_at timestamp
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report
+            SET created_at = now()
+            WHERE created_at IS NULL
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report
+            SET updated_at = COALESCE(updated_at, created_at, now())
+            WHERE updated_at IS NULL
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report
+            SET snapshot_available = false
+            WHERE snapshot_available IS NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ALTER COLUMN warehouse_id SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ALTER COLUMN shift_id SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ALTER COLUMN snapshot_available SET DEFAULT false
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ALTER COLUMN snapshot_available SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ALTER COLUMN created_at SET DEFAULT now()
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ALTER COLUMN created_at SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ALTER COLUMN updated_at SET DEFAULT now()
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report
+            ALTER COLUMN updated_at SET NOT NULL
+            """);
+
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS report_id integer
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS product_id integer
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS product_name varchar(255)
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS unit varchar(50)
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS opening_qty double precision
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS movement_in_qty double precision
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS movement_out_qty double precision
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS movement_net_qty double precision
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS sold_qty double precision
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS expected_qty double precision
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS system_qty double precision
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS actual_qty double precision
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS discrepancy_qty double precision
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS shortage_qty double precision
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS shortage_flag boolean
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ADD COLUMN IF NOT EXISTS sort_order integer
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report_line
+            SET unit = 'g'
+            WHERE unit IS NULL OR unit = ''
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report_line
+            SET sold_qty = 0
+            WHERE sold_qty IS NULL
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report_line
+            SET opening_qty = 0
+            WHERE opening_qty IS NULL
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report_line
+            SET movement_in_qty = 0
+            WHERE movement_in_qty IS NULL
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report_line
+            SET movement_out_qty = 0
+            WHERE movement_out_qty IS NULL
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report_line
+            SET movement_net_qty = 0
+            WHERE movement_net_qty IS NULL
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report_line
+            SET expected_qty = 0
+            WHERE expected_qty IS NULL
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report_line
+            SET system_qty = 0
+            WHERE system_qty IS NULL
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report_line
+            SET shortage_qty = 0
+            WHERE shortage_qty IS NULL
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report_line
+            SET shortage_flag = false
+            WHERE shortage_flag IS NULL
+            """);
+        dsl.execute("""
+            UPDATE sales.inventory_shift_report_line
+            SET sort_order = 0
+            WHERE sort_order IS NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN report_id SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN product_id SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN product_name SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN unit SET DEFAULT 'g'
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN unit SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN opening_qty SET DEFAULT 0
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN opening_qty SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN movement_in_qty SET DEFAULT 0
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN movement_in_qty SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN movement_out_qty SET DEFAULT 0
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN movement_out_qty SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN movement_net_qty SET DEFAULT 0
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN movement_net_qty SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN sold_qty SET DEFAULT 0
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN sold_qty SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN expected_qty SET DEFAULT 0
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN expected_qty SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN system_qty SET DEFAULT 0
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN system_qty SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN shortage_qty SET DEFAULT 0
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN shortage_qty SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN shortage_flag SET DEFAULT false
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN shortage_flag SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN sort_order SET DEFAULT 0
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.inventory_shift_report_line
+            ALTER COLUMN sort_order SET NOT NULL
+            """);
+
+        dsl.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS inventory_shift_report_wh_shift_uq_idx
+            ON sales.inventory_shift_report (warehouse_id, shift_id)
+            """);
+        dsl.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS inventory_shift_report_line_report_product_uq_idx
+            ON sales.inventory_shift_report_line (report_id, product_id)
+            """);
+        dsl.execute("""
+            CREATE INDEX IF NOT EXISTS inventory_shift_report_line_report_sort_idx
+            ON sales.inventory_shift_report_line (report_id, sort_order)
+            """);
+
+        dsl.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.table_constraints
+                    WHERE constraint_schema = 'sales'
+                      AND table_name = 'inventory_shift_report'
+                      AND constraint_name = 'inventory_shift_report_warehouse_fk'
+                ) THEN
+                    ALTER TABLE sales.inventory_shift_report
+                    ADD CONSTRAINT inventory_shift_report_warehouse_fk
+                    FOREIGN KEY (warehouse_id)
+                    REFERENCES sales.warehouse(warehouseid)
+                    ON DELETE CASCADE;
+                END IF;
+            END $$;
+            """);
+        dsl.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.table_constraints
+                    WHERE constraint_schema = 'sales'
+                      AND table_name = 'inventory_shift_report'
+                      AND constraint_name = 'inventory_shift_report_shift_fk'
+                ) THEN
+                    ALTER TABLE sales.inventory_shift_report
+                    ADD CONSTRAINT inventory_shift_report_shift_fk
+                    FOREIGN KEY (shift_id)
+                    REFERENCES sales.shift(id)
+                    ON DELETE CASCADE;
+                END IF;
+            END $$;
+            """);
+        dsl.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.table_constraints
+                    WHERE constraint_schema = 'sales'
+                      AND table_name = 'inventory_shift_report_line'
+                      AND constraint_name = 'inventory_shift_report_line_report_fk'
+                ) THEN
+                    ALTER TABLE sales.inventory_shift_report_line
+                    ADD CONSTRAINT inventory_shift_report_line_report_fk
+                    FOREIGN KEY (report_id)
+                    REFERENCES sales.inventory_shift_report(id)
+                    ON DELETE CASCADE;
+                END IF;
+            END $$;
+            """);
+        dsl.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.table_constraints
+                    WHERE constraint_schema = 'sales'
+                      AND table_name = 'inventory_shift_report_line'
+                      AND constraint_name = 'inventory_shift_report_line_product_fk'
+                ) THEN
+                    ALTER TABLE sales.inventory_shift_report_line
+                    ADD CONSTRAINT inventory_shift_report_line_product_fk
+                    FOREIGN KEY (product_id)
+                    REFERENCES sales.product(productid);
+                END IF;
+            END $$;
+            """);
+    }
+
+    private void ensureShiftInventorySnapshotSchema() {
+        dsl.execute("""
+            CREATE TABLE IF NOT EXISTS sales.shift_inventory_snapshot (
+                id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                shift_id integer NOT NULL,
+                warehouse_id integer NOT NULL,
+                product_id integer NOT NULL,
+                quantity double precision NOT NULL DEFAULT 0,
+                created_at timestamp NOT NULL DEFAULT now()
+            )
+            """);
+
+        dsl.execute("""
+            ALTER TABLE sales.shift_inventory_snapshot
+            ADD COLUMN IF NOT EXISTS shift_id integer
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.shift_inventory_snapshot
+            ADD COLUMN IF NOT EXISTS warehouse_id integer
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.shift_inventory_snapshot
+            ADD COLUMN IF NOT EXISTS product_id integer
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.shift_inventory_snapshot
+            ADD COLUMN IF NOT EXISTS quantity double precision
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.shift_inventory_snapshot
+            ADD COLUMN IF NOT EXISTS created_at timestamp
+            """);
+        dsl.execute("""
+            UPDATE sales.shift_inventory_snapshot
+            SET quantity = 0
+            WHERE quantity IS NULL
+            """);
+        dsl.execute("""
+            UPDATE sales.shift_inventory_snapshot
+            SET created_at = now()
+            WHERE created_at IS NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.shift_inventory_snapshot
+            ALTER COLUMN shift_id SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.shift_inventory_snapshot
+            ALTER COLUMN warehouse_id SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.shift_inventory_snapshot
+            ALTER COLUMN product_id SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.shift_inventory_snapshot
+            ALTER COLUMN quantity SET DEFAULT 0
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.shift_inventory_snapshot
+            ALTER COLUMN quantity SET NOT NULL
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.shift_inventory_snapshot
+            ALTER COLUMN created_at SET DEFAULT now()
+            """);
+        dsl.execute("""
+            ALTER TABLE sales.shift_inventory_snapshot
+            ALTER COLUMN created_at SET NOT NULL
+            """);
+
+        dsl.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS shift_inventory_snapshot_shift_wh_product_uq_idx
+            ON sales.shift_inventory_snapshot (shift_id, warehouse_id, product_id)
+            """);
+        dsl.execute("""
+            CREATE INDEX IF NOT EXISTS shift_inventory_snapshot_shift_wh_idx
+            ON sales.shift_inventory_snapshot (shift_id, warehouse_id)
+            """);
+
+        dsl.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.table_constraints
+                    WHERE constraint_schema = 'sales'
+                      AND table_name = 'shift_inventory_snapshot'
+                      AND constraint_name = 'shift_inventory_snapshot_shift_fk'
+                ) THEN
+                    ALTER TABLE sales.shift_inventory_snapshot
+                    ADD CONSTRAINT shift_inventory_snapshot_shift_fk
+                    FOREIGN KEY (shift_id)
+                    REFERENCES sales.shift(id)
+                    ON DELETE CASCADE;
+                END IF;
+            END $$;
+            """);
+        dsl.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.table_constraints
+                    WHERE constraint_schema = 'sales'
+                      AND table_name = 'shift_inventory_snapshot'
+                      AND constraint_name = 'shift_inventory_snapshot_warehouse_fk'
+                ) THEN
+                    ALTER TABLE sales.shift_inventory_snapshot
+                    ADD CONSTRAINT shift_inventory_snapshot_warehouse_fk
+                    FOREIGN KEY (warehouse_id)
+                    REFERENCES sales.warehouse(warehouseid)
+                    ON DELETE CASCADE;
+                END IF;
+            END $$;
+            """);
+        dsl.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.table_constraints
+                    WHERE constraint_schema = 'sales'
+                      AND table_name = 'shift_inventory_snapshot'
+                      AND constraint_name = 'shift_inventory_snapshot_product_fk'
+                ) THEN
+                    ALTER TABLE sales.shift_inventory_snapshot
+                    ADD CONSTRAINT shift_inventory_snapshot_product_fk
+                    FOREIGN KEY (product_id)
+                    REFERENCES sales.product(productid);
                 END IF;
             END $$;
             """);

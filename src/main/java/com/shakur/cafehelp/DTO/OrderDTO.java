@@ -28,6 +28,9 @@ public class OrderDTO {
     public String deliveryAddress;
     public String paymentType;
     public Boolean paid;
+    public LocalDateTime cancelledAt;
+    public String cancelReason;
+    public Integer version;
     public List<OrderDishDTO> items;
 
     public LocalDate getDebt_payment_date() {
@@ -164,6 +167,30 @@ public class OrderDTO {
 
     public void setPaid(Boolean paid) {
         this.paid = paid;
+    }
+
+    public LocalDateTime getCancelledAt() {
+        return cancelledAt;
+    }
+
+    public void setCancelledAt(LocalDateTime cancelledAt) {
+        this.cancelledAt = cancelledAt;
+    }
+
+    public String getCancelReason() {
+        return cancelReason;
+    }
+
+    public void setCancelReason(String cancelReason) {
+        this.cancelReason = cancelReason;
+    }
+
+    public Integer getVersion() {
+        return version;
+    }
+
+    public void setVersion(Integer version) {
+        this.version = version;
     }
 
     public List<OrderDishDTO> getItems() {

@@ -11,6 +11,7 @@ import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Consignmentnote.ConsignmentnotePath;
 import jooqdata.tables.Product.ProductPath;
+import jooqdata.tables.ProductSupplier.ProductSupplierPath;
 import jooqdata.tables.records.SupplierRecord;
 
 import org.jooq.Condition;
@@ -177,6 +178,19 @@ public class Supplier extends TableImpl<SupplierRecord> {
             _product = new ProductPath(this, null, Keys.PRODUCT__PRODUCT_SUPPLIER_FK.getInverseKey());
 
         return _product;
+    }
+
+    private transient ProductSupplierPath _productSupplier;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>sales.product_supplier</code> table
+     */
+    public ProductSupplierPath productSupplier() {
+        if (_productSupplier == null)
+            _productSupplier = new ProductSupplierPath(this, null, Keys.PRODUCT_SUPPLIER__PRODUCT_SUPPLIER_SUPPLIER_ID_FKEY.getInverseKey());
+
+        return _productSupplier;
     }
 
     @Override

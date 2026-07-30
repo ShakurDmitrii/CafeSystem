@@ -13,18 +13,25 @@ import jooqdata.tables.Clientduty;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
+import jooqdata.tables.DishCategory;
+import jooqdata.tables.DishSet;
+import jooqdata.tables.DishSetItem;
 import jooqdata.tables.InventoryDocumentLines;
 import jooqdata.tables.InventoryDocuments;
 import jooqdata.tables.Order;
 import jooqdata.tables.Orderdish;
 import jooqdata.tables.Person;
+import jooqdata.tables.Preparation;
+import jooqdata.tables.Preparationwarehouse;
 import jooqdata.tables.Product;
+import jooqdata.tables.ProductSupplier;
 import jooqdata.tables.Productwarehouse;
 import jooqdata.tables.Shift;
 import jooqdata.tables.Shiftperson;
 import jooqdata.tables.StockMovements;
 import jooqdata.tables.Supplier;
 import jooqdata.tables.SupplierPriceHistory;
+import jooqdata.tables.TaxOutbox;
 import jooqdata.tables.Techproduct;
 import jooqdata.tables.UserAccount;
 import jooqdata.tables.Warehouse;
@@ -78,6 +85,21 @@ public class Sales extends SchemaImpl {
     public final Dish DISH = Dish.DISH;
 
     /**
+     * The table <code>sales.dish_category</code>.
+     */
+    public final DishCategory DISH_CATEGORY = DishCategory.DISH_CATEGORY;
+
+    /**
+     * The table <code>sales.dish_set</code>.
+     */
+    public final DishSet DISH_SET = DishSet.DISH_SET;
+
+    /**
+     * The table <code>sales.dish_set_item</code>.
+     */
+    public final DishSetItem DISH_SET_ITEM = DishSetItem.DISH_SET_ITEM;
+
+    /**
      * The table <code>sales.inventory_document_lines</code>.
      */
     public final InventoryDocumentLines INVENTORY_DOCUMENT_LINES = InventoryDocumentLines.INVENTORY_DOCUMENT_LINES;
@@ -103,9 +125,24 @@ public class Sales extends SchemaImpl {
     public final Person PERSON = Person.PERSON;
 
     /**
+     * The table <code>sales.preparation</code>.
+     */
+    public final Preparation PREPARATION = Preparation.PREPARATION;
+
+    /**
+     * The table <code>sales.preparationwarehouse</code>.
+     */
+    public final Preparationwarehouse PREPARATIONWAREHOUSE = Preparationwarehouse.PREPARATIONWAREHOUSE;
+
+    /**
      * The table <code>sales.product</code>.
      */
     public final Product PRODUCT = Product.PRODUCT;
+
+    /**
+     * The table <code>sales.product_supplier</code>.
+     */
+    public final ProductSupplier PRODUCT_SUPPLIER = ProductSupplier.PRODUCT_SUPPLIER;
 
     /**
      * The table <code>sales.productwarehouse</code>.
@@ -136,6 +173,11 @@ public class Sales extends SchemaImpl {
      * The table <code>sales.supplier_price_history</code>.
      */
     public final SupplierPriceHistory SUPPLIER_PRICE_HISTORY = SupplierPriceHistory.SUPPLIER_PRICE_HISTORY;
+
+    /**
+     * The table <code>sales.tax_outbox</code>.
+     */
+    public final TaxOutbox TAX_OUTBOX = TaxOutbox.TAX_OUTBOX;
 
     /**
      * The table <code>sales.techproduct</code>.
@@ -174,18 +216,25 @@ public class Sales extends SchemaImpl {
             Consignmentnote.CONSIGNMENTNOTE,
             Consproduct.CONSPRODUCT,
             Dish.DISH,
+            DishCategory.DISH_CATEGORY,
+            DishSet.DISH_SET,
+            DishSetItem.DISH_SET_ITEM,
             InventoryDocumentLines.INVENTORY_DOCUMENT_LINES,
             InventoryDocuments.INVENTORY_DOCUMENTS,
             Order.ORDER,
             Orderdish.ORDERDISH,
             Person.PERSON,
+            Preparation.PREPARATION,
+            Preparationwarehouse.PREPARATIONWAREHOUSE,
             Product.PRODUCT,
+            ProductSupplier.PRODUCT_SUPPLIER,
             Productwarehouse.PRODUCTWAREHOUSE,
             Shift.SHIFT,
             Shiftperson.SHIFTPERSON,
             StockMovements.STOCK_MOVEMENTS,
             Supplier.SUPPLIER,
             SupplierPriceHistory.SUPPLIER_PRICE_HISTORY,
+            TaxOutbox.TAX_OUTBOX,
             Techproduct.TECHPRODUCT,
             UserAccount.USER_ACCOUNT,
             Warehouse.WAREHOUSE

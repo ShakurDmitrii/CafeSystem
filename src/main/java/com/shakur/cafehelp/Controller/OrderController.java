@@ -2,15 +2,19 @@ package com.shakur.cafehelp.Controller;
 
 import com.shakur.cafehelp.DTO.OrderDTO;
 import com.shakur.cafehelp.DTO.OrderDishDTO;
+import com.shakur.cafehelp.DTO.OrderEditRequestDTO;
 import com.shakur.cafehelp.DTO.TimeDelayRequest;
 import com.shakur.cafehelp.Service.OrderService;
-import org.springframework.beans.factory.annotation.Value;
+import com.shakur.cafehelp.exception.InvalidOrderRequestException;
+import com.shakur.cafehelp.exception.OrderNotFoundException;
+import com.shakur.cafehelp.exception.OrderStateConflictException;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -21,17 +25,9 @@ import java.util.Map;
 public class OrderController {
 
     private final OrderService orderService;
-    private final RestTemplate restTemplate;
-    private final String pythonApiUrl;
 
-    public OrderController(
-            OrderService orderService,
-            RestTemplate restTemplate,
-            @Value("${python.api.url:http://localhost:8000}") String pythonApiUrl
-    ) {
+    public OrderController(OrderService orderService) {
         this.orderService = orderService;
-        this.restTemplate = restTemplate;
-        this.pythonApiUrl = pythonApiUrl;
     }
 
     // Создание нового заказа
@@ -47,6 +43,12 @@ public class OrderController {
         try {
             OrderDTO createdOrder = orderService.createOrder(order);
             return ResponseEntity.ok(createdOrder);
+        } catch (InvalidOrderRequestException | IllegalArgumentException e) {
+            return orderError(HttpStatus.BAD_REQUEST, "INVALID_ORDER", e.getMessage());
+        } catch (OrderNotFoundException e) {
+            return orderError(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", e.getMessage());
+        } catch (OrderStateConflictException e) {
+            return orderError(HttpStatus.CONFLICT, "ORDER_STATE_CONFLICT", e.getMessage());
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", e.getMessage()));
@@ -77,6 +79,8 @@ public class OrderController {
         try {
             OrderDTO updatedOrder = orderService.updateOrderPayment(orderId, request.getPaymentType(), request.getPaid());
             return ResponseEntity.ok(updatedOrder);
+        } catch (OrderStateConflictException e) {
+            return orderError(HttpStatus.CONFLICT, "ORDER_STATE_CONFLICT", e.getMessage());
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
@@ -90,12 +94,66 @@ public class OrderController {
     public ResponseEntity<?> markIssued(@PathVariable int orderId) {
         try {
             return ResponseEntity.ok(orderService.markOrderIssued(orderId));
+        } catch (OrderStateConflictException e) {
+            return orderError(HttpStatus.CONFLICT, "ORDER_STATE_CONFLICT", e.getMessage());
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Ошибка выдачи заказа: " + e.getMessage()));
+        }
+    }
+
+    @Operation(
+            summary = "Заменить состав и редактируемые реквизиты заказа",
+            description = "Разрешено только для неоплаченного, невыданного и неотменённого заказа открытой смены. Сумма пересчитывается сервером."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Заказ обновлён"),
+            @ApiResponse(responseCode = "400", description = "Некорректный состав или реквизиты"),
+            @ApiResponse(responseCode = "404", description = "Заказ не найден"),
+            @ApiResponse(responseCode = "409", description = "Состояние или версия заказа не позволяют изменение")
+    })
+    @PutMapping("/{orderId}")
+    public ResponseEntity<?> replaceOrder(
+            @PathVariable int orderId,
+            @RequestBody OrderEditRequestDTO request
+    ) {
+        try {
+            return ResponseEntity.ok(orderService.replaceEditableOrder(orderId, request));
+        } catch (InvalidOrderRequestException e) {
+            return orderError(HttpStatus.BAD_REQUEST, "INVALID_ORDER", e.getMessage());
+        } catch (OrderNotFoundException e) {
+            return orderError(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", e.getMessage());
+        } catch (OrderStateConflictException e) {
+            return orderError(HttpStatus.CONFLICT, "ORDER_STATE_CONFLICT", e.getMessage());
+        }
+    }
+
+    @Operation(
+            summary = "Отменить созданный заказ",
+            description = "Выполняет мягкую отмену. Разрешено только для неоплаченного и невыданного заказа открытой смены; повторный запрос идемпотентен."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Заказ отменён или уже был отменён"),
+            @ApiResponse(responseCode = "404", description = "Заказ не найден"),
+            @ApiResponse(responseCode = "409", description = "Оплаченный, выданный, изменённый или относящийся к закрытой смене заказ")
+    })
+    @DeleteMapping("/{orderId}")
+    public ResponseEntity<?> cancelOrder(
+            @PathVariable int orderId,
+            @RequestParam(required = false) String reason,
+            @RequestParam(required = false) Integer expectedVersion
+    ) {
+        try {
+            return ResponseEntity.ok(orderService.cancelOrder(orderId, reason, expectedVersion));
+        } catch (InvalidOrderRequestException e) {
+            return orderError(HttpStatus.BAD_REQUEST, "INVALID_ORDER", e.getMessage());
+        } catch (OrderNotFoundException e) {
+            return orderError(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", e.getMessage());
+        } catch (OrderStateConflictException e) {
+            return orderError(HttpStatus.CONFLICT, "ORDER_STATE_CONFLICT", e.getMessage());
         }
     }
 
@@ -178,47 +236,14 @@ public class OrderController {
                 orderService.addDishToOrder(orderId, d.getDishID(), d.getQty());
             }
             return ResponseEntity.ok(Map.of("status", "ok"));
+        } catch (OrderStateConflictException e) {
+            return orderError(HttpStatus.CONFLICT, "ORDER_STATE_CONFLICT", e.getMessage());
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Ошибка добавления блюд: " + e.getMessage()));
-        }
-    }
-
-    @PostMapping("/{orderId}/print-kitchen")
-    public ResponseEntity<?> printKitchenOrder(
-            @PathVariable int orderId,
-            @RequestBody(required = false) PrintKitchenRequest request
-    ) {
-        try {
-            String paymentType = request != null ? request.getPaymentType() : null;
-            Double deliveryCost = request != null ? request.getDeliveryCost() : null;
-            String deliveryPhone = request != null ? request.getDeliveryPhone() : null;
-            String deliveryAddress = request != null ? request.getDeliveryAddress() : null;
-
-            Map<String, Object> payload = orderService.getOrderKitchenPrintPayload(
-                    orderId,
-                    paymentType,
-                    deliveryCost,
-                    deliveryPhone,
-                    deliveryAddress
-            );
-            String printUrl = pythonApiUrl.endsWith("/")
-                    ? pythonApiUrl + "print/order"
-                    : pythonApiUrl + "/print/order";
-            restTemplate.postForEntity(printUrl, payload, Object.class);
-            return ResponseEntity.ok(Map.of("status", "printed", "orderId", orderId));
-        } catch (RestClientException e) {
-            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                    .body(Map.of("message", "Python-сервис печати недоступен: " + e.getMessage()));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Ошибка печати заказа: " + e.getMessage()));
         }
     }
 
@@ -289,5 +314,11 @@ public class OrderController {
         }
     }
 
+    private ResponseEntity<Map<String, String>> orderError(HttpStatus status, String code, String message) {
+        return ResponseEntity.status(status).body(Map.of(
+                "code", code,
+                "message", message != null ? message : status.getReasonPhrase()
+        ));
+    }
 
 }

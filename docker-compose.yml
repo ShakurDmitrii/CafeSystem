@@ -16,6 +16,23 @@ services:
       timeout: 5s
       retries: 20
 
+  tax_db:
+    image: postgres:16-alpine
+    container_name: cafehelp-tax-db
+    environment:
+      POSTGRES_DB: taxdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "2002"
+    ports:
+      - "5433:5432"
+    volumes:
+      - tax_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d taxdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   backend:
     build:
       context: .
@@ -24,10 +41,28 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      tax_db:
+        condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/postgres
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: "2002"
+      TAX_DATASOURCE_URL: jdbc:postgresql://tax_db:5432/taxdb
+      TAX_DATASOURCE_USERNAME: postgres
+      TAX_DATASOURCE_PASSWORD: "2002"
+      TAX_PROVIDER: "${TAX_PROVIDER:-SAFE}"
+      TAX_SOURCE_SYSTEM: "${TAX_SOURCE_SYSTEM:-cafehelp}"
+      TAX_PARTNER_BASE_URL: "${TAX_PARTNER_BASE_URL:-}"
+      TAX_PARTNER_SEND_PATH: "${TAX_PARTNER_SEND_PATH:-/api/v1/receipts}"
+      TAX_PARTNER_API_KEY: "${TAX_PARTNER_API_KEY:-}"
+      TAX_PARTNER_API_KEY_HEADER: "${TAX_PARTNER_API_KEY_HEADER:-X-API-Key}"
+      TAX_PARTNER_TIMEOUT_MS: "${TAX_PARTNER_TIMEOUT_MS:-15000}"
+      TAX_PARTNER_PROVIDER_NAME: "${TAX_PARTNER_PROVIDER_NAME:-Официальный партнер ФНС}"
+      VK_BOT_API_TOKEN: "${VK_BOT_API_TOKEN:-}"
+      VK_GROUP_TOKEN: "${VK_GROUP_TOKEN:-}"
+      VK_GROUP_ID: "${VK_GROUP_ID:-}"
+      INTERNAL_SERVICE_TOKEN: "${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN is required}"
+      SECURITY_JWT_SECRET: "${SECURITY_JWT_SECRET:?SECURITY_JWT_SECRET is required}"
       # URLs to Python service must use docker DNS name (not localhost).
       # Spring relaxed binding will map these env vars to properties:
       # - python.api.url
@@ -53,10 +88,20 @@ services:
       - backend
     environment:
       JAVA_API_URL: http://backend:8080
-      DEFAULT_PRINTER: windows
-      WINDOWS_PRINT_MODE: auto
-    ports:
-      - "8000:8000"
+      INTERNAL_SERVICE_TOKEN: "${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN is required}"
+    expose:
+      - "8000"
+    volumes:
+      - pymodule_models:/app/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    cpus: 2.0
+    mem_limit: 2g
 
   frontend:
     build:
@@ -68,6 +113,21 @@ services:
       - pymodule
     ports:
       - "3000:80"
+
+  vkbot:
+    build:
+      context: ./vkbot
+      dockerfile: Dockerfile
+    container_name: cafehelp-vkbot
+    depends_on:
+      - backend
+    environment:
+      BACKEND_URL: http://backend:8080
+      VK_GROUP_TOKEN: "${VK_GROUP_TOKEN:-}"
+      VK_GROUP_ID: "${VK_GROUP_ID:-}"
+      VK_BOT_API_TOKEN: "${VK_BOT_API_TOKEN:-}"
+      VK_LONG_POLL_WAIT: "${VK_LONG_POLL_WAIT:-10}"
+    restart: unless-stopped
 
   minio:
     image: minio/minio:latest
@@ -84,4 +144,6 @@ services:
 
 volumes:
   pg_data:
+  tax_pg_data:
   minio_data:
+  pymodule_models:

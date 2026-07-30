@@ -1,75 +1,64 @@
-// OrderCard.jsx
-import React, { useState, useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL } from "../../../auth";
 import styles from "./CashierPage.module.css";
+import { formatDate, formatMoney } from "./cashier-page/cashierUtils";
 
 async function loadOrderDishes(orderId) {
-    if (!orderId) {
-        return [];
-    }
-    try {
-        console.log("Загружаем позиции заказа для orderId:", orderId);
+    if (!orderId) return [];
 
-        const orderRes = await fetch(`${API_BASE_URL}/api/orders/${orderId}`);
-        if (orderRes.ok) {
-            const orderText = await orderRes.text();
-            const order = orderText ? JSON.parse(orderText) : null;
-            if (Array.isArray(order?.items) && order.items.length > 0) {
-                console.log("Получили позиции заказа из /api/orders/{id}:", order.items);
-                return order.items;
-            }
+    try {
+        const orderResponse = await fetch(`${API_BASE_URL}/api/orders/${orderId}`);
+        if (orderResponse.ok) {
+            const payload = await orderResponse.json();
+            if (Array.isArray(payload?.items) && payload.items.length > 0) return payload.items;
         }
 
-        const res = await fetch(`${API_BASE_URL}/api/shifts/getDish/${orderId}`);
-        if (!res.ok) throw new Error(`Ошибка загрузки блюд ${res.status}`);
-        const text = await res.text();
-        const dishes = text ? JSON.parse(text) : [];
-        console.log("Получили блюда со старого endpoint:", dishes);
-        return Array.isArray(dishes) ? dishes : [];
-    } catch (e) {
-        console.error("Ошибка при fetch блюд:", e);
+        const fallbackResponse = await fetch(`${API_BASE_URL}/api/shifts/getDish/${orderId}`);
+        if (!fallbackResponse.ok) throw new Error(`HTTP ${fallbackResponse.status}`);
+        const payload = await fallbackResponse.json();
+        return Array.isArray(payload) ? payload : [];
+    } catch (error) {
+        console.error("Не удалось загрузить позиции заказа:", error);
         return [];
     }
 }
 
-// Функция для расчета статуса долга
-const getDebtStatus = (debtPaymentDate) => {
-    if (!debtPaymentDate) return null;
-
+async function saveDelay(orderId, delayMinutes) {
     try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0); // Устанавливаем начало дня для точного сравнения
-
-        const payment = new Date(debtPaymentDate);
-        payment.setHours(0, 0, 0, 0);
-
-        const diffTime = payment.getTime() - today.getTime();
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-        if (diffDays < 0) {
-            return {
-                status: 'overdue',
-                days: Math.abs(diffDays),
-                text: `${Math.abs(diffDays)} дн. назад`
-            };
-        }
-        if (diffDays === 0) {
-            return {
-                status: 'today',
-                days: 0,
-                text: 'Сегодня!'
-            };
-        }
-        return {
-            status: 'future',
-            days: diffDays,
-            text: `Через ${diffDays} дн.`
-        };
+        const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/timeDelay`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ delayMinutes })
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
     } catch (error) {
-        console.error("Ошибка расчета статуса долга:", error);
-        return null;
+        console.error("Не удалось сохранить задержку заказа:", error);
     }
-};
+}
+
+function getOrderStartTimestamp(order) {
+    const rawDate = order.created_at || order.createdAt;
+    if (!rawDate) return Date.now();
+
+    const raw = String(rawDate).trim();
+    const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(raw);
+    const normalized = raw.replace(/\.(\d{3})\d+/, ".$1").replace(" ", "T");
+    const timestamp = new Date(hasTimezone ? normalized : `${normalized}Z`).getTime();
+    return Number.isFinite(timestamp) ? timestamp : Date.now();
+}
+
+function getDebtStatus(dateString) {
+    if (!dateString) return null;
+    const paymentDate = new Date(dateString);
+    const today = new Date();
+    paymentDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    const days = Math.round((paymentDate - today) / 86400000);
+
+    if (days < 0) return { tone: "overdue", label: `${Math.abs(days)} дн. просрочки` };
+    if (days === 0) return { tone: "today", label: "Оплатить сегодня" };
+    return { tone: "future", label: `Через ${days} дн.` };
+}
 
 export default function OrderCard({
     order,
@@ -79,614 +68,250 @@ export default function OrderCard({
     onUpdatePayment,
     onIssueOrder
 }) {
-    const isIssued = Boolean(order?.date_issue || order?.dateIssue);
-    const hasUsableInlineItems = Array.isArray(order.items)
-        && order.items.length > 0
+    const hasInlineItems = Array.isArray(order.items)
         && order.items.some((item) => item?.dishName || item?.name || item?.title);
     const [items, setItems] = useState(() => (Array.isArray(order.items) ? order.items : []));
-    const [itemsLoaded, setItemsLoaded] = useState(
-        hasUsableInlineItems
-    );
+    const [itemsLoaded, setItemsLoaded] = useState(hasInlineItems);
     const [secondsPassed, setSecondsPassed] = useState(0);
-    const [isDelayed, setIsDelayed] = useState(false);
-    const [delayMinutes, setDelayMinutes] = useState(order.timeDelay || 0);
-    const [isPrintingNumber, setIsPrintingNumber] = useState(false);
-    const [isPrintingDetails, setIsPrintingDetails] = useState(false);
-    const [printMessage, setPrintMessage] = useState(null);
-    const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
-    const timerRef = useRef(null);
-    const startTimeRef = useRef(Date.now());
+    const [delayMinutes, setDelayMinutes] = useState(Number(order.timeDelay || 0));
+    const [busyAction, setBusyAction] = useState("");
+    const [message, setMessage] = useState(null);
+    const previousDelayRef = useRef(Number(order.timeDelay || 0));
 
-    // Расчет статуса долга
+    const isIssued = Boolean(order.date_issue || order.dateIssue);
+    const isReady = Boolean(order.status);
+    const isPaid = order.paid === true;
+    const isDelayed = !isReady && Number(order.time || 0) > 0
+        && secondsPassed >= Number(order.time) * 60;
     const debtStatus = getDebtStatus(order.debtPaymentDate);
+    const startedAt = useMemo(
+        () => getOrderStartTimestamp({
+            createdAt: order.createdAt,
+            created_at: order.created_at
+        }),
+        [order.createdAt, order.created_at]
+    );
 
-    // Загрузка блюд
     useEffect(() => {
-        if (hasUsableInlineItems) {
-            setItems(Array.isArray(order.items) ? order.items : []);
+        if (hasInlineItems) {
+            setItems(order.items);
             setItemsLoaded(true);
-        } else if (Array.isArray(order.items) && order.items.length === 0) {
-            setItems([]);
-            setItemsLoaded(false);
+            return;
         }
-    }, [order.items, hasUsableInlineItems]);
 
-    useEffect(() => {
-        if (itemsLoaded) return;
         let cancelled = false;
-        loadOrderDishes(order.orderId).then(dishes => {
+        setItemsLoaded(false);
+        loadOrderDishes(order.orderId).then((result) => {
             if (!cancelled) {
-                console.log(`Устанавливаем items для orderId=${order.orderId}:`, dishes);
-                setItems(dishes);
+                setItems(result);
                 setItemsLoaded(true);
             }
         });
         return () => { cancelled = true; };
-    }, [order.orderId, itemsLoaded]);
+    }, [hasInlineItems, order.items, order.orderId]);
 
-    // Функция обновления задержки на сервере
-    const updateDelayTime = async (orderId, delayMinutes) => {
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/timeDelay`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ delayMinutes })
-            });
-            if (!response.ok) {
-                let details = "";
-                try {
-                    details = await response.text();
-                } catch {
-                    details = "";
-                }
-                throw new Error(`HTTP ${response.status}${details ? `: ${details}` : ""}`);
-            }
-            console.log(`Задержка сохранена для заказа ${orderId}: ${delayMinutes} мин`);
-        } catch (error) {
-            console.error("Ошибка при сохранении задержки на сервере:", error);
-        }
-    };
-
-    // Держим локальное состояние в синхронизации с тем, что приходит с сервера.
     useEffect(() => {
         setDelayMinutes(Number(order.timeDelay || 0));
+        previousDelayRef.current = Number(order.timeDelay || 0);
     }, [order.orderId, order.timeDelay]);
 
-    const getOrderStartTimestamp = () => {
-        const rawDate = order.created_at || order.createdAt || null;
-        if (!rawDate) return Date.now();
-
-        // Backend sends LocalDateTime (no timezone) from Docker/UTC.
-        // Treat no-zone timestamps as UTC to avoid +3h false delay in browser.
-        const raw = String(rawDate).trim();
-        const hasTimezone = /[zZ]|[+\-]\d{2}:\d{2}$/.test(raw);
-        const normalized = raw
-            .replace(/\.(\d{3})\d+/, ".$1")
-            .replace(" ", "T");
-        const iso = hasTimezone ? normalized : `${normalized}Z`;
-        const parsed = new Date(iso).getTime();
-        return Number.isFinite(parsed) ? parsed : Date.now();
-    };
-
-    // Таймер приготовления
     useEffect(() => {
-        if (order.status) {
+        if (isReady) {
             setSecondsPassed(0);
-            setIsDelayed(false);
-            return; // если заказ готов, останавливаем таймер
+            return undefined;
         }
 
-        // Берем старт строго из даты создания заказа на сервере
-        startTimeRef.current = getOrderStartTimestamp();
-
-        // Рассчитываем сколько секунд уже прошло
-        const initialElapsedSeconds = Math.floor((Date.now() - startTimeRef.current) / 1000);
-        setSecondsPassed(initialElapsedSeconds);
-
-        // Проверяем, не началась ли уже задержка
-        const initialMinutes = Math.floor(initialElapsedSeconds / 60);
-        if (order.time && initialMinutes >= order.time) {
-            setIsDelayed(true);
-            const initialDelay = Math.max(0, initialMinutes - Math.floor(order.time));
-            setDelayMinutes(initialDelay);
-
-            // Обновляем задержку на сервере
-            updateDelayTime(order.orderId, initialDelay);
-        } else {
-            setIsDelayed(false);
-        }
-
-        // Запуск таймера
-        timerRef.current = setInterval(() => {
-            const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-            setSecondsPassed(elapsed);
-        }, 1000);
-
-        return () => {
-            if (timerRef.current) {
-                clearInterval(timerRef.current);
-            }
+        const updateElapsed = () => {
+            setSecondsPassed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
         };
-    }, [order.orderId, order.status, order.time, order.created_at, order.createdAt]);
+        updateElapsed();
+        const interval = window.setInterval(updateElapsed, 1000);
+        return () => window.clearInterval(interval);
+    }, [isReady, startedAt]);
 
-    // Проверка задержки
     useEffect(() => {
-        if (!order.time || order.status) return;
+        if (isReady || !order.time) return;
+        const nextDelay = Math.max(0, Math.floor(secondsPassed / 60) - Math.floor(Number(order.time)));
+        if (nextDelay === previousDelayRef.current) return;
+        previousDelayRef.current = nextDelay;
+        setDelayMinutes(nextDelay);
+        saveDelay(order.orderId, nextDelay);
+    }, [isReady, order.orderId, order.time, secondsPassed]);
 
-        const elapsedMinutes = Math.floor(secondsPassed / 60);
-
-        // Если время приготовления прошло
-        if (elapsedMinutes >= order.time && !isDelayed) {
-            setIsDelayed(true);
-        }
-
-        // Расчет задержки
+    const timer = useMemo(() => {
+        if (isReady || !order.time) return null;
         if (isDelayed) {
-            const currentDelay = Math.max(0, elapsedMinutes - Math.floor(order.time));
-            if (currentDelay > delayMinutes) {
-                setDelayMinutes(currentDelay);
-
-                // Отправляем на сервер при увеличении задержки
-                updateDelayTime(order.orderId, currentDelay);
-            }
+            const delaySeconds = Math.max(0, secondsPassed - Number(order.time) * 60);
+            return {
+                delayed: true,
+                value: `+${Math.floor(delaySeconds / 60).toString().padStart(2, "0")}:${(delaySeconds % 60).toString().padStart(2, "0")}`
+            };
         }
-    }, [secondsPassed, order.time, order.status, isDelayed, delayMinutes, order.orderId]);
-
-    // Форматирование времени
-    const getDelayParts = () => {
-        if (!order.time) return { minutes: 0, seconds: 0 };
-        const totalDelaySeconds = Math.max(0, secondsPassed - order.time * 60);
+        const remaining = Math.max(0, Number(order.time) * 60 - secondsPassed);
         return {
-            minutes: Math.floor(totalDelaySeconds / 60),
-            seconds: totalDelaySeconds % 60
+            delayed: false,
+            value: `${Math.floor(remaining / 60).toString().padStart(2, "0")}:${Math.floor(remaining % 60).toString().padStart(2, "0")}`
         };
-    };
+    }, [isDelayed, isReady, order.time, secondsPassed]);
 
-    const getDisplayDelayParts = () => {
-        const storedMinutes = Math.max(0, Math.floor(Number(delayMinutes || 0)));
-        const live = getDelayParts();
-        // Для активного заказа всегда показываем "живую" задержку,
-        // чтобы старые/битые сохраненные значения не ломали отображение.
-        if (!order.status) {
-            return live;
-        }
-        return { minutes: storedMinutes, seconds: storedMinutes > 0 ? 0 : live.seconds };
-    };
-
-    const formatTime = () => {
-        if (!order.time) return null;
-
-        const delay = getDisplayDelayParts();
-
-        if (delay.minutes > 0 || (isDelayed && !order.status)) {
-            const { minutes, seconds } = delay;
-            return (
-                <div style={{
-                    color: "#a43e1f",
-                    fontWeight: "bold",
-                    backgroundColor: "#fff0ed",
-                    border: "1px solid #f0b3a8",
-                    padding: "5px",
-                    borderRadius: "4px",
-                    margin: "5px 0"
-                }}>
-                    ⚠ ЗАДЕРЖКА: +{minutes.toString().padStart(2, "0")}:
-                    {seconds.toString().padStart(2, "0")} ({minutes} мин)
-                </div>
-            );
-        } else {
-            const totalCookSeconds = Math.max(0, Math.floor(Number(order.time || 0) * 60));
-            const remainingTotalSeconds = Math.max(0, totalCookSeconds - secondsPassed);
-            const remainingMinutes = Math.floor(remainingTotalSeconds / 60);
-            const remainingSeconds = remainingTotalSeconds % 60;
-
-            return (
-                <div style={{
-                    margin: "5px 0",
-                    padding: "5px",
-                    backgroundColor: "#fff4e8",
-                    border: "1px solid #f2d5b7",
-                    borderRadius: "4px"
-                }}>
-                    ⏱ Осталось: {remainingMinutes.toString().padStart(2, '0')}:
-                    {remainingSeconds.toString().padStart(2, '0')}
-                </div>
-            );
-        }
-    };
-
-    // Форматирование даты для отображения
-    const formatDate = (dateString) => {
-        if (!dateString) return "";
-
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('ru-RU', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-            });
-        } catch (error) {
-            return dateString;
-        }
-    };
-
-    // Определяем стиль карточки
-    const getCardStyle = () => {
-        const unpaid = order.paid !== true;
-
-        if (order.status) {
-            if (unpaid) {
-                return {
-                    borderLeft: "4px solid #cf8b42",
-                    backgroundColor: "#fff7e8",
-                    position: "relative"
-                };
-            }
-            return {
-                borderLeft: "4px solid #6b8f5d",
-                backgroundColor: "#f1f8ec",
-                position: "relative"
-            };
-        }
-        if (isDelayed) {
-            return {
-                borderLeft: "4px solid #f44336",
-                backgroundColor: "#fff0ed",
-                animation: "pulse 1.5s infinite",
-                position: "relative"
-            };
-        }
-        if (unpaid) {
-            return {
-                borderLeft: "4px solid #cf8b42",
-                backgroundColor: "#fff7e8",
-                position: "relative"
-            };
-        }
-        return {
-            borderLeft: "4px solid #d1773d",
-            backgroundColor: "#fff6ef",
-            position: "relative"
-        };
-    };
-
-    // Стиль для баджа долга
-    const getDebtBadgeStyle = () => {
-        if (!debtStatus) return {};
-
-        switch(debtStatus.status) {
-            case 'overdue':
-                return {
-                    background: "linear-gradient(135deg, #ff5252, #ff1744)",
-                    color: "white",
-                    fontWeight: "bold"
-                };
-            case 'today':
-                return {
-                    background: "linear-gradient(135deg, #cf8b42, #d97f42)",
-                    color: "white",
-                    fontWeight: "bold"
-                };
-            case 'future':
-                return {
-                    background: "linear-gradient(135deg, #7ea06f, #5f8153)",
-                    color: "white"
-                };
-            default:
-                return {};
-        }
-    };
-
-    // Чиним старое некорректное значение задержки, если заказ еще не просрочен.
-    useEffect(() => {
-        if (!order.time || order.status) return;
-        const elapsedMinutes = Math.floor(secondsPassed / 60);
-        if (elapsedMinutes < order.time && Number(delayMinutes || 0) > 0) {
-            setDelayMinutes(0);
-            updateDelayTime(order.orderId, 0);
-        }
-    }, [secondsPassed, order.time, order.status, delayMinutes, order.orderId]);
-
-    const handlePrintNumber = async () => {
-        if (!onPrintOrderNumber || isPrintingNumber) return;
-        setIsPrintingNumber(true);
-        setPrintMessage(null);
-        try {
-            await onPrintOrderNumber(order);
-            setPrintMessage({ type: "success", text: "Номер заказа отправлен на печать" });
-        } catch (e) {
-            setPrintMessage({ type: "error", text: e.message || "Ошибка печати номера заказа" });
-        } finally {
-            setIsPrintingNumber(false);
-        }
-    };
-
-    const handlePrintDetails = async () => {
-        if (!onPrintOrderDetails || isPrintingDetails) return;
-        setIsPrintingDetails(true);
-        setPrintMessage(null);
-        try {
-            await onPrintOrderDetails(order, items);
-            setPrintMessage({ type: "success", text: "Чек заказа отправлен на печать" });
-        } catch (e) {
-            setPrintMessage({ type: "error", text: e.message || "Ошибка печати чека заказа" });
-        } finally {
-            setIsPrintingDetails(false);
-        }
-    };
-
-    const paymentType = (order.paymentType || "").toLowerCase();
-    const isPaid = order.paid === true;
-    const paymentText = paymentType === "cash"
-        ? "Наличка"
+    const paymentType = String(order.paymentType || "").toLowerCase();
+    const paymentLabel = paymentType === "cash"
+        ? "Наличные"
         : paymentType === "transfer"
             ? "Перевод"
-            : "Не оплачен";
+            : "Не оплачено";
 
-    const handleMarkPaid = async (nextType) => {
-        if (!onUpdatePayment || isUpdatingPayment) return;
-        setIsUpdatingPayment(true);
-        setPrintMessage(null);
+    const runAction = async (actionName, action, successText) => {
+        if (!action || busyAction) return;
+        setBusyAction(actionName);
+        setMessage(null);
         try {
-            await onUpdatePayment(order.orderId, nextType);
-            setPrintMessage({ type: "success", text: `Оплата отмечена: ${nextType === "cash" ? "наличка" : "перевод"}` });
-        } catch (e) {
-            setPrintMessage({ type: "error", text: e.message || "Ошибка обновления оплаты" });
+            await action();
+            setMessage({ type: "success", text: successText });
+        } catch (error) {
+            setMessage({ type: "error", text: error.message || "Операция не выполнена" });
         } finally {
-            setIsUpdatingPayment(false);
+            setBusyAction("");
         }
     };
 
     return (
-        <div
-            className={`${styles.orderCard} ${order.status ? styles.ready : styles.cooking}`}
-            style={getCardStyle()}
+        <article
+            className={[
+                styles.orderCard,
+                isReady ? styles.ready : styles.cooking,
+                isDelayed ? styles.orderCardDelayed : "",
+                !isPaid ? styles.orderCardUnpaid : "",
+                isIssued ? styles.orderCardIssued : ""
+            ].filter(Boolean).join(" ")}
         >
-            {/* Бейдж "Долг" если заказ в долг */}
-            {order.duty && (
-                <div style={{
-                    position: "absolute",
-                    top: "10px",
-                    right: "10px",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "flex-end",
-                    gap: "5px"
-                }}>
-                    <span style={{
-                        padding: "4px 8px",
-                        borderRadius: "12px",
-                        fontSize: "12px",
-                        fontWeight: "600",
-                        background: "linear-gradient(135deg, #cf8b42, #e0a458)",
-                        color: "white",
-                        boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-                    }}>
-                        💳 ДОЛГ
+            <header className={styles.orderCardHeader}>
+                <div>
+                    <span className={styles.orderCardKicker}>{isIssued ? "Выдан" : isReady ? "К выдаче" : "На кухне"}</span>
+                    <strong className={styles.orderCardNumber}>#{order.orderId}</strong>
+                </div>
+                <div className={styles.orderCardBadges}>
+                    {order.duty && <span className={styles.debtBadge}>Долг</span>}
+                    <span className={isPaid ? styles.paidBadge : styles.unpaidBadge}>
+                        {isPaid ? paymentLabel : "Ждёт оплаты"}
                     </span>
+                </div>
+            </header>
 
-                    {/* Информация о дате погашения */}
-                    {order.debtPaymentDate && (
-                        <div style={{
-                            padding: "4px 8px",
-                            borderRadius: "8px",
-                            fontSize: "11px",
-                            ...getDebtBadgeStyle(),
-                            boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                            textAlign: "center",
-                            minWidth: "120px"
-                        }}>
-                            <div style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "4px",
-                                justifyContent: "center"
-                            }}>
-                                <span>📅</span>
-                                <span>До {formatDate(order.debtPaymentDate)}</span>
-                            </div>
-                            {debtStatus && (
-                                <div style={{
-                                    fontSize: "10px",
-                                    marginTop: "2px",
-                                    opacity: 0.9
-                                }}>
-                                    {debtStatus.text}
-                                </div>
-                            )}
-                        </div>
-                    )}
+            {timer && (
+                <div className={timer.delayed ? styles.timerDelayed : styles.timerRunning}>
+                    <span>{timer.delayed ? "Задержка" : "Осталось"}</span>
+                    <strong>{timer.value}</strong>
+                    <small>План: {order.time} мин</small>
                 </div>
             )}
 
-            <div style={{ marginRight: order.duty ? "100px" : "0" }}>
-                <b>№{order.orderId}</b>
-
-                {/* Таймер */}
-                {formatTime()}
-
-                {/* Информация о времени */}
-                <div style={{ fontSize: "0.9em", color: "#7c6a59", marginBottom: "10px" }}>
-                    Время приготовления: {order.time || 0} мин
-                    {getDisplayDelayParts().minutes > 0 && (() => {
-                        const { minutes, seconds } = getDisplayDelayParts();
-                        return ` | Задержка: ${minutes.toString().padStart(2, "0")}:${seconds
-                            .toString()
-                            .padStart(2, "0")} (${minutes} мин)`;
-                    })()}
+            {order.duty && order.debtPaymentDate && (
+                <div className={`${styles.debtDue} ${styles[debtStatus?.tone || "future"]}`}>
+                    <span>Оплата до {formatDate(order.debtPaymentDate)}</span>
+                    <strong>{debtStatus?.label}</strong>
                 </div>
+            )}
 
-                <div>
-                    {items.length > 0 ? (
-                        items.map((i, idx) => (
-                            <div key={idx} style={{
-                                fontSize: "0.9em",
-                                marginBottom: "3px",
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center"
-                            }}>
-                                <span>{i.dishName || "Без названия"} × {i.qty}</span>
-                                <span style={{ fontWeight: "bold" }}>
-                                    {(i.price || 0) * (i.qty || 1)} ₽
-                                </span>
-                            </div>
-                        ))
-                    ) : (
-                        <span>{itemsLoaded ? "Нет позиций" : "Загрузка блюд..."}</span>
-                    )}
-                </div>
-
-                <div style={{
-                    marginTop: "10px",
-                    paddingTop: "10px",
-                    borderTop: "1px dashed #e1c1a4",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontWeight: "bold"
-                }}>
-                    <span>Итого:</span>
-                    <span>{order.amount} ₽</span>
-                </div>
-
-                <div style={{
-                    display: "flex",
-                    gap: "15px",
-                    marginTop: "8px",
-                    fontSize: "0.85em",
-                    color: "#7c6a59"
-                }}>
-                    <span>Тип: {order.type ? "🚚 Доставка" : "🏠 По месту"}</span>
-                    <span>Статус: {order.status ? "✅ ГОТОВ" : "👨‍🍳 ГОТОВИТСЯ"}</span>
-                    <span>Оплата: {isPaid ? `✅ ${paymentText}` : "❗ Не оплачен"}</span>
-                </div>
-
-                {/* Информация о клиенте если есть */}
-                {order.clientName && (
-                    <div style={{
-                        marginTop: "8px",
-                        padding: "6px",
-                        backgroundColor: "#fff8f1",
-                        border: "1px solid #efd8c0",
-                        borderRadius: "4px",
-                        fontSize: "0.85em"
-                    }}>
-                        <strong>👤 Клиент:</strong> {order.clientName}
-                        {order.clientPhone && ` (${order.clientPhone})`}
-                    </div>
+            <div className={styles.orderCardItems}>
+                {items.length > 0 ? items.map((item, index) => {
+                    const qty = Number(item.qty || 1);
+                    const price = Number(item.price || item.cost || 0);
+                    return (
+                        <div key={`${item.dishId || item.id || index}-${index}`}>
+                            <span>{item.dishName || item.name || "Позиция"} <b>× {qty}</b></span>
+                            <strong>{formatMoney(price * qty)}</strong>
+                        </div>
+                    );
+                }) : (
+                    <span className={styles.orderCardEmpty}>
+                        {itemsLoaded ? "В заказе нет позиций" : "Загружаем позиции…"}
+                    </span>
                 )}
             </div>
 
-            <div style={{ display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
+            <div className={styles.orderCardTotal}>
+                <span>Итого</span>
+                <strong>{formatMoney(order.amount)}</strong>
+            </div>
+
+            <dl className={styles.orderCardMeta}>
+                <div><dt>Получение</dt><dd>{order.type ? "Доставка" : "В заведении"}</dd></div>
+                {order.clientName && <div><dt>Гость</dt><dd>{order.clientName}</dd></div>}
+                {order.clientPhone && <div><dt>Телефон</dt><dd>{order.clientPhone}</dd></div>}
+                {Number(delayMinutes) > 0 && <div><dt>Задержка</dt><dd>{delayMinutes} мин</dd></div>}
+            </dl>
+
+            <div className={styles.orderCardActions}>
                 <button
-                    className={`${styles.btn} ${styles.secondary}`}
-                    onClick={handlePrintNumber}
-                    style={{ minWidth: "140px" }}
+                    className={styles.orderActionQuiet}
+                    type="button"
+                    disabled={Boolean(busyAction)}
+                    onClick={() => runAction("number", () => onPrintOrderNumber?.(order), "Номер отправлен на печать")}
                 >
-                    {isPrintingNumber ? "Печать..." : "Печать номера"}
+                    {busyAction === "number" ? "Печатаем…" : "Номер"}
+                </button>
+                <button
+                    className={styles.orderActionQuiet}
+                    type="button"
+                    disabled={Boolean(busyAction)}
+                    onClick={() => runAction("details", () => onPrintOrderDetails?.(order, items), "Чек отправлен на печать")}
+                >
+                    {busyAction === "details" ? "Печатаем…" : "Чек"}
                 </button>
 
-                <button
-                    className={`${styles.btn} ${styles.secondary}`}
-                    onClick={handlePrintDetails}
-                    style={{ minWidth: "140px" }}
-                >
-                    {isPrintingDetails ? "Печать..." : "Печать заказа"}
-                </button>
-
-                {!order.status && (
-                    <button
-                        className={`${styles.btn} ${styles.primary}`}
-                        onClick={() => markOrderReady(order.orderId)}
-                        style={{ minWidth: "120px" }}
-                    >
-                        ГОТОВО
+                {!isReady && (
+                    <button className={styles.orderActionPrimary} type="button" onClick={() => markOrderReady(order.orderId)}>
+                        Готово
                     </button>
                 )}
 
                 {!isPaid && (
                     <>
                         <button
-                            className={`${styles.btn} ${styles.primary}`}
-                            onClick={() => handleMarkPaid("cash")}
-                            disabled={isUpdatingPayment}
-                            style={{ minWidth: "150px" }}
+                            className={styles.orderActionPrimary}
+                            type="button"
+                            disabled={Boolean(busyAction)}
+                            onClick={() => runAction(
+                                "cash",
+                                () => onUpdatePayment?.(order.orderId, "cash"),
+                                "Оплата наличными отмечена"
+                            )}
                         >
-                            {isUpdatingPayment ? "Обновление..." : "Оплатил наличкой"}
+                            Наличные
                         </button>
                         <button
-                            className={`${styles.btn} ${styles.secondary}`}
-                            onClick={() => handleMarkPaid("transfer")}
-                            disabled={isUpdatingPayment}
-                            style={{ minWidth: "150px" }}
+                            className={styles.orderActionQuiet}
+                            type="button"
+                            disabled={Boolean(busyAction)}
+                            onClick={() => runAction(
+                                "transfer",
+                                () => onUpdatePayment?.(order.orderId, "transfer"),
+                                "Оплата переводом отмечена"
+                            )}
                         >
-                            {isUpdatingPayment ? "Обновление..." : "Оплатил переводом"}
+                            Перевод
                         </button>
                     </>
                 )}
 
-                {order.status && !isIssued && (
-                    <button
-                        className={`${styles.btn} ${styles.secondary}`}
-                        onClick={() => onIssueOrder?.(order.orderId)}
-                        style={{ minWidth: "120px" }}
-                    >
-                        Выдан
+                {isReady && !isIssued && (
+                    <button className={styles.orderActionIssue} type="button" onClick={() => onIssueOrder?.(order.orderId)}>
+                        Выдать
                     </button>
                 )}
-
-                {isIssued && (
-                    <span
-                        style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            minWidth: "120px",
-                            justifyContent: "center",
-                            padding: "10px 14px",
-                            borderRadius: "14px",
-                            background: "#f2f4f7",
-                            border: "1px solid #d7dee7",
-                            color: "#5f6b7a",
-                            fontWeight: 700
-                        }}
-                    >
-                        Выдан
-                    </span>
-                )}
+                {isIssued && <span className={styles.issuedLabel}>Выдан</span>}
             </div>
 
-            {printMessage && (
+            {message && (
                 <div
-                    style={{
-                        marginTop: "8px",
-                        fontSize: "12px",
-                        color: printMessage.type === "success" ? "#386641" : "#a43e1f",
-                        background: printMessage.type === "success" ? "#eef8ec" : "#fff0ed",
-                        border: `1px solid ${printMessage.type === "success" ? "#cce6c3" : "#f0b3a8"}`,
-                        borderRadius: "6px",
-                        padding: "6px 8px"
-                    }}
+                    className={message.type === "success" ? styles.actionMessageSuccess : styles.actionMessageError}
+                    role="status"
+                    aria-live="polite"
                 >
-                    {printMessage.text}
+                    {message.text}
                 </div>
             )}
-
-            {/* Добавить CSS анимацию в стили */}
-            <style>{`
-                @keyframes pulse {
-                    0% { opacity: 1; }
-                    50% { opacity: 0.8; }
-                    100% { opacity: 1; }
-                }
-                @keyframes blink {
-                    0%, 100% { opacity: 1; }
-                    50% { opacity: 0.5; }
-                }
-                .debt-overdue {
-                    animation: blink 1s infinite;
-                }
-            `}</style>
-        </div>
+        </article>
     );
 }

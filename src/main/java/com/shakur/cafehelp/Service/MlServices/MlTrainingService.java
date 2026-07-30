@@ -40,29 +40,10 @@ public class MlTrainingService {
             Map<String, Object> record = new HashMap<>();
             record.put("rollName", sale.getRollName());
             record.put("ingredients", parseIngredients(String.valueOf(sale.getIngredients())));
-            record.put("sales", sale.getQuantity() * sale.getPricePerUnit());
+            record.put("sales", sale.getQuantity());
             record.put("date", sale.getSaleDate().toString());
-            record.put("dayOfWeek", sale.getSaleDate().getDayOfWeek().getValue());
-            record.put("month", sale.getSaleDate().getMonthValue());
 
             trainingRecords.add(record);
-        }
-
-        // 2. Добавляем данные из меню (даже если продаж не было)
-        for (RollMenuItemDTO menuItem : menuItems) {
-            // Проверяем, нет ли уже такой записи
-            boolean exists = trainingRecords.stream()
-                    .anyMatch(r -> r.get("rollName").equals(menuItem.getName()));
-
-            if (!exists) {
-                Map<String, Object> record = new HashMap<>();
-                record.put("rollName", menuItem.getName());
-                record.put("ingredients", parseIngredients(String.valueOf(menuItem.getIngredients())));
-                record.put("sales", 0.0); // Нулевые продажи для обучения
-                record.put("isActive", menuItem.getIsAvailable());
-
-                trainingRecords.add(record);
-            }
         }
 
         log.info("Подготовлено {} записей для обучения ML", trainingRecords.size());
@@ -78,8 +59,6 @@ public class MlTrainingService {
 
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("records", trainingRecords);
-            requestBody.put("training_date", LocalDate.now().toString());
-            requestBody.put("model_type", "RandomForestRegressor");
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);

@@ -14,6 +14,7 @@ import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Consproduct.ConsproductPath;
 import jooqdata.tables.InventoryDocumentLines.InventoryDocumentLinesPath;
+import jooqdata.tables.ProductSupplier.ProductSupplierPath;
 import jooqdata.tables.Productwarehouse.ProductwarehousePath;
 import jooqdata.tables.StockMovements.StockMovementsPath;
 import jooqdata.tables.Supplier.SupplierPath;
@@ -24,7 +25,7 @@ import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function9;
+import org.jooq.Function10;
 import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
@@ -33,7 +34,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row9;
+import org.jooq.Row10;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -114,6 +115,11 @@ public class Product extends TableImpl<ProductRecord> {
      * The column <code>sales.product.unit_factor</code>.
      */
     public final TableField<ProductRecord, BigDecimal> UNIT_FACTOR = createField(DSL.name("unit_factor"), SQLDataType.NUMERIC(18, 6).nullable(false), this, "");
+
+    /**
+     * The column <code>sales.product.image_url</code>.
+     */
+    public final TableField<ProductRecord, String> IMAGE_URL = createField(DSL.name("image_url"), SQLDataType.VARCHAR(1024), this, "");
 
     private Product(Name alias, Table<ProductRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -233,6 +239,19 @@ public class Product extends TableImpl<ProductRecord> {
             _inventoryDocumentLines = new InventoryDocumentLinesPath(this, null, Keys.INVENTORY_DOCUMENT_LINES__INVENTORY_DOCUMENT_LINES_PRODUCT_FK.getInverseKey());
 
         return _inventoryDocumentLines;
+    }
+
+    private transient ProductSupplierPath _productSupplier;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>sales.product_supplier</code> table
+     */
+    public ProductSupplierPath productSupplier() {
+        if (_productSupplier == null)
+            _productSupplier = new ProductSupplierPath(this, null, Keys.PRODUCT_SUPPLIER__PRODUCT_SUPPLIER_PRODUCT_ID_FKEY.getInverseKey());
+
+        return _productSupplier;
     }
 
     private transient ProductwarehousePath _productwarehouse;
@@ -405,18 +424,18 @@ public class Product extends TableImpl<ProductRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row9 type methods
+    // Row10 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row9<Integer, String, BigDecimal, Double, Boolean, Integer, String, String, BigDecimal> fieldsRow() {
-        return (Row9) super.fieldsRow();
+    public Row10<Integer, String, BigDecimal, Double, Boolean, Integer, String, String, BigDecimal, String> fieldsRow() {
+        return (Row10) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function9<? super Integer, ? super String, ? super BigDecimal, ? super Double, ? super Boolean, ? super Integer, ? super String, ? super String, ? super BigDecimal, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function10<? super Integer, ? super String, ? super BigDecimal, ? super Double, ? super Boolean, ? super Integer, ? super String, ? super String, ? super BigDecimal, ? super String, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -424,7 +443,7 @@ public class Product extends TableImpl<ProductRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function9<? super Integer, ? super String, ? super BigDecimal, ? super Double, ? super Boolean, ? super Integer, ? super String, ? super String, ? super BigDecimal, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function10<? super Integer, ? super String, ? super BigDecimal, ? super Double, ? super Boolean, ? super Integer, ? super String, ? super String, ? super BigDecimal, ? super String, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

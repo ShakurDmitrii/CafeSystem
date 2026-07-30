@@ -53,10 +53,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         } catch (Exception ignored) {
-            SecurityContextHolder.clearContext();
+            // Invalid bearer tokens must not erase an already authenticated
+            // internal service request from the preceding filter.
         }
 
         filterChain.doFilter(request, response);
     }
 }
-

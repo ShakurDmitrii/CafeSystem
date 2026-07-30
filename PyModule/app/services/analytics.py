@@ -1,263 +1,267 @@
-import pandas as pd
-import numpy as np
-from typing import List, Dict
-from datetime import datetime, timedelta
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
+import numpy as np
+import pandas as pd
+
+
 logger = logging.getLogger(__name__)
+RANGE_DAYS = {
+    "day": 1,
+    "week": 7,
+    "month": 30,
+    "quarter": 90,
+    "year": 365,
+}
 
 
-def _to_float(value: Any, default: float = 0.0) -> float:
-    try:
-        if value is None:
-            return default
-        if isinstance(value, str):
-            value = value.replace(",", ".").strip()
-        return float(value)
-    except Exception:
-        return default
+def _first_existing_column(frame: pd.DataFrame, candidates: list[str]) -> str | None:
+    return next((name for name in candidates if name in frame.columns), None)
 
 
-def _to_int(value: Any, default: int = 0) -> int:
-    try:
-        if value is None:
-            return default
-        if isinstance(value, str):
-            value = value.replace(",", ".").strip()
-        return int(float(value))
-    except Exception:
-        return default
-
-
-def _parse_date_value(value: Any):
-    if value is None:
-        return pd.NaT
-
-    # Jackson LocalDate can come as [YYYY, MM, DD]
-    if isinstance(value, (list, tuple)) and len(value) >= 3:
-        try:
-            y, m, d = int(value[0]), int(value[1]), int(value[2])
-            return pd.Timestamp(year=y, month=m, day=d)
-        except Exception:
-            return pd.NaT
-
-    try:
-        return pd.to_datetime(value, errors='coerce')
-    except Exception:
-        return pd.NaT
-
-
-def process_sales_data(sales_data: List[dict]) -> pd.DataFrame:
+def process_sales_data(sales_data: list[dict[str, Any]]) -> pd.DataFrame:
     if not sales_data:
         return pd.DataFrame()
 
-    df = pd.DataFrame(sales_data)
-    logger.info(f"Processing {len(df)} sales records")
-    logger.info(f"Incoming columns: {list(df.columns)}")
+    frame = pd.DataFrame.from_records(sales_data)
+    input_rows = len(frame)
+    date_column = _first_existing_column(
+        frame,
+        ["saleDate", "date", "createdAt", "docDate", "sale_date"],
+    )
+    quantity_column = _first_existing_column(frame, ["quantity", "qty", "count"])
+    amount_column = _first_existing_column(
+        frame,
+        ["totalAmount", "amount", "lineTotal", "sum"],
+    )
+    unit_cost_column = _first_existing_column(
+        frame,
+        ["unitCost", "firstCost", "costPerUnit"],
+    )
+    total_cost_column = _first_existing_column(frame, ["totalCost", "cost"])
 
-    # Нормализуем дату (поддержка нескольких имен полей).
-    date_col = None
-    for candidate in ["saleDate", "date", "createdAt", "docDate", "sale_date"]:
-        if candidate in df.columns:
-            date_col = candidate
-            break
+    if date_column is None or quantity_column is None:
+        raise ValueError("Продажи должны содержать дату и количество")
 
-    if date_col is not None:
-        df["saleDate"] = df[date_col].apply(_parse_date_value)
+    frame = frame.copy()
+    frame["saleDate"] = pd.to_datetime(frame[date_column], errors="coerce")
+    if getattr(frame["saleDate"].dt, "tz", None) is not None:
+        frame["saleDate"] = frame["saleDate"].dt.tz_localize(None)
+    frame["quantity"] = pd.to_numeric(frame[quantity_column], errors="coerce")
+
+    if amount_column is not None:
+        frame["totalAmount"] = pd.to_numeric(frame[amount_column], errors="coerce")
+    elif "pricePerUnit" in frame.columns:
+        unit_price = pd.to_numeric(frame["pricePerUnit"], errors="coerce")
+        frame["totalAmount"] = frame["quantity"] * unit_price
     else:
-        df["saleDate"] = pd.NaT
+        raise ValueError("Продажи должны содержать сумму или цену за единицу")
 
-    # Нормализуем количество.
-    qty_col = None
-    for candidate in ["quantity", "qty", "count"]:
-        if candidate in df.columns:
-            qty_col = candidate
-            break
-    if qty_col is not None:
-        df["quantity"] = df[qty_col].apply(_to_int)
+    if total_cost_column is not None:
+        frame["cost"] = pd.to_numeric(frame[total_cost_column], errors="coerce")
+    elif unit_cost_column is not None:
+        unit_cost = pd.to_numeric(frame[unit_cost_column], errors="coerce")
+        frame["cost"] = frame["quantity"] * unit_cost
     else:
-        df["quantity"] = 1
+        frame["cost"] = np.nan
 
-    # Нормализуем сумму.
-    amount_col = None
-    for candidate in ["totalAmount", "amount", "lineTotal", "sum"]:
-        if candidate in df.columns:
-            amount_col = candidate
-            break
-    if amount_col is not None:
-        df["totalAmount"] = df[amount_col].apply(_to_float)
-    else:
-        # fallback: quantity * pricePerUnit, если есть
-        if "pricePerUnit" in df.columns:
-            df["totalAmount"] = df["quantity"].apply(_to_float) * df["pricePerUnit"].apply(_to_float)
-        else:
-            df["totalAmount"] = 0.0
+    valid_rows = (
+        frame["saleDate"].notna()
+        & frame["quantity"].notna()
+        & frame["totalAmount"].notna()
+        & np.isfinite(frame["quantity"])
+        & np.isfinite(frame["totalAmount"])
+        & (frame["quantity"] > 0)
+        & (frame["totalAmount"] >= 0)
+    )
+    frame = frame.loc[valid_rows].copy()
+    frame["profit"] = frame["totalAmount"] - frame["cost"]
+    frame["margin"] = np.where(
+        (frame["totalAmount"] > 0) & frame["profit"].notna(),
+        frame["profit"] / frame["totalAmount"] * 100,
+        np.nan,
+    )
 
-    df['profit'] = df['totalAmount'] * 0.5
-    df['cost'] = df['totalAmount'] * 0.5
-    df['margin'] = 50.0
+    frame.attrs["data_quality"] = {
+        "inputRows": input_rows,
+        "validRows": len(frame),
+        "rejectedRows": input_rows - len(frame),
+        "costCoverage": (
+            round(float(frame["cost"].notna().mean()), 4) if len(frame) else 0.0
+        ),
+    }
+    if input_rows != len(frame):
+        logger.warning(
+            "Rejected %s invalid sales records out of %s",
+            input_rows - len(frame),
+            input_rows,
+        )
+    return frame
 
-    # Убираем строки без количества.
-    df = df[df["quantity"] > 0].copy()
 
-    return df
+def filter_by_time_range(
+    frame: pd.DataFrame,
+    time_range: str,
+    *,
+    previous: bool = False,
+    now: datetime | None = None,
+) -> pd.DataFrame:
+    if frame.empty:
+        return frame.copy()
+    days = RANGE_DAYS[time_range]
+    current_time = now or datetime.now()
+    current_start = current_time - timedelta(days=days)
+    if previous:
+        previous_start = current_time - timedelta(days=days * 2)
+        return frame.loc[
+            (frame["saleDate"] >= previous_start)
+            & (frame["saleDate"] < current_start)
+        ].copy()
+    return frame.loc[frame["saleDate"] >= current_start].copy()
 
 
-def calculate_kpi(df: pd.DataFrame, time_range: str) -> Dict:
-    if df.empty:
+def _safe_sum(series: pd.Series) -> float:
+    value = series.sum(min_count=1)
+    return float(value) if pd.notna(value) else 0.0
+
+
+def calculate_kpi(
+    frame: pd.DataFrame,
+    time_range: str,
+    *,
+    model_accuracy: float | None = None,
+) -> dict[str, float | int | None]:
+    if frame.empty:
         return {
             "total_profit": 0.0,
             "total_sales": 0,
             "profit_change": 0.0,
             "sales_change": 0.0,
-            "model_accuracy": 0.0
+            "model_accuracy": model_accuracy,
         }
 
-    if 'saleDate' in df.columns:
-        now = datetime.now()
+    current = filter_by_time_range(frame, time_range)
+    previous = filter_by_time_range(frame, time_range, previous=True)
 
-        delta_map = {
-            "day": 1,
-            "week": 7,
-            "month": 30,
-            "quarter": 90
-        }
+    total_profit = _safe_sum(current["profit"])
+    total_sales = int(current["quantity"].sum())
+    previous_profit = _safe_sum(previous["profit"])
+    previous_sales = int(previous["quantity"].sum())
 
-        days = delta_map.get(time_range, 7)
-        current = df[df['saleDate'] >= now - timedelta(days=days)]
-        previous = df[
-            (df['saleDate'] < now - timedelta(days=days)) &
-            (df['saleDate'] >= now - timedelta(days=days * 2))
-        ]
-
-        def pct_change(cur, prev):
-            if prev == 0:
-                return 0.0
-            return ((cur - prev) / prev) * 100
-
-        total_profit = float(current['profit'].sum())
-        total_sales = int(current['quantity'].sum())
-
-        profit_change = pct_change(
-            total_profit,
-            float(previous['profit'].sum())
-        )
-        sales_change = pct_change(
-            total_sales,
-            int(previous['quantity'].sum())
-        )
-
-    else:
-        total_profit = float(df['profit'].sum())
-        total_sales = int(df['quantity'].sum())
-        profit_change = 0.0
-        sales_change = 0.0
-
-    model_accuracy = round(0.87 + np.random.uniform(-0.03, 0.03), 2)
+    def percentage_change(current_value: float, previous_value: float) -> float:
+        if previous_value == 0:
+            return 0.0
+        return round((current_value - previous_value) / previous_value * 100, 2)
 
     return {
-        "total_profit": total_profit,
+        "total_profit": round(total_profit, 2),
         "total_sales": total_sales,
-        "profit_change": profit_change,
-        "sales_change": sales_change,
-        "model_accuracy": model_accuracy
+        "profit_change": percentage_change(total_profit, previous_profit),
+        "sales_change": percentage_change(total_sales, previous_sales),
+        "model_accuracy": (
+            round(float(model_accuracy), 4)
+            if model_accuracy is not None
+            else None
+        ),
     }
 
 
-def analyze_top_rolls(df: pd.DataFrame) -> List[Dict]:
-    if df.empty or 'rollName' not in df.columns:
+def analyze_top_rolls(
+    frame: pd.DataFrame,
+    time_range: str,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    current = filter_by_time_range(frame, time_range)
+    if current.empty or "rollName" not in current.columns:
         return []
 
-    roll_stats = df.groupby('rollName').agg(
-        quantity=('quantity', 'sum'),
-        profit=('profit', 'sum'),
-        revenue=('totalAmount', 'sum') if 'totalAmount' in df.columns else ('profit', 'sum')
-    ).reset_index()
-
-    roll_stats['margin'] = (
-        roll_stats['profit'] / roll_stats['revenue']
-    ).replace([np.inf, np.nan], 0) * 100
-
-    roll_stats = roll_stats.sort_values('quantity', ascending=False)
-
+    grouped = (
+        current.groupby("rollName", as_index=False, dropna=False)
+        .agg(
+            quantity=("quantity", "sum"),
+            profit=("profit", lambda values: values.sum(min_count=1)),
+            revenue=("totalAmount", "sum"),
+        )
+        .sort_values("quantity", ascending=False)
+        .head(limit)
+        .copy()
+    )
+    grouped["profit"] = grouped["profit"].fillna(0.0)
+    grouped["margin"] = np.where(
+        grouped["revenue"] > 0,
+        grouped["profit"] / grouped["revenue"] * 100,
+        0.0,
+    )
     return [
         {
-            "name": row['rollName'],
-            "sales": int(row['quantity']),
-            "profit": float(row['profit']),
-            "margin": float(row['margin'])
+            "name": str(row["rollName"]),
+            "sales": int(row["quantity"]),
+            "profit": round(float(row["profit"]), 2),
+            "margin": round(float(row["margin"]), 2),
         }
-        for _, row in roll_stats.head(10).iterrows()
+        for row in grouped.to_dict(orient="records")
     ]
 
 
-def generate_sales_trend(df: pd.DataFrame, time_range: str) -> List[Dict]:
-    if df.empty or 'saleDate' not in df.columns:
+def generate_sales_trend(
+    frame: pd.DataFrame,
+    time_range: str,
+) -> list[dict[str, Any]]:
+    current = filter_by_time_range(frame, time_range)
+    if current.empty:
         return []
 
-    df = df.copy()
-    df = df[df['saleDate'].notna()]
-    if df.empty:
-        logger.warning("No valid saleDate values after normalization")
-        return []
-
-    df['date_only'] = df['saleDate'].dt.date
-
-    daily = df.groupby('date_only').agg(
-        quantity=('quantity', 'sum'),
-        profit=('profit', 'sum')
-    ).reset_index()
-
-    daily = daily.sort_values('date_only')
-
-    days_map = {
-        "day": 1,
-        "week": 7,
-        "month": 30,
-        "quarter": 90
-    }
-
-    periods = days_map.get(time_range, 7)
-    daily = daily.tail(periods)
-
+    daily = (
+        current.assign(date_only=current["saleDate"].dt.normalize())
+        .groupby("date_only", as_index=False)
+        .agg(
+            quantity=("quantity", "sum"),
+            revenue=("totalAmount", "sum"),
+        )
+        .sort_values("date_only")
+    )
     days_ru = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-
-    trend = []
-    for _, row in daily.iterrows():
-        sales = int(row['quantity'])
-        trend.append({
-            "date": row['date_only'].isoformat(),
-            "period": days_ru[row['date_only'].weekday()],
-            "sales": sales,
-            "predicted": int(sales * (1 + np.random.uniform(-0.1, 0.1))),
-            "revenue": float(row['profit'])
-        })
-
-    return trend
+    return [
+        {
+            "date": row["date_only"].date().isoformat(),
+            "period": days_ru[row["date_only"].weekday()],
+            "sales": int(row["quantity"]),
+            "predicted": None,
+            "revenue": round(float(row["revenue"]), 2),
+        }
+        for row in daily.to_dict(orient="records")
+    ]
 
 
-def generate_insights(df: pd.DataFrame, top_rolls: List[Dict]) -> List[Dict]:
-    insights = []
+def generate_insights(
+    frame: pd.DataFrame,
+    top_rolls: list[dict[str, Any]],
+    time_range: str,
+) -> list[dict[str, str]]:
+    current = filter_by_time_range(frame, time_range)
+    if current.empty:
+        return [
+            {
+                "type": "warning",
+                "title": "Недостаточно данных",
+                "description": "За выбранный период нет завершённых продаж",
+            }
+        ]
 
-    if df.empty:
-        return [{
-            "type": "warning",
-            "title": "Недостаточно данных",
-            "description": "Соберите больше данных о продажах"
-        }]
-
-    insights.append({
-        "type": "insight",
-        "title": "Общие продажи",
-        "description": f"Продано {int(df['quantity'].sum())} порций"
-    })
-
+    insights = [
+        {
+            "type": "insight",
+            "title": "Продажи за выбранный период",
+            "description": f"Продано {int(current['quantity'].sum())} порций",
+        }
+    ]
     if top_rolls:
-        insights.append({
-            "type": "opportunity",
-            "title": f"Лидер продаж: {top_rolls[0]['name']}",
-            "description": f"Продано {top_rolls[0]['sales']} порций"
-        })
-
+        insights.append(
+            {
+                "type": "opportunity",
+                "title": f"Лидер продаж: {top_rolls[0]['name']}",
+                "description": f"Продано {top_rolls[0]['sales']} порций",
+            }
+        )
     return insights

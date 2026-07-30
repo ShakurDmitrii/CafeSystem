@@ -10,18 +10,25 @@ import jooqdata.tables.Clientduty;
 import jooqdata.tables.Consignmentnote;
 import jooqdata.tables.Consproduct;
 import jooqdata.tables.Dish;
+import jooqdata.tables.DishCategory;
+import jooqdata.tables.DishSet;
+import jooqdata.tables.DishSetItem;
 import jooqdata.tables.InventoryDocumentLines;
 import jooqdata.tables.InventoryDocuments;
 import jooqdata.tables.Order;
 import jooqdata.tables.Orderdish;
 import jooqdata.tables.Person;
+import jooqdata.tables.Preparation;
+import jooqdata.tables.Preparationwarehouse;
 import jooqdata.tables.Product;
+import jooqdata.tables.ProductSupplier;
 import jooqdata.tables.Productwarehouse;
 import jooqdata.tables.Shift;
 import jooqdata.tables.Shiftperson;
 import jooqdata.tables.StockMovements;
 import jooqdata.tables.Supplier;
 import jooqdata.tables.SupplierPriceHistory;
+import jooqdata.tables.TaxOutbox;
 import jooqdata.tables.Techproduct;
 import jooqdata.tables.UserAccount;
 import jooqdata.tables.Warehouse;
@@ -64,6 +71,21 @@ public class Tables {
     public static final Dish DISH = Dish.DISH;
 
     /**
+     * The table <code>sales.dish_category</code>.
+     */
+    public static final DishCategory DISH_CATEGORY = DishCategory.DISH_CATEGORY;
+
+    /**
+     * The table <code>sales.dish_set</code>.
+     */
+    public static final DishSet DISH_SET = DishSet.DISH_SET;
+
+    /**
+     * The table <code>sales.dish_set_item</code>.
+     */
+    public static final DishSetItem DISH_SET_ITEM = DishSetItem.DISH_SET_ITEM;
+
+    /**
      * The table <code>sales.inventory_document_lines</code>.
      */
     public static final InventoryDocumentLines INVENTORY_DOCUMENT_LINES = InventoryDocumentLines.INVENTORY_DOCUMENT_LINES;
@@ -89,9 +111,24 @@ public class Tables {
     public static final Person PERSON = Person.PERSON;
 
     /**
+     * The table <code>sales.preparation</code>.
+     */
+    public static final Preparation PREPARATION = Preparation.PREPARATION;
+
+    /**
+     * The table <code>sales.preparationwarehouse</code>.
+     */
+    public static final Preparationwarehouse PREPARATIONWAREHOUSE = Preparationwarehouse.PREPARATIONWAREHOUSE;
+
+    /**
      * The table <code>sales.product</code>.
      */
     public static final Product PRODUCT = Product.PRODUCT;
+
+    /**
+     * The table <code>sales.product_supplier</code>.
+     */
+    public static final ProductSupplier PRODUCT_SUPPLIER = ProductSupplier.PRODUCT_SUPPLIER;
 
     /**
      * The table <code>sales.productwarehouse</code>.
@@ -122,6 +159,11 @@ public class Tables {
      * The table <code>sales.supplier_price_history</code>.
      */
     public static final SupplierPriceHistory SUPPLIER_PRICE_HISTORY = SupplierPriceHistory.SUPPLIER_PRICE_HISTORY;
+
+    /**
+     * The table <code>sales.tax_outbox</code>.
+     */
+    public static final TaxOutbox TAX_OUTBOX = TaxOutbox.TAX_OUTBOX;
 
     /**
      * The table <code>sales.techproduct</code>.

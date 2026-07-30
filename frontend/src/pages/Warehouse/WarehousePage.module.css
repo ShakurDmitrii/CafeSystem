@@ -1,507 +1,884 @@
-.container {
-    --bg: #f5f7fb;
-    --card: #ffffff;
-    --line: #e2e8f0;
-    --text: #0f172a;
-    --muted: #64748b;
-    --primary: #0ea5e9;
-    --primary-dark: #0284c7;
-    --success: #16a34a;
-    --success-dark: #15803d;
-    --danger: #dc2626;
-    --danger-dark: #b91c1c;
-    --warning: #f59e0b;
-    --warning-dark: #d97706;
+.page {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 22px;
+    color: var(--color-text);
+}
 
-    max-width: 1300px;
-    margin: 0 auto;
-    padding: 24px;
-    color: var(--text);
+.hero {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+    gap: clamp(28px, 5vw, 72px);
+    overflow: hidden;
+    padding: clamp(28px, 4vw, 48px);
+    border-radius: var(--radius-lg);
     background:
-        radial-gradient(circle at top right, #e0f2fe 0%, transparent 45%),
-        radial-gradient(circle at left bottom, #fef3c7 0%, transparent 40%),
-        var(--bg);
-    min-height: calc(100vh - 48px);
-    border-radius: 18px;
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px) 0 0 / 48px 100%,
+        linear-gradient(135deg, #102d24 0%, #174b38 58%, #24664c 100%);
+    color: #fff;
+    box-shadow: var(--shadow-md);
 }
 
-.header {
-    margin: 0 0 18px;
-    font-size: 30px;
+.hero::after {
+    position: absolute;
+    z-index: -1;
+    right: -180px;
+    bottom: -250px;
+    width: 520px;
+    height: 520px;
+    border: 76px solid rgba(209, 240, 225, 0.055);
+    border-radius: 50%;
+    content: "";
+}
+
+.heroCopy {
+    align-self: center;
+    min-width: 0;
+}
+
+.heroEyebrow,
+.kicker {
+    margin: 0;
+    color: #85deb7;
+    font-family: var(--font-data);
+    font-size: 10px;
     font-weight: 800;
-    letter-spacing: 0.2px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
 }
 
-.form {
+.hero h1 {
+    max-width: 690px;
+    margin: 12px 0 0;
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: clamp(38px, 5vw, 64px);
+    letter-spacing: -0.04em;
+    line-height: 0.98;
+    text-wrap: balance;
+}
+
+.heroCopy > p:not(.heroEyebrow) {
+    max-width: 660px;
+    margin: 20px 0 0;
+    color: rgba(240, 249, 244, 0.78);
+    font-size: clamp(15px, 1.4vw, 18px);
+    line-height: 1.62;
+    text-wrap: pretty;
+}
+
+.heroStats {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: 24px;
-    padding: 12px;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(2px);
+    gap: 8px;
+    margin: 24px 0 0;
 }
 
-.input,
-.productInput,
-.adjustInput {
-    border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    background: #fff;
-    color: var(--text);
-    font-size: 14px;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+.heroStats > div {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 7px 10px;
+    border: 1px solid rgba(224, 243, 233, 0.18);
+    border-radius: 999px;
+    background: rgba(234, 248, 240, 0.08);
 }
 
-.input:focus,
-.productInput:focus,
-.adjustInput:focus {
-    outline: none;
-    border-color: #38bdf8;
-    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+.heroStats dt {
+    color: rgba(238, 248, 242, 0.66);
+    font-size: 10px;
 }
 
-.input {
-    padding: 10px 12px;
-    min-width: 200px;
-    flex: 1;
+.heroStats dd {
+    margin: 0;
+    font-family: var(--font-data);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
 }
 
-.button,
-.actionButton,
-.adjustBtnAdd,
-.adjustBtnSubtract {
-    border: none;
-    border-radius: 10px;
-    color: #fff;
-    cursor: pointer;
-    font-weight: 600;
-    transition: transform 0.06s ease, filter 0.2s ease, background-color 0.2s ease;
+.stockLanes {
+    align-self: center;
+    min-width: 0;
+    padding: 18px;
+    border: 1px solid rgba(228, 245, 236, 0.22);
+    border-radius: 20px;
+    background: rgba(240, 250, 245, 0.08);
+    backdrop-filter: blur(8px);
 }
 
-.button:active,
-.actionButton:active,
-.adjustBtnAdd:active,
-.adjustBtnSubtract:active {
-    transform: translateY(1px);
+.lanesLabel {
+    display: block;
+    margin: 0 0 8px;
+    color: rgba(237, 248, 242, 0.58);
+    font-family: var(--font-data);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
 }
 
-.button {
-    padding: 10px 14px;
-    background: var(--primary);
+.stockLane {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) 10px;
+    gap: 12px;
+    align-items: center;
+    padding: 13px 0;
+    border-bottom: 1px solid rgba(231, 246, 238, 0.15);
 }
 
-.button:hover {
-    background: var(--primary-dark);
+.stockLane:last-child {
+    border-bottom: 0;
 }
 
-.cancelButton {
-    background: #64748b;
+.stockLane > span {
+    color: #83dcb5;
+    font-family: var(--font-data);
+    font-size: 11px;
 }
 
-.cancelButton:hover {
-    background: #475569;
-}
-
-.warehousesList {
+.stockLane > div {
     display: flex;
+    min-width: 0;
     flex-direction: column;
-    gap: 16px;
-    margin-bottom: 34px;
+    gap: 2px;
+}
+
+.stockLane strong {
+    overflow: hidden;
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stockLane small,
+.lanesEmpty {
+    color: rgba(238, 248, 242, 0.62);
+    font-size: 11px;
+}
+
+.stockLane i {
+    width: 8px;
+    height: 8px;
+    border: 1px solid rgba(231, 247, 239, 0.35);
+    border-radius: 50%;
+}
+
+.stockLane .mainDot {
+    border-color: #8ae0b9;
+    background: #8ae0b9;
+    box-shadow: 0 0 0 4px rgba(138, 224, 185, 0.12);
+}
+
+.lanesEmpty {
+    margin: 14px 0 2px;
+    line-height: 1.5;
+}
+
+.notice,
+.errorBanner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+}
+
+.notice {
+    border: 1px solid #add9c5;
+    background: #e7f5ed;
+    color: #174c38;
+}
+
+.errorBanner {
+    border: 1px solid #efbdb4;
+    background: var(--color-danger-soft);
+    color: #7e2d22;
+}
+
+.errorBanner span {
+    overflow-wrap: anywhere;
+}
+
+.errorBanner button {
+    min-height: 40px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-weight: 800;
+}
+
+.operationsGrid {
+    display: grid;
+    grid-template-columns: minmax(270px, 0.72fr) minmax(0, 1.28fr);
+    gap: 18px;
+}
+
+.operationCard {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 18px;
+    padding: clamp(20px, 3vw, 30px);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-sm);
+}
+
+.transferCard {
+    background:
+        linear-gradient(135deg, rgba(225, 241, 233, 0.55), transparent 48%),
+        var(--color-surface);
+}
+
+.operationHeading span {
+    color: var(--color-accent);
+    font-family: var(--font-data);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.operationHeading h2,
+.sectionHeader h2 {
+    margin: 7px 0 0;
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+}
+
+.operationHeading h2 {
+    font-size: clamp(23px, 2.5vw, 31px);
+}
+
+.operationHeading p,
+.sectionHeader p {
+    margin: 8px 0 0;
+    color: var(--color-muted);
+    font-size: 13px;
+    line-height: 1.55;
+    text-wrap: pretty;
+}
+
+.field {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.field > span {
+    color: var(--color-muted);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+}
+
+.field input,
+.field select,
+.stockControl input {
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    color: var(--color-ink);
+    padding: 10px 12px;
+}
+
+.field input:focus-visible,
+.field select:focus-visible,
+.stockControl input:focus-visible {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 4px rgba(47, 118, 89, 0.12);
+}
+
+.formActions,
+.cardActions,
+.stockToolbar > div:last-child,
+.panelFields,
+.newProductGrid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 9px;
+}
+
+.primaryButton,
+.secondaryButton,
+.cardActions button,
+.stockToolbar button,
+.panelHeading button,
+.stockControl button,
+.catalogList button {
+    min-height: 44px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 750;
+    transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease;
+}
+
+.primaryButton {
+    border: 1px solid var(--color-accent-strong);
+    background: var(--color-accent-strong);
+    color: #fff;
+    padding: 10px 15px;
+}
+
+.primaryButton:hover:not(:disabled) {
+    background: #174b37;
+    transform: translateY(-1px);
+}
+
+.secondaryButton,
+.cardActions button,
+.stockToolbar button,
+.panelHeading button {
+    border: 1px solid var(--color-border-strong);
+    background: #fff;
+    color: var(--color-text);
+    padding: 9px 13px;
+}
+
+.secondaryButton:hover,
+.cardActions button:hover,
+.stockToolbar button:hover,
+.panelHeading button:hover {
+    border-color: #9db5a8;
+    background: var(--color-accent-soft);
+}
+
+.primaryButton:disabled,
+.cardActions button:disabled,
+.stockControl button:disabled {
+    cursor: wait;
+    opacity: 0.58;
+}
+
+.transferRoute {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
+    align-items: end;
+    gap: 10px;
+}
+
+.routeArrow {
+    display: grid;
+    min-height: 46px;
+    place-items: center;
+    color: var(--color-accent);
+    font-family: var(--font-data);
+    font-size: 24px;
+}
+
+.transferDetails {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.3fr) minmax(150px, 0.7fr) auto;
+    gap: 10px;
+    align-items: end;
+}
+
+.stockSection {
+    min-width: 0;
+}
+
+.sectionHeader {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 22px;
+    margin: 8px 0 16px;
+}
+
+.sectionHeader h2 {
+    font-size: clamp(28px, 3vw, 38px);
+}
+
+.kicker {
+    color: var(--color-accent);
+}
+
+.switchLabel {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 9px;
+    color: var(--color-text);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.switchLabel input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-accent);
+}
+
+.warehouseGrid {
+    display: grid;
+    gap: 18px;
 }
 
 .warehouseCard {
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    padding: 16px;
-    background: var(--card);
-    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-sm);
+}
+
+.mainWarehouse {
+    border-color: #afd3c1;
+    box-shadow: 0 16px 38px rgba(33, 90, 67, 0.09);
 }
 
 .warehouseHeader {
     display: flex;
-    justify-content: space-between;
     align-items: flex-start;
-    gap: 10px;
-    margin-bottom: 14px;
+    justify-content: space-between;
+    gap: 22px;
+    padding: 22px 24px;
+    border-bottom: 1px solid var(--color-border);
+    background:
+        linear-gradient(90deg, rgba(225, 241, 233, 0.72), transparent 44%),
+        #fbfcfb;
 }
 
-.warehouseTitle {
-    margin: 0;
-    font-size: 22px;
-    font-weight: 700;
+.warehouseIdentity {
+    min-width: 0;
+}
+
+.warehouseIndex {
+    color: var(--color-accent);
+    font-family: var(--font-data);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+}
+
+.warehouseIdentity h3 {
+    margin: 5px 0 0;
+    overflow-wrap: anywhere;
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: clamp(23px, 2.6vw, 32px);
+    letter-spacing: -0.025em;
+}
+
+.warehouseMeta {
     display: flex;
-    align-items: center;
-    gap: 8px;
     flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
 }
 
-.productCount {
-    margin-left: 8px;
-    color: var(--muted);
-    font-size: 14px;
-    font-weight: 500;
-}
-
-.mainBadge {
-    padding: 4px 8px;
+.warehouseMeta span,
+.warehouseMeta strong {
+    padding: 5px 8px;
+    border: 1px solid var(--color-border);
     border-radius: 999px;
-    font-size: 12px;
-    font-weight: 700;
-    background: #dcfce7;
-    color: #166534;
-    border: 1px solid #86efac;
+    background: #fff;
+    color: var(--color-muted);
+    font-family: var(--font-data);
+    font-size: 9px;
+    font-variant-numeric: tabular-nums;
 }
 
-.warehouseActions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+.warehouseMeta strong {
+    border-color: #aed5c1;
+    background: var(--color-accent-soft);
+    color: var(--color-accent-strong);
 }
 
-.actionButton {
-    padding: 8px 12px;
-    font-size: 13px;
+.cardActions {
+    justify-content: flex-end;
 }
 
-.editButton {
-    background: var(--success);
+.cardActions .dangerTextButton {
+    color: var(--color-danger);
 }
 
-.editButton:hover {
-    background: var(--success-dark);
-}
-
-.deleteButton {
-    background: var(--danger);
-}
-
-.deleteButton:hover {
-    background: var(--danger-dark);
-}
-
-.addButton {
-    background: var(--primary);
-}
-
-.addButton:hover {
-    background: var(--primary-dark);
-}
-
-.mainButton {
-    background: #0ea5e9;
-}
-
-.mainButton:hover {
-    background: #0284c7;
-}
-
-.addProductForm {
-    margin-bottom: 14px;
-    padding: 14px;
-    border: 1px solid #bae6fd;
-    border-radius: 12px;
-    background: #f0f9ff;
-}
-
-.addProductForm h4 {
-    margin: 0 0 10px;
-    color: #0c4a6e;
-}
-
-.productInputs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: center;
-}
-
-.productInput {
-    min-width: 170px;
-    padding: 9px 11px;
-    flex: 1;
-}
-
-.productFormButtons {
-    display: flex;
-    gap: 8px;
-    margin-left: auto;
-}
-
-.saveProductButton {
-    background: var(--success);
-}
-
-.saveProductButton:hover {
-    background: var(--success-dark);
-}
-
-.cancelProductButton {
-    background: #64748b;
-}
-
-.cancelProductButton:hover {
-    background: #475569;
-}
-
-.productsSection {
-    margin-top: 8px;
-    overflow-x: auto;
-}
-
-.productsTable {
-    width: 100%;
-    min-width: 900px;
-    border-collapse: separate;
-    border-spacing: 0;
-    overflow: hidden;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-}
-
-.productsTable th {
-    background: #f8fafc;
-    color: #334155;
-    text-align: left;
-    font-weight: 700;
-    font-size: 13px;
-    padding: 11px 10px;
-    border-bottom: 1px solid var(--line);
-}
-
-.productsTable td {
-    padding: 10px;
-    border-bottom: 1px solid #f1f5f9;
-    font-size: 14px;
-}
-
-.qtyHint {
-    margin-top: 4px;
-    color: var(--muted);
-    font-size: 12px;
-}
-
-.productsTable tr:last-child td {
-    border-bottom: none;
-}
-
-.productsTable tbody tr:hover {
-    background: #f8fafc;
-}
-
-.noProducts {
-    margin: 0;
-    padding: 20px;
-    text-align: center;
-    color: var(--muted);
-    border: 1px dashed #cbd5e1;
-    border-radius: 12px;
-    background: #f8fafc;
-}
-
-.sectionTitle {
-    margin: 28px 0 12px;
-    font-size: 22px;
-    font-weight: 700;
-}
-
-.adjustQuantityCell {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-}
-
-.adjustInput {
-    width: 80px;
-    padding: 7px 8px;
-}
-
-.adjustBtnAdd,
-.adjustBtnSubtract {
-    padding: 7px 10px;
-    font-size: 12px;
-}
-
-.adjustBtnAdd {
-    background: var(--success);
-}
-
-.adjustBtnAdd:hover {
-    background: var(--success-dark);
-}
-
-.adjustBtnSubtract {
-    background: var(--warning);
-}
-
-.adjustBtnSubtract:hover {
-    background: var(--warning-dark);
-}
-
-.modalOverlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(15, 23, 42, 0.45);
+.stockToolbar {
     display: flex;
     align-items: center;
-    justify-content: center;
-    padding: 20px;
-    z-index: 1000;
-}
-
-.modalCard {
-    width: min(920px, 100%);
-    max-height: calc(100vh - 40px);
-    overflow: auto;
-    border-radius: 18px;
-    background: #ffffff;
-    border: 1px solid var(--line);
-    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
-    padding: 18px;
-}
-
-.modalHeader {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
-    margin-bottom: 14px;
-}
-
-.modalTitle {
-    margin: 0;
-    font-size: 24px;
-}
-
-.modalSubtitle {
-    margin: 6px 0 0;
-    color: var(--muted);
-    line-height: 1.5;
-}
-
-.modalControls {
-    display: grid;
-    grid-template-columns: minmax(0, 1.5fr) 180px 180px;
-    gap: 10px;
-    margin-bottom: 12px;
-}
-
-.modalHint {
-    margin-bottom: 12px;
-    color: var(--muted);
-    font-size: 13px;
-}
-
-.modalError {
-    margin-bottom: 12px;
-    padding: 10px 12px;
-    border-radius: 10px;
-    background: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #fecaca;
-}
-
-.productPickerList {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.productPickerItem {
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: #f8fafc;
-    padding: 14px 16px;
-    cursor: pointer;
-    text-align: left;
-    display: flex;
     justify-content: space-between;
     gap: 16px;
-    color: var(--text);
+    padding: 15px 24px;
+    border-bottom: 1px solid var(--color-border);
 }
 
-.productPickerItemActive {
-    border-color: #38bdf8;
-    background: #ecfeff;
-    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
-}
-
-.productPickerMain {
+.stockToolbar > div:first-child {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 2px;
 }
 
-.productPickerMeta {
-    color: var(--muted);
-    font-size: 13px;
+.stockToolbar strong {
+    color: var(--color-ink);
+    font-family: var(--font-display);
 }
 
-.productPickerSide {
+.stockToolbar span {
+    color: var(--color-muted);
+    font-size: 11px;
+}
+
+.stockPanel {
+    display: grid;
+    gap: 16px;
+    padding: 20px 24px;
+    border-bottom: 1px solid #bad8c9;
+    background: #eff7f2;
+}
+
+.panelHeading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.panelHeading > div {
     display: flex;
     flex-direction: column;
+    gap: 3px;
+}
+
+.panelHeading strong {
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: 18px;
+}
+
+.panelHeading span {
+    color: var(--color-muted);
+    font-size: 12px;
+}
+
+.catalogList {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 8px;
+    max-height: 236px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.catalogList button {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
     gap: 4px;
-    align-items: flex-end;
-    color: var(--muted);
-    font-size: 13px;
+    border: 1px solid var(--color-border);
+    background: #fff;
+    color: var(--color-text);
+    padding: 11px 12px;
+    text-align: left;
+}
+
+.catalogList button:hover,
+.catalogList .catalogItemActive {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+}
+
+.catalogList button span {
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.modalActions {
+.catalogList button small {
+    color: var(--color-muted);
+    font-family: var(--font-data);
+    font-size: 9px;
+}
+
+.panelFields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(150px, 1fr)) auto;
+    align-items: end;
+}
+
+.newProductGrid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(120px, 1fr)) auto;
+    align-items: end;
+}
+
+.stockList {
+    min-width: 0;
+}
+
+.stockRow {
+    display: grid;
+    grid-template-columns: minmax(190px, 1.25fr) minmax(95px, 0.35fr) minmax(140px, 0.55fr) minmax(320px, 1.15fr);
+    gap: 18px;
+    align-items: center;
+    padding: 15px 24px;
+    border-bottom: 1px solid #edf1ed;
+}
+
+.stockRow:last-child {
+    border-bottom: 0;
+}
+
+.stockRow:hover {
+    background: #fbfcfb;
+}
+
+.productIdentity,
+.balanceCell,
+.priceCell {
     display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 16px;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.productIdentity strong {
+    overflow-wrap: anywhere;
+    color: var(--color-ink);
+    font-size: 14px;
+}
+
+.productIdentity span,
+.balanceCell span,
+.priceCell span,
+.priceCell small {
+    color: var(--color-muted);
+    font-size: 10px;
+}
+
+.balanceCell strong,
+.priceCell strong {
+    color: var(--color-ink);
+    font-family: var(--font-data);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+.balanceCell .zeroBalance {
+    color: var(--color-danger);
+}
+
+.stockControl {
+    display: grid;
+    grid-template-columns: minmax(95px, 1fr) minmax(95px, 1fr) auto auto;
+    gap: 7px;
+}
+
+.stockControl input {
+    min-height: 42px;
+    padding: 8px 10px;
+    font-size: 12px;
+}
+
+.stockControl button {
+    border: 1px solid #a9ccb9;
+    background: var(--color-accent-soft);
+    color: var(--color-accent-strong);
+    padding: 8px 11px;
+}
+
+.stockControl button:hover {
+    background: #d5ebdf;
+}
+
+.stockControl .writeoffButton {
+    border-color: #edc2bb;
+    background: var(--color-danger-soft);
+    color: var(--color-danger);
+}
+
+.stockControl .writeoffButton:hover {
+    background: #f7dcd7;
+}
+
+.loadingState,
+.emptyState,
+.cardEmpty {
+    padding: 28px;
+    border: 1px dashed var(--color-border-strong);
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.58);
+    color: var(--color-muted);
+    text-align: center;
+}
+
+.cardEmpty {
+    border: 0;
+    border-radius: 0;
+}
+
+.visuallyHidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+    .stockRow {
+        grid-template-columns: minmax(190px, 1.2fr) 100px minmax(140px, 0.6fr);
+    }
+
+    .stockControl {
+        grid-column: 1 / -1;
+    }
+
+    .newProductGrid {
+        grid-template-columns: repeat(3, minmax(140px, 1fr));
+    }
 }
 
 @media (max-width: 900px) {
-    .container {
-        padding: 14px;
-        border-radius: 0;
-    }
-
-    .header {
-        font-size: 24px;
-    }
-
-    .warehouseHeader {
-        flex-direction: column;
-    }
-
-    .warehouseActions,
-    .productFormButtons {
-        width: 100%;
-    }
-
-    .actionButton,
-    .button {
-        flex: 1;
-        text-align: center;
-    }
-
-    .input,
-    .productInput {
-        min-width: 100%;
-    }
-
-    .modalHeader,
-    .modalActions {
-        flex-direction: column;
-    }
-
-    .modalControls {
+    .hero,
+    .operationsGrid {
         grid-template-columns: 1fr;
     }
 
-    .productPickerItem {
+    .stockLanes {
+        align-self: stretch;
+    }
+
+    .transferDetails {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .transferDetails .primaryButton {
+        grid-column: 1 / -1;
+    }
+
+    .sectionHeader,
+    .warehouseHeader,
+    .stockToolbar {
+        align-items: flex-start;
         flex-direction: column;
     }
 
-    .productPickerSide {
-        align-items: flex-start;
-        white-space: normal;
+    .cardActions {
+        justify-content: flex-start;
+    }
+
+    .panelFields,
+    .newProductGrid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .hero {
+        padding: 25px 20px;
+        border-radius: 20px;
+    }
+
+    .hero h1 {
+        font-size: clamp(34px, 12vw, 47px);
+    }
+
+    .operationCard,
+    .warehouseHeader,
+    .stockToolbar,
+    .stockPanel {
+        padding: 19px 16px;
+    }
+
+    .transferRoute,
+    .transferDetails,
+    .panelFields,
+    .newProductGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .routeArrow {
+        min-height: 24px;
+        transform: rotate(90deg);
+    }
+
+    .sectionHeader {
+        align-items: stretch;
+    }
+
+    .switchLabel {
+        align-self: flex-start;
+    }
+
+    .cardActions,
+    .stockToolbar > div:last-child,
+    .formActions {
+        width: 100%;
+    }
+
+    .cardActions button,
+    .stockToolbar button,
+    .formActions button {
+        flex: 1 1 140px;
+    }
+
+    .stockRow {
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        padding: 16px;
+    }
+
+    .productIdentity {
+        grid-column: 1 / -1;
+    }
+
+    .stockControl {
+        grid-column: 1 / -1;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .stockControl button {
+        width: 100%;
+    }
+
+    .catalogList {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 380px) {
+    .stockControl {
+        grid-template-columns: 1fr;
+    }
+
+    .notice,
+    .errorBanner {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .primaryButton,
+    .secondaryButton,
+    .cardActions button,
+    .stockToolbar button,
+    .panelHeading button,
+    .stockControl button,
+    .catalogList button {
+        transition: none;
     }
 }

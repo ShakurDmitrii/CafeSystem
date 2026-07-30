@@ -7,7 +7,7 @@ class KpiData(BaseModel):
     total_sales: int
     profit_change: float
     sales_change: float
-    model_accuracy: float
+    model_accuracy: float | None
 
 
 class TopRoll(BaseModel):
@@ -21,7 +21,7 @@ class SalesTrend(BaseModel):
     date: str
     period: str
     sales: int
-    predicted: int
+    predicted: int | None
     revenue: float
 
 
@@ -39,3 +39,4 @@ class DashboardResponse(BaseModel):
     time_range: str
     generated_at: str
     data_source: str
+    data_quality: dict

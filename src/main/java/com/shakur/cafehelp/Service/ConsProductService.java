@@ -26,6 +26,7 @@ public class ConsProductService {
                 .stream()
                 .map(record ->{
                     ConsProductDTO consProductDTO = new ConsProductDTO();
+                    consProductDTO.consProductId = record.getConsproductid();
                     consProductDTO.consignmentId = record.getConsignmentid();
                     consProductDTO.productId = record.getProductid();
                     consProductDTO.GROSS = record.getGross();
@@ -54,6 +55,7 @@ public class ConsProductService {
         ConsproductRecord firstRecord = records.get(0);
 
         ConsProductDTO consProductDTO = new ConsProductDTO();
+        consProductDTO.consProductId = firstRecord.getConsproductid();
         consProductDTO.consignmentId = firstRecord.getConsignmentid();
         consProductDTO.productId = firstRecord.getProductid();
         consProductDTO.GROSS = firstRecord.getGross();
@@ -65,6 +67,15 @@ public class ConsProductService {
     public ConsProductDTO createConsProduct(ConsProductDTO consProductDTO) {
         if (consProductDTO.consignmentId <= 0) {
             throw new IllegalArgumentException("consignmentId is required");
+        }
+        if (consProductDTO.productId <= 0) {
+            throw new IllegalArgumentException("Выберите продукт");
+        }
+        if (consProductDTO.quantity == null || consProductDTO.quantity <= 0) {
+            throw new IllegalArgumentException("Количество должно быть больше 0");
+        }
+        if (consProductDTO.GROSS == null || consProductDTO.GROSS < 0) {
+            throw new IllegalArgumentException("Закупочная цена должна быть 0 или больше");
         }
         if (consignmentNoteService.isPosted(consProductDTO.consignmentId)) {
             throw new IllegalStateException("Проведенную накладную нельзя редактировать");
@@ -130,6 +141,7 @@ public class ConsProductService {
                 .stream()
                 .map(record ->{
                     ConsProductDTO dto = new ConsProductDTO();
+                    dto.consProductId = record.getConsproductid();
                     dto.consignmentId = record.getConsignmentid();
                     dto.productId = record.getProductid();
                     dto.GROSS = record.getGross();

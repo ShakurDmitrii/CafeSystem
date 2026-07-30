@@ -1,4 +1,17 @@
 HELP.md
+.env
+.env.*
+!.env.example
+*.dump
+*.tar
+*.tar.gz
+stdout
+backups/
+output/
+.playwright-cli/
+**/__pycache__/
+*.py[cod]
+~$*
 .gradle
 build/
 !gradle/wrapper/gradle-wrapper.jar

@@ -1,149 +1,176 @@
 import { useState } from "react";
+import { API_BASE_URL } from "../../auth";
 import styles from "./AddPersonForm.module.css";
 
-const API = "http://localhost:8080/api/persons/register";
+const API_PERSON_REGISTER = `${API_BASE_URL}/api/persons/register`;
+
+const initialForm = {
+    name: "",
+    numDays: "",
+    salaryPerDay: "",
+    username: "",
+    password: "",
+    role: "WORKER",
+    isActive: true
+};
 
 export default function AddPersonForm({ onPersonAdded }) {
-    const [name, setName] = useState("");
-    const [salary, setSalary] = useState("");
-    const [numDays, setNumDays] = useState("");
-    const [salaryPerDay, setSalaryPerDay] = useState("");
-    const [username, setUsername] = useState("");
-    const [password, setPassword] = useState("");
-    const [role, setRole] = useState("WORKER");
-    const [isActive, setIsActive] = useState(true);
+    const [form, setForm] = useState(initialForm);
     const [error, setError] = useState("");
+    const [submitting, setSubmitting] = useState(false);
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+    const updateField = (field, value) => {
+        setForm((current) => ({ ...current, [field]: value }));
+    };
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        if (submitting) return;
         setError("");
-
-        const newPerson = {
-            name: name.trim(),
-            salary: parseFloat(salary || "0"),
-            numDays: parseInt(numDays || "0"),
-            salaryPerDay: parseFloat(salaryPerDay || "0"),
-            username: username.trim(),
-            password,
-            role,
-            isActive
-        };
+        setSubmitting(true);
 
         try {
-            const res = await fetch(API, {
+            const response = await fetch(API_PERSON_REGISTER, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(newPerson)
+                body: JSON.stringify({
+                    name: form.name.trim(),
+                    numDays: Number.parseInt(form.numDays || "0", 10),
+                    salaryPerDay: Number(form.salaryPerDay || 0),
+                    username: form.username.trim(),
+                    password: form.password,
+                    role: form.role,
+                    isActive: form.isActive
+                })
             });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data?.message || `Ошибка (${res.status})`);
+
+            const text = await response.text();
+            const created = text ? JSON.parse(text) : null;
+            if (!response.ok) {
+                throw new Error(created?.message || created?.error || `Ошибка сервера (${response.status})`);
             }
-            const created = await res.json().catch(() => null);
 
-            // Сброс формы
-            setName("");
-            setSalary("");
-            setNumDays("");
-            setSalaryPerDay("");
-            setUsername("");
-            setPassword("");
-            setRole("WORKER");
-            setIsActive(true);
-
-            if (onPersonAdded) onPersonAdded(created);
-        } catch (err) {
-            console.error("Ошибка создания сотрудника:", err);
-            setError(err.message || "Ошибка создания сотрудника");
+            setForm(initialForm);
+            await onPersonAdded?.(created);
+        } catch (submitError) {
+            console.error("Ошибка создания сотрудника:", submitError);
+            setError(submitError.message || "Не удалось зарегистрировать сотрудника");
+        } finally {
+            setSubmitting(false);
         }
     };
 
     return (
         <form className={styles.form} onSubmit={handleSubmit}>
-            <h2>Регистрация сотрудника</h2>
+            <fieldset className={styles.fieldset}>
+                <legend>Сотрудник</legend>
+                <label className={styles.wideField} htmlFor="person-name">
+                    Имя и фамилия
+                    <input
+                        id="person-name"
+                        name="name"
+                        type="text"
+                        autoComplete="name"
+                        value={form.name}
+                        onChange={(event) => updateField("name", event.target.value)}
+                        placeholder="Например, Мария Орлова"
+                        required
+                    />
+                </label>
+                <label className={styles.wideField} htmlFor="person-salary-per-day">
+                    Ставка за день
+                    <span className={styles.inputWithUnit}>
+                        <input
+                            id="person-salary-per-day"
+                            name="salaryPerDay"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            inputMode="decimal"
+                            value={form.salaryPerDay}
+                            onChange={(event) => updateField("salaryPerDay", event.target.value)}
+                            placeholder="2500"
+                            required
+                        />
+                        <span>₽</span>
+                    </span>
+                </label>
+                <label htmlFor="person-days">
+                    Начислено дней
+                    <input
+                        id="person-days"
+                        name="numDays"
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputMode="numeric"
+                        value={form.numDays}
+                        onChange={(event) => updateField("numDays", event.target.value)}
+                        placeholder="0"
+                        required
+                    />
+                </label>
+            </fieldset>
 
-            <label>
-                Имя:
-                <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                />
-            </label>
+            <fieldset className={styles.fieldset}>
+                <legend>Доступ в систему</legend>
+                <label htmlFor="person-login">
+                    Логин
+                    <input
+                        id="person-login"
+                        name="username"
+                        type="text"
+                        autoComplete="username"
+                        value={form.username}
+                        onChange={(event) => updateField("username", event.target.value)}
+                        placeholder="m.orlova"
+                        required
+                    />
+                </label>
+                <label htmlFor="person-password">
+                    Временный пароль
+                    <input
+                        id="person-password"
+                        name="password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={form.password}
+                        onChange={(event) => updateField("password", event.target.value)}
+                        minLength={6}
+                        placeholder="Не менее 6 символов"
+                        required
+                    />
+                </label>
+                <label htmlFor="person-role">
+                    Роль
+                    <select
+                        id="person-role"
+                        name="role"
+                        value={form.role}
+                        onChange={(event) => updateField("role", event.target.value)}
+                    >
+                        <option value="WORKER">Сотрудник</option>
+                        <option value="OWNER">Владелец</option>
+                    </select>
+                </label>
+                <label className={styles.switchField}>
+                    <input
+                        name="isActive"
+                        type="checkbox"
+                        checked={form.isActive}
+                        onChange={(event) => updateField("isActive", event.target.checked)}
+                    />
+                    <span>
+                        <strong>Аккаунт активен</strong>
+                        <small>Сотрудник сможет войти сразу после регистрации.</small>
+                    </span>
+                </label>
+            </fieldset>
 
-            <label>
-                Зарплата:
-                <input
-                    type="number"
-                    value={salary}
-                    onChange={(e) => setSalary(e.target.value)}
-                    required
-                />
-            </label>
+            {error && <div className={styles.error} role="alert">{error}</div>}
 
-            <label>
-                Количество дней:
-                <input
-                    type="number"
-                    value={numDays}
-                    onChange={(e) => setNumDays(e.target.value)}
-                    required
-                />
-            </label>
-
-            <label>
-                Зарплата в день:
-                <input
-                    type="number"
-                    value={salaryPerDay}
-                    onChange={(e) => setSalaryPerDay(e.target.value)}
-                    required
-                />
-            </label>
-
-            <label>
-                Логин:
-                <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                />
-            </label>
-
-            <label>
-                Пароль:
-                <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    minLength={6}
-                    required
-                />
-            </label>
-
-            <label>
-                Роль:
-                <select value={role} onChange={(e) => setRole(e.target.value)}>
-                    <option value="WORKER">WORKER</option>
-                    <option value="OWNER">OWNER</option>
-                </select>
-            </label>
-
-            <label>
-                <input
-                    type="checkbox"
-                    checked={isActive}
-                    onChange={(e) => setIsActive(e.target.checked)}
-                />
-                Аккаунт активен
-            </label>
-
-            {error && <div className={styles.error}>{error}</div>}
-
-            <button type="submit" className={styles.btn}>
-                Зарегистрировать
+            <button type="submit" className={styles.submitButton} disabled={submitting}>
+                {submitting ? "Создаём аккаунт…" : "Добавить в команду"}
             </button>
         </form>
     );

@@ -17,6 +17,8 @@ public class SalesRecordDTO {
     private Integer quantity;
     private Double totalAmount;
     private Double pricePerUnit;
+    private Double unitCost;
+    private Double totalCost;
     private String locationId;
 }
 

@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import Select from 'react-select'; // Эта строка должна быть наверху
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import Select from 'react-select';
 import { ApiClient } from './api';
+import { formatCurrency } from './formatters';
 import styles from './mlStyles.module.css';
 
 export default function IngredientSelector({ selected, onChange }) {
@@ -8,93 +9,69 @@ export default function IngredientSelector({ selected, onChange }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    useEffect(() => {
-        loadIngredients();
-    }, []);
-
-    const loadIngredients = async () => {
+    const loadIngredients = useCallback(async () => {
+        setLoading(true);
+        setError(null);
         try {
-            setLoading(true);
             const ingredients = await ApiClient.getIngredients();
-
-            // Преобразуем в формат для react-select
-            const options = ingredients.map(ing => ({
-                value: ing.name,
-                label: `${ing.name} ${ing.costPerUnit ? `(${ing.costPerUnit}₽)` : ''}`,
-                data: ing
-            }));
-
-            setAvailableIngredients(options);
-            setError(null);
+            setAvailableIngredients(ingredients.map((ingredient) => ({
+                value: ingredient.name,
+                label: ingredient.costPerUnit
+                    ? `${ingredient.name} · ${formatCurrency(ingredient.costPerUnit)}`
+                    : ingredient.name
+            })));
         } catch (err) {
-            setError(`Ошибка загрузки: ${err.message}`);
-            console.error('Failed to load ingredients:', err);
+            setError(err.message || 'Не удалось загрузить ингредиенты.');
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
-    const handleSelectChange = (selectedOptions) => {
-        const values = (selectedOptions || []).map(opt => opt.value);
-        onChange(values);
-    };
+    useEffect(() => {
+        loadIngredients();
+    }, [loadIngredients]);
 
-    const selectedOptions = selected.map(value =>
-        availableIngredients.find(opt => opt.value === value)
-    ).filter(Boolean);
+    const selectedOptions = useMemo(() => selected.map((value) => (
+        availableIngredients.find((option) => option.value === value) || { value, label: value }
+    )), [availableIngredients, selected]);
 
     if (loading) {
-        return <div className="loading">Загрузка ингредиентов...</div>;
+        return <div className={styles.inlineState} role="status">Загружаем ингредиенты…</div>;
     }
 
     if (error) {
         return (
-            <div className="error">
-                <p>{error}</p>
-                <button onClick={loadIngredients}>Повторить</button>
+            <div className={styles.inlineError} role="alert">
+                <span>{error}</span>
+                <button type="button" onClick={loadIngredients}>Повторить</button>
             </div>
         );
     }
 
     return (
         <div className={styles.ingredientSelector}>
-            <h3 className={styles.selectLabel}>Выберите ингредиенты:</h3>
-
-            {/* Используем react-select */}
+            <label className={styles.selectLabel} htmlFor="ml-ingredients">
+                Ингредиенты
+                <span>{selected.length} выбрано</span>
+            </label>
             <Select
+                inputId="ml-ingredients"
+                instanceId="ml-ingredients"
                 isMulti
                 options={availableIngredients}
                 value={selectedOptions}
-                onChange={handleSelectChange}
+                onChange={(options) => onChange((options || []).map((option) => option.value))}
                 className={styles.select}
-                classNamePrefix="select"
-                placeholder="Выберите ингредиенты..."
-                noOptionsMessage={() => "Нет доступных ингредиентов"}
+                classNamePrefix="ml-select"
+                placeholder="Начните вводить название…"
+                noOptionsMessage={() => 'Ингредиенты не найдены'}
+                loadingMessage={() => 'Загрузка…'}
             />
-
-            {/* Показываем выбранные ингредиенты списком */}
-            {selected.length > 0 && (
-                <div className={styles.selectedList}>
-                    <h4>Выбранные ингредиенты:</h4>
-                    <ul className={styles.ingredientList}>
-                        {selected.map((ingredient, index) => (
-                            <li key={index} className={styles.ingredientItem}>
-                                <span className={styles.ingredientName}>{ingredient}</span>
-                                <button
-                                    type="button"
-                                    className={styles.removeButton}
-                                    onClick={() => {
-                                        const newIngredients = selected.filter((_, i) => i !== index);
-                                        onChange(newIngredients);
-                                    }}
-                                >
-                                    ×
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            )}
+            <div className={styles.selectionHint} aria-live="polite">
+                {selected.length < 2
+                    ? `Добавьте ещё ${2 - selected.length}`
+                    : 'Состав готов к расчёту'}
+            </div>
         </div>
     );
 }

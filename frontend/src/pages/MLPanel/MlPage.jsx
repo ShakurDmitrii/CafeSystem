@@ -1,12 +1,48 @@
-import React, { useState } from 'react';
-import PredictRollPage from './PredictRollPage';
-import OptimizationResults from './OptimizationResults';
+import {
+    BarChartOutlined,
+    ExperimentOutlined,
+    RobotOutlined,
+    SyncOutlined,
+    ThunderboltOutlined
+} from '@ant-design/icons';
+import React, { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { API_BASE_URL } from '../../auth';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { ApiClient } from './api';
+import { formatCurrency, formatInteger, formatNumber, formatPercent } from './formatters';
 import styles from './MlPage.module.css';
+import OptimizationResults from './OptimizationResults';
+import PredictRollPage from './PredictRollPage';
+
+const TABS = [
+    { id: 'predict', label: 'Прогноз', icon: ThunderboltOutlined },
+    { id: 'optimize', label: 'Оптимизация', icon: ExperimentOutlined },
+    { id: 'analytics', label: 'Аналитика', icon: BarChartOutlined },
+    { id: 'generate', label: 'Новое блюдо', icon: RobotOutlined }
+];
+
+const DEFAULT_DISH_PARAMS = {
+    days: 90,
+    minIngredients: 3,
+    maxIngredients: 6,
+    populationSize: 80,
+    generations: 40,
+    markup: 2.35,
+    mustIncludeText: 'рис, нори',
+    excludedIngredientsText: ''
+};
+
+const parseCsv = (value) => value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 export default function MlPage() {
-    const [activeTab, setActiveTab] = useState('predict');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const requestedView = searchParams.get('view');
+    const activeTab = TABS.some((tab) => tab.id === requestedView) ? requestedView : 'predict';
+    const tabRefs = useRef({});
     const [isTraining, setIsTraining] = useState(false);
     const [trainingStatus, setTrainingStatus] = useState(null);
     const [isGeneratingDish, setIsGeneratingDish] = useState(false);
@@ -14,103 +50,66 @@ export default function MlPage() {
     const [generationError, setGenerationError] = useState(null);
     const [isSavingDish, setIsSavingDish] = useState(false);
     const [saveStatus, setSaveStatus] = useState(null);
-    const [dishParams, setDishParams] = useState({
-        days: 90,
-        minIngredients: 3,
-        maxIngredients: 6,
-        populationSize: 80,
-        generations: 40,
-        markup: 2.35,
-        mustIncludeText: 'рис, нори',
-        excludedIngredientsText: ''
-    });
+    const [dishParams, setDishParams] = useState(DEFAULT_DISH_PARAMS);
+
+    useEffect(() => {
+        tabRefs.current[activeTab]?.scrollIntoView({
+            block: 'nearest',
+            inline: 'center'
+        });
+    }, [activeTab]);
+
+    const setActiveTab = (view) => {
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.set('view', view);
+        setSearchParams(nextParams, { replace: true });
+    };
 
     const sendTrainingData = async () => {
         setIsTraining(true);
-        setTrainingStatus('Отправка данных для обучения ML...');
-
+        setTrainingStatus({ type: 'progress', text: 'Собираем продажи и обновляем модель…' });
         try {
-            // Здесь будет запрос к бэкенду Java, чтобы получить реальные данные
-            // и отправить их в Python ML сервис
-            const response = await fetch('http://localhost:8080/api/ml/train-with-recent-data', {
+            const response = await fetch(`${API_BASE_URL}/api/ml/train-with-recent-data`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    days: 90, // Данные за последние 90 дней
+                    days: 90,
                     includeMenu: true,
                     includeSales: true,
                     includeIngredients: true
                 })
             });
-
             const result = await response.json();
-
-            if (response.ok) {
-                const recordsCount =
-                    result?.recordsCount ??
-                    result?.records ??
-                    result?.trainingResult?.records ??
-                    result?.trainingResult?.recordsCount ??
-                    result?.newRecords ??
-                    null;
-
-                const ingredientsCount =
-                    result?.newIngredientsCount ??
-                    result?.ingredientsCount ??
-                    result?.modelInfo?.ingredientsCount ??
-                    result?.trainingResult?.ingredientsCount ??
-                    null;
-
-                const recordsText = recordsCount == null ? 'неизвестно' : recordsCount;
-                const ingredientsText = ingredientsCount == null ? 'неизвестно' : ingredientsCount;
-
-                setTrainingStatus(`✅ Модель обучена на ${recordsText} записях. ${ingredientsText} ингредиентов в словаре.`);
-            } else {
-                setTrainingStatus(`❌ Ошибка: ${result.message || 'Не удалось обучить модель'}`);
+            if (!response.ok) {
+                throw new Error(result.error || result.message || 'Не удалось обучить модель.');
             }
+
+            const recordsCount = result.recordsCount
+                ?? result.records
+                ?? result.trainingResult?.recordsCount;
+            const ingredientsCount = result.newIngredientsCount
+                ?? result.ingredientsCount
+                ?? result.trainingResult?.ingredientsCount;
+            setTrainingStatus({
+                type: 'success',
+                text: `Модель обновлена: ${formatInteger(recordsCount, '—')} записей, ${formatInteger(ingredientsCount, '—')} ингредиентов.`
+            });
         } catch (error) {
-            setTrainingStatus(`❌ Ошибка соединения: ${error.message}`);
+            setTrainingStatus({
+                type: 'error',
+                text: error.message || 'Не удалось связаться с сервисом обучения.'
+            });
         } finally {
             setIsTraining(false);
         }
     };
 
-    const syncRealTimeData = async () => {
-        try {
-            setTrainingStatus('Синхронизация последних данных...');
-            const response = await fetch('/api/ml/sync-latest', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    syncType: 'incremental',
-                    updateModel: true
-                })
-            });
-
-            const result = await response.json();
-            setTrainingStatus(`✅ Синхронизировано ${result.newRecords} новых записей`);
-        } catch (error) {
-            setTrainingStatus(`❌ Ошибка синхронизации: ${error.message}`);
-        }
-    };
-
     const updateDishParam = (field, value) => {
-        setDishParams(prev => ({
-            ...prev,
-            [field]: value
-        }));
+        setDishParams((previous) => ({ ...previous, [field]: value }));
     };
 
-    const parseCsv = (value) => value
-        .split(',')
-        .map(v => v.trim())
-        .filter(Boolean);
-
-    const handleGenerateDish = async () => {
+    const handleGenerateDish = async (event) => {
+        event.preventDefault();
         setIsGeneratingDish(true);
         setGenerationError(null);
         setGeneratedDish(null);
@@ -128,13 +127,11 @@ export default function MlPage() {
             });
 
             if (result.status === 'failed') {
-                setGenerationError(result.errorMessage || 'Не удалось сгенерировать блюдо');
-                return;
+                throw new Error(result.errorMessage || 'Не удалось сгенерировать блюдо.');
             }
-
             setGeneratedDish(result);
         } catch (error) {
-            setGenerationError(error.message || 'Ошибка генерации');
+            setGenerationError(error.message || 'Ошибка генерации.');
         } finally {
             setIsGeneratingDish(false);
         }
@@ -142,39 +139,40 @@ export default function MlPage() {
 
     const handleSaveDish = async () => {
         if (!generatedDish?.dish) return;
-
         setIsSavingDish(true);
         setSaveStatus(null);
         try {
-            const payload = {
-                dishName: generatedDish.dish.name,
+            const dish = generatedDish.dish;
+            const result = await ApiClient.saveGeneratedDish({
+                dishName: dish.name,
                 category: 'AI',
-                recommendedPrice: generatedDish.dish.recommendedPrice,
-                estimatedCost: generatedDish.dish.estimatedCost,
-                weightGrams: generatedDish.dish.techCard?.reduce((sum, r) => sum + (Number(r.quantityGrams) || 0), 0) || 140,
-                ingredients: generatedDish.dish.ingredients || [],
-                techCard: (generatedDish.dish.techCard || []).map(row => ({
+                recommendedPrice: dish.recommendedPrice,
+                estimatedCost: dish.estimatedCost,
+                weightGrams: dish.techCard?.reduce(
+                    (sum, row) => sum + (Number(row.quantityGrams) || 0),
+                    0
+                ) || 140,
+                ingredients: dish.ingredients || [],
+                techCard: (dish.techCard || []).map((row) => ({
                     ingredientName: row.ingredientName,
                     quantityGrams: Number(row.quantityGrams) || 0,
                     unitCost: Number(row.unitCost) || 0,
                     totalCost: Number(row.totalCost) || 0
                 }))
-            };
+            });
 
-            const result = await ApiClient.saveGeneratedDish(payload);
             if (result.status === 'failed') {
-                setSaveStatus({ type: 'error', text: result.errorMessage || 'Ошибка сохранения' });
-                return;
+                throw new Error(result.errorMessage || 'Не удалось сохранить блюдо.');
             }
             const missing = result.missingIngredients?.length
-                ? ` Не найдены ингредиенты: ${result.missingIngredients.join(', ')}.`
+                ? ` Не найдены: ${result.missingIngredients.join(', ')}.`
                 : '';
             setSaveStatus({
                 type: 'success',
-                text: `Блюдо сохранено (ID ${result.dishId}), строк техкарты: ${result.techCardRowsCreated}.${missing}`
+                text: `Блюдо сохранено с ID ${result.dishId}.${missing}`
             });
         } catch (error) {
-            setSaveStatus({ type: 'error', text: error.message || 'Ошибка сохранения блюда' });
+            setSaveStatus({ type: 'error', text: error.message || 'Ошибка сохранения блюда.' });
         } finally {
             setIsSavingDish(false);
         }
@@ -182,240 +180,265 @@ export default function MlPage() {
 
     return (
         <div className={styles.mlPage}>
-            <header className={styles.header}>
-                <div className={styles.headerRow}>
-                    <div>
-                        <h1>🤖 AI Аналитика ресторана</h1>
-                        <p className={styles.subtitle}>Машинное обучение для увеличения прибыли</p>
-                    </div>
-                    <div className={styles.trainingButtons}>
-                        <button
-                            onClick={sendTrainingData}
-                            disabled={isTraining}
-                            className={styles.trainButton}
-                            title="Отправить исторические данные для обучения модели"
-                        >
-                            {isTraining ? '⏳ Обучение...' : '🎓 Обучить модель'}
-                        </button>
-                        <button
-                            onClick={syncRealTimeData}
-                            className={styles.syncButton}
-                            title="Синхронизировать последние данные"
-                        >
-                            🔄 Синхро
-                        </button>
-                    </div>
+            <header className={styles.hero}>
+                <div className={styles.heroCopy}>
+                    <p className={styles.eyebrow}>CafeHelp Intelligence</p>
+                    <h1>Решения для меню на основе данных</h1>
+                    <p className={styles.subtitle}>
+                        Прогнозируйте спрос, проверяйте экономику рецептов и находите точки роста.
+                    </p>
                 </div>
-
-                {trainingStatus && (
-                    <div className={styles.trainingStatus}>
-                        {trainingStatus}
-                    </div>
-                )}
+                <div className={styles.heroActions}>
+                    <span className={styles.modelStatus}>
+                        <i aria-hidden="true" />
+                        Модель готова
+                    </span>
+                    <button
+                        type="button"
+                        onClick={sendTrainingData}
+                        disabled={isTraining}
+                        className={styles.trainButton}
+                    >
+                        <SyncOutlined spin={isTraining} aria-hidden="true" />
+                        {isTraining ? 'Обновляем модель…' : 'Обучить на новых данных'}
+                    </button>
+                </div>
             </header>
 
-            <nav className={styles.tabs}>
-                <button
-                    className={`${styles.tab} ${activeTab === 'predict' ? styles.active : ''}`}
-                    onClick={() => setActiveTab('predict')}
+            {trainingStatus && (
+                <div
+                    className={`${styles.trainingStatus} ${styles[trainingStatus.type]}`}
+                    role={trainingStatus.type === 'error' ? 'alert' : 'status'}
+                    aria-live="polite"
                 >
-                    🔮 Предсказание продаж
-                </button>
-                <button
-                    className={`${styles.tab} ${activeTab === 'optimize' ? styles.active : ''}`}
-                    onClick={() => setActiveTab('optimize')}
-                >
-                    ⚙️ Оптимизация роллов
-                </button>
-                <button
-                    className={`${styles.tab} ${activeTab === 'analytics' ? styles.active : ''}`}
-                    onClick={() => setActiveTab('analytics')}
-                >
-                    📊 Аналитика
-                </button>
-                <button
-                    className={`${styles.tab} ${activeTab === 'generate' ? styles.active : ''}`}
-                    onClick={() => setActiveTab('generate')}
-                >
-                    🧬 Генерация блюда
-                </button>
+                    {trainingStatus.text}
+                </div>
+            )}
+
+            <nav className={styles.tabs} aria-label="Инструменты AI">
+                {TABS.map((tab) => {
+                    const Icon = tab.icon;
+                    const selected = activeTab === tab.id;
+                    return (
+                        <button
+                            key={tab.id}
+                            ref={(element) => {
+                                tabRefs.current[tab.id] = element;
+                            }}
+                            type="button"
+                            className={`${styles.tab} ${selected ? styles.active : ''}`}
+                            aria-current={selected ? 'page' : undefined}
+                            onClick={() => setActiveTab(tab.id)}
+                        >
+                            <Icon aria-hidden="true" />
+                            <span>{tab.label}</span>
+                        </button>
+                    );
+                })}
             </nav>
 
             <div className={styles.content}>
-                {activeTab === 'predict' && <PredictRollPage />}
+                {activeTab === 'predict' && (
+                    <PredictRollPage onOpenOptimizer={() => setActiveTab('optimize')} />
+                )}
                 {activeTab === 'optimize' && <OptimizationResults />}
                 {activeTab === 'analytics' && <AnalyticsDashboard />}
                 {activeTab === 'generate' && (
-                    <div className={styles.generateWrap}>
-                        <h2 className={styles.generateTitle}>Генерация нового блюда по данным продаж</h2>
-                        <p className={styles.generateSubtitle}>
-                            Алгоритм использует продажи, техкарты и текущие ингредиенты для создания нового блюда.
-                        </p>
-
-                        <div className={styles.formGrid}>
-                            <label className={styles.field}>
-                                <span>Период продаж (дней)</span>
-                                <input
-                                    type="number"
-                                    min="7"
-                                    value={dishParams.days}
-                                    onChange={(e) => updateDishParam('days', e.target.value)}
-                                />
-                            </label>
-                            <label className={styles.field}>
-                                <span>Мин. ингредиентов</span>
-                                <input
-                                    type="number"
-                                    min="2"
-                                    value={dishParams.minIngredients}
-                                    onChange={(e) => updateDishParam('minIngredients', e.target.value)}
-                                />
-                            </label>
-                            <label className={styles.field}>
-                                <span>Макс. ингредиентов</span>
-                                <input
-                                    type="number"
-                                    min="3"
-                                    value={dishParams.maxIngredients}
-                                    onChange={(e) => updateDishParam('maxIngredients', e.target.value)}
-                                />
-                            </label>
-                            <label className={styles.field}>
-                                <span>Размер популяции</span>
-                                <input
-                                    type="number"
-                                    min="20"
-                                    value={dishParams.populationSize}
-                                    onChange={(e) => updateDishParam('populationSize', e.target.value)}
-                                />
-                            </label>
-                            <label className={styles.field}>
-                                <span>Поколения</span>
-                                <input
-                                    type="number"
-                                    min="5"
-                                    value={dishParams.generations}
-                                    onChange={(e) => updateDishParam('generations', e.target.value)}
-                                />
-                            </label>
-                            <label className={styles.field}>
-                                <span>Наценка</span>
-                                <input
-                                    type="number"
-                                    min="1.3"
-                                    step="0.05"
-                                    value={dishParams.markup}
-                                    onChange={(e) => updateDishParam('markup', e.target.value)}
-                                />
-                            </label>
-                            <label className={`${styles.field} ${styles.fieldWide}`}>
-                                <span>Обязательные ингредиенты (через запятую)</span>
-                                <input
-                                    type="text"
-                                    value={dishParams.mustIncludeText}
-                                    onChange={(e) => updateDishParam('mustIncludeText', e.target.value)}
-                                />
-                            </label>
-                            <label className={`${styles.field} ${styles.fieldWide}`}>
-                                <span>Исключить ингредиенты (через запятую)</span>
-                                <input
-                                    type="text"
-                                    value={dishParams.excludedIngredientsText}
-                                    onChange={(e) => updateDishParam('excludedIngredientsText', e.target.value)}
-                                />
-                            </label>
-                        </div>
-
-                        <button
-                            className={styles.generateButton}
-                            onClick={handleGenerateDish}
-                            disabled={isGeneratingDish}
-                        >
-                            {isGeneratingDish ? 'Генерация...' : 'Сгенерировать блюдо'}
-                        </button>
-
-                        {generationError && (
-                            <div className={styles.errorBox}>
-                                {generationError}
-                            </div>
-                        )}
-
-                        {generatedDish?.dish && (
-                            <div className={styles.resultCard}>
-                                <h3>{generatedDish.dish.name}</h3>
-                                <div className={styles.metrics}>
-                                    <div><strong>Себестоимость:</strong> {generatedDish.dish.estimatedCost} ₽</div>
-                                    <div><strong>Рекомендуемая цена:</strong> {generatedDish.dish.recommendedPrice} ₽</div>
-                                    <div><strong>Прогноз продаж:</strong> {generatedDish.dish.predictedSales}</div>
-                                    <div><strong>Ожидаемая прибыль:</strong> {generatedDish.dish.estimatedProfit} ₽</div>
-                                    <div><strong>Новизна:</strong> {generatedDish.dish.noveltyScore}</div>
-                                    <div><strong>Generation:</strong> {generatedDish.dish.generationFound}</div>
-                                </div>
-
-                                <h4>Ингредиенты</h4>
-                                <div className={styles.tags}>
-                                    {generatedDish.dish.ingredients?.map((ing) => (
-                                        <span key={ing} className={styles.tag}>{ing}</span>
-                                    ))}
-                                </div>
-
-                                <h4>Техкарта</h4>
-                                <div className={styles.techTableWrap}>
-                                    <table className={styles.techTable}>
-                                        <thead>
-                                        <tr>
-                                            <th>Ингредиент</th>
-                                            <th>Граммы</th>
-                                            <th>Цена ед.</th>
-                                            <th>Сумма</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody>
-                                        {generatedDish.dish.techCard?.map((row) => (
-                                            <tr key={row.ingredientName}>
-                                                <td>{row.ingredientName}</td>
-                                                <td>{row.quantityGrams}</td>
-                                                <td>{row.unitCost}</td>
-                                                <td>{row.totalCost}</td>
-                                            </tr>
-                                        ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-
-                                <h4>Почему выбрано</h4>
-                                <ul className={styles.reasonList}>
-                                    {generatedDish.dish.reasoning?.map((text, idx) => (
-                                        <li key={idx}>{text}</li>
-                                    ))}
-                                </ul>
-
-                                <div className={styles.saveRow}>
-                                    <button
-                                        className={styles.saveButton}
-                                        onClick={handleSaveDish}
-                                        disabled={isSavingDish}
-                                    >
-                                        {isSavingDish ? 'Сохранение...' : 'Сохранить как блюдо'}
-                                    </button>
-                                </div>
-                                {saveStatus && (
-                                    <div className={saveStatus.type === 'success' ? styles.saveOk : styles.saveError}>
-                                        {saveStatus.text}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
+                    <GenerateDishPanel
+                        dishParams={dishParams}
+                        updateDishParam={updateDishParam}
+                        handleGenerateDish={handleGenerateDish}
+                        isGeneratingDish={isGeneratingDish}
+                        generationError={generationError}
+                        generatedDish={generatedDish}
+                        handleSaveDish={handleSaveDish}
+                        isSavingDish={isSavingDish}
+                        saveStatus={saveStatus}
+                    />
                 )}
             </div>
 
-            <footer className={styles.footer}>
-                <p className={styles.disclaimer}>
-                    💡 AI аналитика основана на исторических данных и машинном обучении.
-                    Результаты являются прогнозными и могут отличаться от фактических показателей.
-                </p>
-            </footer>
+            <p className={styles.disclaimer}>
+                Прогнозы помогают принять решение, но не заменяют проверку фактических продаж и себестоимости.
+            </p>
         </div>
+    );
+}
+
+function GenerateDishPanel({
+    dishParams,
+    updateDishParam,
+    handleGenerateDish,
+    isGeneratingDish,
+    generationError,
+    generatedDish,
+    handleSaveDish,
+    isSavingDish,
+    saveStatus
+}) {
+    const dish = generatedDish?.dish;
+    const fields = [
+        { name: 'days', label: 'Период продаж, дней', min: 7 },
+        { name: 'minIngredients', label: 'Минимум ингредиентов', min: 2 },
+        { name: 'maxIngredients', label: 'Максимум ингредиентов', min: 3 },
+        { name: 'populationSize', label: 'Размер популяции', min: 20 },
+        { name: 'generations', label: 'Поколения', min: 5 },
+        { name: 'markup', label: 'Коэффициент наценки', min: 1.3, step: 0.05 }
+    ];
+
+    return (
+        <section className={styles.generateWrap} aria-labelledby="generate-heading">
+            <div className={styles.sectionIntro}>
+                <div>
+                    <p className={styles.eyebrow}>Лаборатория меню</p>
+                    <h2 id="generate-heading">Создайте блюдо из истории продаж</h2>
+                    <p>Алгоритм соберёт рецепт, рассчитает техкарту и предложит цену.</p>
+                </div>
+                <span className={styles.labBadge}><RobotOutlined /> Экспериментальный режим</span>
+            </div>
+
+            <div className={styles.generateGrid}>
+                <form className={styles.generatorForm} onSubmit={handleGenerateDish}>
+                    <div className={styles.formHeading}>
+                        <span>01</span>
+                        <div>
+                            <h3>Параметры поиска</h3>
+                            <p>Укажите рамки для нового рецепта.</p>
+                        </div>
+                    </div>
+                    <div className={styles.formGrid}>
+                        {fields.map((field) => (
+                            <label key={field.name} className={styles.field} htmlFor={`dish-${field.name}`}>
+                                <span>{field.label}</span>
+                                <input
+                                    id={`dish-${field.name}`}
+                                    name={field.name}
+                                    type="number"
+                                    autoComplete="off"
+                                    min={field.min}
+                                    step={field.step}
+                                    value={dishParams[field.name]}
+                                    onChange={(event) => updateDishParam(field.name, event.target.value)}
+                                />
+                            </label>
+                        ))}
+                        <label className={`${styles.field} ${styles.fieldWide}`} htmlFor="dish-required">
+                            <span>Обязательные ингредиенты</span>
+                            <input
+                                id="dish-required"
+                                name="mustInclude"
+                                type="text"
+                                autoComplete="off"
+                                value={dishParams.mustIncludeText}
+                                onChange={(event) => updateDishParam('mustIncludeText', event.target.value)}
+                                placeholder="Например: рис, нори"
+                            />
+                            <small>Перечислите через запятую</small>
+                        </label>
+                        <label className={`${styles.field} ${styles.fieldWide}`} htmlFor="dish-excluded">
+                            <span>Исключить из рецепта</span>
+                            <input
+                                id="dish-excluded"
+                                name="excludedIngredients"
+                                type="text"
+                                autoComplete="off"
+                                value={dishParams.excludedIngredientsText}
+                                onChange={(event) => updateDishParam('excludedIngredientsText', event.target.value)}
+                                placeholder="Например: угорь, кунжут"
+                            />
+                        </label>
+                    </div>
+
+                    <button type="submit" className={styles.generateButton} disabled={isGeneratingDish}>
+                        <RobotOutlined aria-hidden="true" />
+                        {isGeneratingDish ? 'Создаём рецепт…' : 'Сгенерировать блюдо'}
+                    </button>
+                    {generationError && <div className={styles.errorBox} role="alert">{generationError}</div>}
+                </form>
+
+                {!dish ? (
+                    <div className={styles.generateEmpty}>
+                        <RobotOutlined aria-hidden="true" />
+                        <p className={styles.eyebrow}>Новый рецепт</p>
+                        <h3>{isGeneratingDish ? 'Алгоритм перебирает варианты' : 'Результат появится здесь'}</h3>
+                        <p>Вы получите состав, цену, техкарту и объяснение выбора модели.</p>
+                    </div>
+                ) : (
+                    <article className={styles.resultCard}>
+                        <div className={styles.resultHeading}>
+                            <div>
+                                <p className={styles.eyebrow}>Рецепт готов</p>
+                                <h3>{dish.name}</h3>
+                            </div>
+                            <span>{formatPercent(dish.noveltyScore, { fraction: true })} новизна</span>
+                        </div>
+
+                        <div className={styles.metrics}>
+                            <div><span>Себестоимость</span><strong>{formatCurrency(dish.estimatedCost)}</strong></div>
+                            <div><span>Цена</span><strong>{formatCurrency(dish.recommendedPrice)}</strong></div>
+                            <div><span>Продажи</span><strong>{formatNumber(dish.predictedSales)}</strong></div>
+                            <div><span>Прибыль</span><strong>{formatCurrency(dish.estimatedProfit)}</strong></div>
+                        </div>
+
+                        <h4>Состав</h4>
+                        <div className={styles.tags}>
+                            {(dish.ingredients || []).map((ingredient) => (
+                                <span key={ingredient} className={styles.tag}>{ingredient}</span>
+                            ))}
+                        </div>
+
+                        <h4>Техкарта</h4>
+                        <div className={styles.techTableWrap}>
+                            <table className={styles.techTable}>
+                                <thead>
+                                    <tr>
+                                        <th>Ингредиент</th>
+                                        <th>Граммы</th>
+                                        <th>Цена ед.</th>
+                                        <th>Сумма</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(dish.techCard || []).map((row) => (
+                                        <tr key={row.ingredientName}>
+                                            <td>{row.ingredientName}</td>
+                                            <td>{formatNumber(row.quantityGrams)}</td>
+                                            <td>{formatCurrency(row.unitCost)}</td>
+                                            <td>{formatCurrency(row.totalCost)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {dish.reasoning?.length > 0 && (
+                            <>
+                                <h4>Почему этот состав</h4>
+                                <ul className={styles.reasonList}>
+                                    {dish.reasoning.map((text) => <li key={text}>{text}</li>)}
+                                </ul>
+                            </>
+                        )}
+
+                        <button
+                            type="button"
+                            className={styles.saveButton}
+                            onClick={handleSaveDish}
+                            disabled={isSavingDish}
+                        >
+                            {isSavingDish ? 'Сохраняем…' : 'Сохранить в меню'}
+                        </button>
+                        {saveStatus && (
+                            <div
+                                className={saveStatus.type === 'success' ? styles.saveOk : styles.saveError}
+                                role={saveStatus.type === 'error' ? 'alert' : 'status'}
+                            >
+                                {saveStatus.text}
+                            </div>
+                        )}
+                    </article>
+                )}
+            </div>
+        </section>
     );
 }

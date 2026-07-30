@@ -3,6 +3,7 @@ package com.shakur.cafehelp.Controller.PyController;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shakur.cafehelp.DTO.MlDTO.AnaliticDTO.*;
+import com.shakur.cafehelp.exception.PythonServiceException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
@@ -32,12 +33,17 @@ public class PythonAnalyticsClient {
 
     private static RestTemplate restTemplate;
     private static String pythonApiUrl = "http://localhost:8000";
+    private static String internalServiceToken = "";
 
     public PythonAnalyticsClient(
             RestTemplateBuilder restTemplateBuilder,
-            @Value("${python.api.url:http://localhost:8000}") String configuredPythonApiUrl
+            @Value("${python.api.url:http://localhost:8000}") String configuredPythonApiUrl,
+            @Value("${internal.service.token:}") String configuredInternalServiceToken
     ) {
-        this.restTemplate = configureRestTemplate(restTemplateBuilder);
+        internalServiceToken = configuredInternalServiceToken == null
+                ? ""
+                : configuredInternalServiceToken;
+        restTemplate = configureRestTemplate(restTemplateBuilder);
         pythonApiUrl = configuredPythonApiUrl;
         log.info("PythonAnalyticsClient initialized with URL: {}", pythonApiUrl);
     }
@@ -49,8 +55,25 @@ public class PythonAnalyticsClient {
 
         return builder
                 .requestFactory(() -> requestFactory)
-                .additionalInterceptors(new LoggingInterceptor())
+                .additionalInterceptors(
+                        new ServiceTokenInterceptor(),
+                        new LoggingInterceptor()
+                )
                 .build();
+    }
+
+    private static class ServiceTokenInterceptor implements ClientHttpRequestInterceptor {
+        @Override
+        public ClientHttpResponse intercept(
+                HttpRequest request,
+                byte[] body,
+                ClientHttpRequestExecution execution
+        ) throws IOException {
+            if (!internalServiceToken.isBlank()) {
+                request.getHeaders().set("X-Service-Token", internalServiceToken);
+            }
+            return execution.execute(request, body);
+        }
     }
 
     private static class LoggingInterceptor implements ClientHttpRequestInterceptor {
@@ -102,10 +125,10 @@ public class PythonAnalyticsClient {
                 .queryParam("refresh", refresh);
 
         if (startDate != null) {
-            builder.queryParam("start_date", startDate.toString());
+            builder.queryParam("startDate", startDate.toLocalDate().toString());
         }
         if (endDate != null) {
-            builder.queryParam("end_date", endDate.toString());
+            builder.queryParam("endDate", endDate.toLocalDate().toString());
         }
 
         String url = builder.toUriString();
@@ -149,11 +172,11 @@ public class PythonAnalyticsClient {
 
         } catch (HttpClientErrorException e) {
             log.error("❌ HTTP error from Python: {} {}", e.getStatusCode(), e.getResponseBodyAsString());
-            return getFallbackDashboardData(timeRange, "HTTP error: " + e.getStatusCode());
+            throw new PythonServiceException("Python analytics request failed", e);
 
         } catch (Exception e) {
             log.error("❌ Error fetching dashboard data from Python: {}", e.getMessage());
-            return getFallbackDashboardData(timeRange, "Connection error: " + e.getMessage());
+            throw new PythonServiceException("Python analytics service unavailable", e);
         }
     }
 
@@ -183,7 +206,7 @@ public class PythonAnalyticsClient {
 
         } catch (Exception e) {
             log.error("❌ Error fetching KPI from Python: {}", e.getMessage());
-            return getFallbackKpi();
+            throw new PythonServiceException("Python analytics service unavailable", e);
         }
     }
 
@@ -218,7 +241,7 @@ public class PythonAnalyticsClient {
 
         } catch (Exception e) {
             log.error("❌ Error fetching top rolls from Python: {}", e.getMessage());
-            return Collections.emptyList();
+            throw new PythonServiceException("Python analytics service unavailable", e);
         }
     }
 
@@ -246,7 +269,7 @@ public class PythonAnalyticsClient {
 
         } catch (Exception e) {
             log.error("❌ Error fetching sales trend from Python: {}", e.getMessage());
-            return Collections.emptyList();
+            throw new PythonServiceException("Python analytics service unavailable", e);
         }
     }
 
@@ -274,7 +297,7 @@ public class PythonAnalyticsClient {
 
         } catch (Exception e) {
             log.error("❌ Error fetching insights from Python: {}", e.getMessage());
-            return Collections.emptyList();
+            throw new PythonServiceException("Python analytics service unavailable", e);
         }
     }
 
@@ -307,37 +330,6 @@ public class PythonAnalyticsClient {
             log.error("❌ Error sending insight feedback to Python: {}", e.getMessage());
             return false;
         }
-    }
-
-    /**
-     * Fallback данные при недоступности Python
-     */
-    private static KpiDataDTO getFallbackKpi() {
-        log.warn("⚠️ Using fallback KPI data");
-        return KpiDataDTO.builder()
-                .totalProfit(0.0)
-                .totalSales(0)
-                .profitChange(0.0)
-                .salesChange(0.0)
-                .modelAccuracy(0.0)
-                .dataSource("Fallback")
-                .isFallback(true)
-                .build();
-    }
-
-    private static DashboardDataDTO getFallbackDashboardData(String timeRange, String error) {
-        log.warn("⚠️ Using fallback dashboard data: {}", error);
-        return DashboardDataDTO.builder()
-                .kpi(getFallbackKpi())
-                .topRolls(Collections.emptyList())
-                .salesTrend(Collections.emptyList())
-                .insights(Collections.emptyList())
-                .timeRange(timeRange)
-                .generatedAt(String.valueOf(LocalDateTime.now()))
-                .dataSource("Fallback: " + error)
-                .isFallback(true)
-                .errorMessage("Python analytics service error: " + error)
-                .build();
     }
 
     /**

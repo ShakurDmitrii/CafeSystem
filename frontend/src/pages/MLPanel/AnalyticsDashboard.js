@@ -1,263 +1,277 @@
-import React, { useState, useEffect } from 'react';
+import {
+    BulbOutlined,
+    ReloadOutlined,
+    RiseOutlined,
+    TrophyOutlined
+} from '@ant-design/icons';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { ApiClient } from './api';
+import { formatCurrency, formatInteger, formatPercent } from './formatters';
 import styles from './mlStyles.module.css';
 
+const RANGE_OPTIONS = [
+    { value: 'day', label: 'День' },
+    { value: 'week', label: 'Неделя' },
+    { value: 'month', label: 'Месяц' },
+    { value: 'quarter', label: 'Квартал' }
+];
+
+const EMPTY_ANALYTICS = {
+    kpi: {
+        totalProfit: 0,
+        totalSales: 0,
+        profitChange: 0,
+        salesChange: 0,
+        modelAccuracy: 0
+    },
+    topRolls: [],
+    salesTrend: [],
+    insights: []
+};
+
+function normalizeAnalytics(data = {}) {
+    const kpi = data.kpi || data;
+    return {
+        kpi: {
+            totalProfit: kpi.totalProfit ?? kpi.total_profit ?? 0,
+            totalSales: kpi.totalSales ?? kpi.total_sales ?? 0,
+            profitChange: kpi.profitChange ?? kpi.profit_change ?? 0,
+            salesChange: kpi.salesChange ?? kpi.sales_change ?? 0,
+            modelAccuracy: kpi.modelAccuracy ?? kpi.model_accuracy ?? null
+        },
+        topRolls: data.topRolls || data.top_rolls || [],
+        salesTrend: data.salesTrend || data.sales_trend || [],
+        insights: data.insights || [],
+        isFallback: Boolean(data.isFallback || data.is_fallback)
+    };
+}
+
 export default function AnalyticsDashboard() {
-    const [analyticsData, setAnalyticsData] = useState({
-        kpi: { totalProfit: 0, totalSales: 0, profitChange: 0, salesChange: 0, modelAccuracy: 0 },
-        topRolls: [],
-        salesTrend: [],
-        insights: []
-    });
-    const [timeRange, setTimeRange] = useState('week');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const rangeParam = searchParams.get('period');
+    const timeRange = RANGE_OPTIONS.some((item) => item.value === rangeParam) ? rangeParam : 'week';
+    const [analyticsData, setAnalyticsData] = useState(EMPTY_ANALYTICS);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    useEffect(() => { fetchAnalyticsData(timeRange); }, [timeRange]);
-
-    const fetchAnalyticsData = async (range) => {
-        setLoading(true); setError(null);
+    const fetchAnalyticsData = useCallback(async (range, refresh = false) => {
+        setLoading(true);
+        setError(null);
         try {
-            const response = await fetch(`http://localhost:8000/api/analytics/dashboard?timeRange=${range}`);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const data = await response.json();
-            console.log("Fetched analytics:", data);
-            setAnalyticsData({
-                kpi: {
-                    totalProfit: data.kpi?.total_profit || 0,
-                    totalSales: data.kpi?.total_sales || 0,
-                    profitChange: data.kpi?.profit_change || 0,
-                    salesChange: data.kpi?.sales_change || 0,
-                    modelAccuracy: data.kpi?.model_accuracy || 0
-                },
-                topRolls: data.top_rolls || [],
-                salesTrend: data.sales_trend || [],
-                insights: data.insights || []
-            });
+            const data = await ApiClient.getAnalytics(range, refresh);
+            setAnalyticsData(normalizeAnalytics(data));
         } catch (err) {
-            console.error('Error fetching analytics:', err);
-            setError('Не удалось загрузить данные аналитики');
-            setAnalyticsData(getMockData(range));
-        } finally { setLoading(false); }
+            setError(err.message || 'Не удалось загрузить аналитику.');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchAnalyticsData(timeRange);
+    }, [fetchAnalyticsData, timeRange]);
+
+    const setTimeRange = (range) => {
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.set('period', range);
+        setSearchParams(nextParams, { replace: true });
     };
 
-    const getMockData = (range) => ({
-        kpi: { totalProfit: range==='day'?22000:range==='month'?520000:154320, totalSales: range==='day'?127:range==='month'?3200:892, profitChange:12.5, salesChange:8.2, modelAccuracy:0.87 },
-        topRolls: [
-            { name:'Калифорния', sales:245, profit:51200, margin:42.3 },
-            { name:'Филадельфия', sales:198, profit:42300, margin:38.7 },
-            { name:'Дракон', sales:156, profit:37800, margin:45.1 },
-            { name:'Аляска', sales:132, profit:28400, margin:36.8 },
-            { name:'Унаги', sales:98, profit:21000, margin:40.2 }
-        ],
-        salesTrend: [
-            { date:'Пн', sales:120, predicted:115 },
-            { date:'Вт', sales:145, predicted:140 },
-            { date:'Ср', sales:132, predicted:130 },
-            { date:'Чт', sales:168, predicted:160 },
-            { date:'Пт', sales:210, predicted:200 },
-            { date:'Сб', sales:198, predicted:190 },
-            { date:'Вс', sales:156, predicted:150 }
-        ],
-        insights: [
-            { type:'opportunity', title:'Высокий спрос на авокадо', description:'Блюда с авокадо продаются на 25% лучше среднего' },
-            { type:'warning', title:'Низкая маржа на угорь', description:'Стоимость угря выросла на 15%, рассмотрите замену' },
-            { type:'insight', title:'Лучшее время для роллов с лососем', description:'Продажи увеличиваются на 30% в обеденное время' }
-        ]
-    });
+    const maxTrendValue = useMemo(() => Math.max(
+        1,
+        ...analyticsData.salesTrend.flatMap((point) => [
+            Number(point.sales) || 0,
+            point.predicted == null ? 0 : Number(point.predicted) || 0
+        ])
+    ), [analyticsData.salesTrend]);
+    const hasPredictions = analyticsData.salesTrend.some((point) => point.predicted != null);
 
-    const getMaxValue = (data,key) => (!data||data.length===0)?100:Math.max(...data.map(item=>item[key]));
-    const getMarginColor = (margin)=>margin>40?'#4CAF50':margin>30?'#FF9800':'#F44336';
-    const formatNumber = (num)=>num.toLocaleString('ru-RU');
-    const calculatePopularity = (rollSales,totalSales)=>totalSales===0?0:(rollSales/totalSales)*100;
-    const chartWidth = 760;
-    const chartHeight = 220;
-    const chartPad = 26;
-
-    const buildLinePoints = (data, key, maxValue) => {
-        if (!Array.isArray(data) || data.length === 0) return '';
-        const denom = Math.max(data.length - 1, 1);
-        return data.map((item, index) => {
-            const x = chartPad + (index / denom) * (chartWidth - chartPad * 2);
-            const y = chartHeight - chartPad - ((Number(item[key] || 0) / Math.max(maxValue, 1)) * (chartHeight - chartPad * 2));
-            return `${x},${y}`;
-        }).join(' ');
-    };
-
-    const trendMax = Math.max(
-        getMaxValue(analyticsData.salesTrend, 'sales'),
-        getMaxValue(analyticsData.salesTrend, 'predicted')
-    );
-    const revenueMax = getMaxValue(analyticsData.salesTrend, 'revenue');
-    const salesPoints = buildLinePoints(analyticsData.salesTrend, 'sales', trendMax);
-    const predictedPoints = buildLinePoints(analyticsData.salesTrend, 'predicted', trendMax);
-    const revenuePoints = buildLinePoints(analyticsData.salesTrend, 'revenue', revenueMax);
-
-    if (loading) return <div className={styles.loadingContainer}><div className={styles.spinner}></div><p>Загрузка аналитики...</p></div>;
-    if (error) return <div className={styles.errorContainer}><div className={styles.errorIcon}>⚠️</div><h3>Ошибка загрузки</h3><p>{error}</p><button className={styles.retryButton} onClick={()=>fetchAnalyticsData(timeRange)}>Повторить попытку</button></div>;
+    const kpiCards = [
+        {
+            label: 'Прибыль',
+            value: formatCurrency(analyticsData.kpi.totalProfit),
+            change: analyticsData.kpi.profitChange,
+            note: 'к прошлому периоду'
+        },
+        {
+            label: 'Продажи',
+            value: formatInteger(analyticsData.kpi.totalSales),
+            change: analyticsData.kpi.salesChange,
+            note: 'позиций за период'
+        },
+        {
+            label: 'Лидер меню',
+            value: analyticsData.topRolls[0]?.name || '—',
+            note: `${formatInteger(analyticsData.topRolls[0]?.sales, '0')} продаж`
+        },
+        {
+            label: 'Точность модели',
+            value: analyticsData.kpi.modelAccuracy == null
+                ? '—'
+                : formatPercent(analyticsData.kpi.modelAccuracy, { fraction: true, digits: 1 }),
+            note: analyticsData.kpi.modelAccuracy == null
+                ? 'модель ещё не обучена'
+                : 'по отложенной выборке'
+        }
+    ];
 
     return (
-        <div className={styles.analyticsContainer}>
-            {/* Header и тайм-рейндж селектор */}
-            <header className={styles.pageHeader}>
-                <h1 className={styles.pageTitle}>📊 AI Аналитическая панель</h1>
-                <p className={styles.pageSubtitle}>Анализ продаж, прибыли и эффективности меню</p>
-                <div className={styles.timeRangeSelector}>
-                    {['day','week','month','quarter'].map(range=>(
-                        <button key={range} className={`${styles.timeButton} ${timeRange===range?styles.active:''}`} onClick={()=>setTimeRange(range)} disabled={loading}>
-                            {range==='day'?'День':range==='week'?'Неделя':range==='month'?'Месяц':'Квартал'}
-                        </button>
-                    ))}
+        <section className={styles.analyticsContainer} aria-labelledby="analytics-heading">
+            <div className={styles.sectionIntro}>
+                <div>
+                    <p className={styles.eyebrow}>Контроль качества</p>
+                    <h2 id="analytics-heading">Продажи и точность прогноза</h2>
+                    <p>Сравнивайте факт с прогнозом и находите точки роста в меню.</p>
                 </div>
-            </header>
+                <button
+                    type="button"
+                    className={styles.iconTextButton}
+                    onClick={() => fetchAnalyticsData(timeRange, true)}
+                    disabled={loading}
+                >
+                    <ReloadOutlined aria-hidden="true" />
+                    Обновить
+                </button>
+            </div>
 
-            {/* KPI */}
-            <div className={styles.kpiGrid}>
-                {[
-                    {icon:'💰', title:'Общая прибыль', value:analyticsData.kpi.totalProfit, change:analyticsData.kpi.profitChange, suffix:'₽'},
-                    {icon:'📈', title:'Продажи', value:analyticsData.kpi.totalSales, change:analyticsData.kpi.salesChange},
-                    {icon:'🍣', title:'Популярные роллы', value:analyticsData.topRolls[0]?.name || '—', subtitle:`${analyticsData.topRolls[0]?.sales||0} продаж`},
-                    {icon:'🎯', title:'Точность AI', value:(analyticsData.kpi.modelAccuracy*100).toFixed(1)+'%', subtitle:'На основе исторических данных'}
-                ].map((kpi,index)=>(
-                    <div key={index} className={styles.kpiCard}>
-                        <div className={styles.kpiHeader}><span className={styles.kpiIcon}>{kpi.icon}</span><h3 className={styles.kpiTitle}>{kpi.title}</h3></div>
-                        <div className={styles.kpiValue}>{kpi.value}{kpi.suffix||''}</div>
-                        {kpi.change!==undefined&&<div className={`${styles.kpiChange} ${kpi.change>=0?styles.positive:styles.negative}`}>{kpi.change>=0?'↑':'↓'}{Math.abs(kpi.change)}%</div>}
-                        {kpi.subtitle&&<div className={styles.kpiSubtitle}>{kpi.subtitle}</div>}
-                    </div>
+            <div className={styles.timeRangeSelector} role="group" aria-label="Период аналитики">
+                {RANGE_OPTIONS.map((range) => (
+                    <button
+                        key={range.value}
+                        type="button"
+                        className={`${styles.timeButton} ${timeRange === range.value ? styles.active : ''}`}
+                        aria-pressed={timeRange === range.value}
+                        onClick={() => setTimeRange(range.value)}
+                        disabled={loading}
+                    >
+                        {range.label}
+                    </button>
                 ))}
             </div>
 
-            {/* Графики продаж */}
-            <div className={styles.chartsGrid}>
-                <div className={styles.chartCard}>
+            {error && <div className={styles.inlineError} role="alert">{error}</div>}
+            {analyticsData.isFallback && (
+                <div className={styles.demoNotice} role="status">
+                    Сервис аналитики временно недоступен — данные не показаны.
+                </div>
+            )}
+
+            <div className={styles.kpiGrid} aria-busy={loading}>
+                {kpiCards.map((card) => (
+                    <article key={card.label} className={styles.kpiCard}>
+                        <span>{card.label}</span>
+                        <strong title={String(card.value)}>{card.value}</strong>
+                        <div>
+                            {card.change !== undefined && (
+                                <b className={Number(card.change) >= 0 ? styles.positive : styles.negative}>
+                                    {Number(card.change) >= 0 ? '↑' : '↓'} {formatPercent(Math.abs(Number(card.change)))}
+                                </b>
+                            )}
+                            <small>{card.note}</small>
+                        </div>
+                    </article>
+                ))}
+            </div>
+
+            <div className={styles.analyticsGrid}>
+                <article className={styles.chartCard}>
                     <div className={styles.chartHeader}>
-                        <h3 className={styles.chartTitle}>📈 Динамика продаж (линии)</h3>
-                        <span className={styles.timeRangeBadge}>{timeRange==='day'?'За день':timeRange==='week'?'За неделю':timeRange==='month'?'За месяц':'За квартал'}</span>
+                        <div>
+                            <p className={styles.eyebrow}>Спрос</p>
+                            <h3>Факт и прогноз</h3>
+                        </div>
+                        <span className={styles.legend}>
+                            <i className={styles.factDot} /> Факт
+                            {hasPredictions && (
+                                <>
+                                    <i className={styles.forecastDot} /> AI
+                                </>
+                            )}
+                        </span>
                     </div>
-                    <div className={styles.lineChartWrap}>
-                        <svg className={styles.svgChart} viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
-                            <polyline className={styles.gridLine} points={`${chartPad},${chartHeight-chartPad} ${chartWidth-chartPad},${chartHeight-chartPad}`} />
-                            <polyline className={styles.gridLine} points={`${chartPad},${chartPad} ${chartPad},${chartHeight-chartPad}`} />
-                            <polyline className={styles.actualLine} points={salesPoints} />
-                            <polyline className={styles.predictedLine} points={predictedPoints} />
-                            {analyticsData.salesTrend.map((point, idx) => {
-                                const denom = Math.max(analyticsData.salesTrend.length - 1, 1);
-                                const x = chartPad + (idx / denom) * (chartWidth - chartPad * 2);
-                                const ySales = chartHeight - chartPad - ((Number(point.sales || 0) / Math.max(trendMax, 1)) * (chartHeight - chartPad * 2));
-                                const yPred = chartHeight - chartPad - ((Number(point.predicted || 0) / Math.max(trendMax, 1)) * (chartHeight - chartPad * 2));
+
+                    {loading && analyticsData.salesTrend.length === 0 ? (
+                        <div className={styles.chartLoading} role="status">Загружаем график…</div>
+                    ) : (
+                        <div className={styles.barChart} aria-label="График фактических и прогнозных продаж">
+                            {analyticsData.salesTrend.map((point, index) => {
+                                const sales = Number(point.sales) || 0;
+                                const hasPrediction = point.predicted != null;
+                                const predicted = hasPrediction ? Number(point.predicted) || 0 : null;
                                 return (
-                                    <g key={`p-${idx}`}>
-                                        <circle className={styles.actualDot} cx={x} cy={ySales} r="4" />
-                                        <circle className={styles.predictedDot} cx={x} cy={yPred} r="3.5" />
-                                    </g>
+                                    <div className={styles.barColumn} key={`${point.date || point.period}-${index}`}>
+                                        <div className={styles.barValues}>
+                                            <span
+                                                className={styles.factBar}
+                                                style={{ height: `${Math.max((sales / maxTrendValue) * 100, 3)}%` }}
+                                                title={`Факт: ${formatInteger(sales)}`}
+                                            />
+                                            {hasPrediction && (
+                                                <span
+                                                    className={styles.forecastBar}
+                                                    style={{ height: `${Math.max((predicted / maxTrendValue) * 100, 3)}%` }}
+                                                    title={`Прогноз: ${formatInteger(predicted)}`}
+                                                />
+                                            )}
+                                        </div>
+                                        <small>{point.date || point.period}</small>
+                                    </div>
                                 );
                             })}
-                        </svg>
-                        <div className={styles.chartAxisLabels}>
-                            {analyticsData.salesTrend.map((d, i) => <span key={`lbl-${i}`}>{d.date || d.period}</span>)}
                         </div>
-                        <div className={styles.chartLegend}>
-                            <div className={styles.legendItem}><div className={styles.legendColor} style={{backgroundColor:'#2f5bea'}}></div><span>Факт</span></div>
-                            <div className={styles.legendItem}><div className={styles.legendColor} style={{backgroundColor:'#16a34a'}}></div><span>Прогноз AI</span></div>
-                        </div>
-                    </div>
-                </div>
+                    )}
+                </article>
 
-                <div className={styles.chartCard}>
+                <article className={styles.topRollsCard}>
                     <div className={styles.chartHeader}>
-                        <h3 className={styles.chartTitle}>💵 Динамика выручки</h3>
-                        <span className={styles.timeRangeBadge}>По периодам</span>
-                    </div>
-                    <div className={styles.lineChartWrap}>
-                        <svg className={styles.svgChart} viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
-                            <polyline className={styles.gridLine} points={`${chartPad},${chartHeight-chartPad} ${chartWidth-chartPad},${chartHeight-chartPad}`} />
-                            <polyline className={styles.gridLine} points={`${chartPad},${chartPad} ${chartPad},${chartHeight-chartPad}`} />
-                            <polyline className={styles.revenueLine} points={revenuePoints} />
-                            {analyticsData.salesTrend.map((point, idx) => {
-                                const denom = Math.max(analyticsData.salesTrend.length - 1, 1);
-                                const x = chartPad + (idx / denom) * (chartWidth - chartPad * 2);
-                                const y = chartHeight - chartPad - ((Number(point.revenue || 0) / Math.max(revenueMax, 1)) * (chartHeight - chartPad * 2));
-                                return <circle key={`r-${idx}`} className={styles.revenueDot} cx={x} cy={y} r="4" />;
-                            })}
-                        </svg>
-                        <div className={styles.chartAxisLabels}>
-                            {analyticsData.salesTrend.map((d, i) => <span key={`rev-lbl-${i}`}>{d.date || d.period}</span>)}
+                        <div>
+                            <p className={styles.eyebrow}>Рейтинг</p>
+                            <h3>Лидеры продаж</h3>
                         </div>
+                        <TrophyOutlined aria-hidden="true" />
                     </div>
-                </div>
+                    <ol className={styles.topRollsList}>
+                        {analyticsData.topRolls.slice(0, 5).map((roll, index) => (
+                            <li key={`${roll.name}-${index}`}>
+                                <span className={styles.rollRank}>{index + 1}</span>
+                                <span className={styles.rollSummary}>
+                                    <strong>{roll.name}</strong>
+                                    <small>{formatInteger(roll.sales)} продаж</small>
+                                </span>
+                                <span className={styles.rollFinance}>
+                                    <strong>{formatCurrency(roll.profit)}</strong>
+                                    <small>{formatPercent(roll.margin, { digits: 1 })} маржа</small>
+                                </span>
+                            </li>
+                        ))}
+                    </ol>
+                </article>
             </div>
 
-            <div className={styles.chartCard}>
-                <div className={styles.chartHeader}>
-                    <h3 className={styles.chartTitle}>📊 Динамика продаж (столбики)</h3>
-                    <span className={styles.timeRangeBadge}>Факт vs прогноз</span>
-                </div>
-                <div className={styles.simpleChart}>
-                    <div className={styles.chartBars}>
-                        {analyticsData.salesTrend.map((day,index)=>{
-                            const maxSales=getMaxValue(analyticsData.salesTrend,'sales');
-                            const salesHeight=(day.sales/maxSales)*150;
-                            const predictedHeight=((day.predicted||0)/maxSales)*150;
-                            return (
-                                <div key={index} className={styles.chartBarContainer}>
-                                    <div className={styles.barGroup}>
-                                        <div className={styles.actualBar} style={{height:`${salesHeight}px`}} title={`Факт: ${day.sales}`}><span className={styles.barLabel}>{day.sales}</span></div>
-                                        {day.predicted!==undefined&&<div className={styles.predictedBar} style={{height:`${predictedHeight}px`}} title={`Прогноз: ${day.predicted}`}></div>}
-                                    </div>
-                                    <div className={styles.barLabel}>{day.date||day.period}</div>
-                                </div>
-                            )
-                        })}
+            <section className={styles.insightsSection} aria-labelledby="insights-heading">
+                <div className={styles.insightsHeading}>
+                    <span aria-hidden="true"><BulbOutlined /></span>
+                    <div>
+                        <p className={styles.eyebrow}>Подсказки модели</p>
+                        <h3 id="insights-heading">На что обратить внимание</h3>
                     </div>
-                    <div className={styles.chartLegend}>
-                        <div className={styles.legendItem}><div className={styles.legendColor} style={{backgroundColor:'#8884d8'}}></div><span>Фактические продажи</span></div>
-                        <div className={styles.legendItem}><div className={styles.legendColor} style={{backgroundColor:'#82ca9d'}}></div><span>Прогноз AI</span></div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Таблица топ роллов */}
-            <div className={styles.tableSection}>
-                <h3 className={styles.sectionTitle}>🏆 Топ роллов по продажам</h3>
-                <div className={styles.tableContainer}>
-                    <table className={styles.dataTable}>
-                        <thead><tr><th>Ролл</th><th>Продажи</th><th>Прибыль (₽)</th><th>Маржа (%)</th><th>Популярность</th><th>Рекомендация</th></tr></thead>
-                        <tbody>
-                        {analyticsData.topRolls.map((roll,index)=>{
-                            const popularityPercent=calculatePopularity(roll.sales,analyticsData.kpi.totalSales);
-                            return (
-                                <tr key={index}>
-                                    <td className={styles.rollName}>{roll.name}</td>
-                                    <td>{roll.sales}</td>
-                                    <td className={styles.profitCell}>{formatNumber(roll.profit)}₽</td>
-                                    <td className={styles.marginCell}><span className={styles.marginBadge} style={{backgroundColor:getMarginColor(roll.margin)+'20',color:getMarginColor(roll.margin)}}>{roll.margin.toFixed(1)}%</span></td>
-                                    <td className={styles.popularityCell}><div className={styles.popularityBar}><div className={styles.popularityFill} style={{width:`${Math.min(popularityPercent,100)}%`}}></div></div><span className={styles.popularityText}>{popularityPercent.toFixed(1)}%</span></td>
-                                    <td className={styles.recommendationCell}><span className={`${styles.recommendationBadge} ${roll.margin>40?styles.recommendIncrease:roll.margin<30?styles.recommendDecrease:styles.recommendMaintain}`}>{roll.margin>40?'Увеличить':roll.margin<30?'Уменьшить':'Оставить'}</span></td>
-                                </tr>
-                            )
-                        })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            {/* AI Инсайты */}
-            <div className={styles.insightsSection}>
-                <div className={styles.sectionHeader}>
-                    <h3 className={styles.sectionTitle}>💡 AI Инсайты</h3>
-                    <button className={styles.refreshButton} onClick={()=>fetchAnalyticsData(timeRange)} title="Обновить инсайты">🔄</button>
                 </div>
                 <div className={styles.insightsGrid}>
-                    {analyticsData.insights.map((insight,index)=>(
-                        <div key={index} className={styles.insightCard}>
-                            <span className={styles.insightIcon}>{insight.type==='opportunity'?'🚀':insight.type==='warning'?'⚠️':'💡'}</span>
-                            <h4 className={styles.insightTitle}>{insight.title}</h4>
-                            <p className={styles.insightText}>{insight.description}</p>
-                            {insight.confidence&&<div className={styles.confidenceBadge}>Уверенность: {(insight.confidence*100).toFixed(0)}%</div>}
-                        </div>
+                    {analyticsData.insights.map((insight, index) => (
+                        <article key={`${insight.title}-${index}`} className={styles.insightCard}>
+                            <span className={`${styles.insightType} ${styles[insight.type] || ''}`}>
+                                {insight.type === 'warning' ? 'Риск' : insight.type === 'opportunity' ? 'Возможность' : 'Наблюдение'}
+                            </span>
+                            <h4>{insight.title}</h4>
+                            <p>{insight.description}</p>
+                            {insight.confidence != null && (
+                                <small><RiseOutlined /> Уверенность {formatPercent(insight.confidence, { fraction: true })}</small>
+                            )}
+                        </article>
                     ))}
                 </div>
-            </div>
-        </div>
-    )
+            </section>
+        </section>
+    );
 }

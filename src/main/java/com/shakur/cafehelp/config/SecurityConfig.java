@@ -1,6 +1,7 @@
 package com.shakur.cafehelp.config;
 
 import com.shakur.cafehelp.security.JwtAuthenticationFilter;
+import com.shakur.cafehelp.security.ServiceTokenAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -10,7 +11,6 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -21,9 +21,14 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final ServiceTokenAuthenticationFilter serviceTokenAuthenticationFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            ServiceTokenAuthenticationFilter serviceTokenAuthenticationFilter
+    ) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.serviceTokenAuthenticationFilter = serviceTokenAuthenticationFilter;
     }
 
     @Bean
@@ -43,6 +48,7 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
+                                "/api/vk-bot/**",
                                 "/error"
                         ).permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
@@ -56,10 +62,15 @@ public class SecurityConfig {
                         .requestMatchers("/api/consProduct/**").hasRole("OWNER")
                         .requestMatchers("/api/ml/**").hasRole("OWNER")
                         .requestMatchers("/api/analytics/**").hasRole("OWNER")
+                        .requestMatchers("/api/tax/**").hasRole("OWNER")
                         .requestMatchers(
-                                new AntPathRequestMatcher("/warehouses"),
-                                new AntPathRequestMatcher("/warehouses/**")
-                        ).permitAll()
+                                HttpMethod.GET,
+                                "/warehouses",
+                                "/warehouses/*",
+                                "/warehouses/*/products",
+                                "/warehouses/*/preparations"
+                        ).hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers("/warehouses", "/warehouses/**").hasRole("OWNER")
                         .requestMatchers("/movements/**").hasRole("OWNER")
 
                         // WORKER + OWNER: касса и операционная работа
@@ -77,7 +88,8 @@ public class SecurityConfig {
                         // Любой прочий endpoint backend требует JWT
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(serviceTokenAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(jwtAuthenticationFilter, ServiceTokenAuthenticationFilter.class);
 
         return http.build();
     }

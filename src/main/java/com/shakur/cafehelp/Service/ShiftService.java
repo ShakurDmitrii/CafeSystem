@@ -2,6 +2,9 @@ package com.shakur.cafehelp.Service;
 
 import com.shakur.cafehelp.DTO.DishDTO;
 import com.shakur.cafehelp.DTO.ShiftDTO;
+import com.shakur.cafehelp.exception.InvalidShiftRequestException;
+import com.shakur.cafehelp.exception.ShiftNotFoundException;
+import com.shakur.cafehelp.exception.ShiftStateConflictException;
 import jooqdata.tables.Client;
 import jooqdata.tables.Dish;
 import jooqdata.tables.Order;
@@ -15,9 +18,11 @@ import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,9 +37,13 @@ import static jooqdata.tables.Dish.DISH;
 
 @Service
 public class ShiftService {
+    private static final Field<LocalDateTime> ORDER_CANCELLED_AT =
+            DSL.field(DSL.name("cancelled_at"), LocalDateTime.class);
     private static final Field<String> PAYMENT_TYPE_FIELD = DSL.field(DSL.name("payment_type"), String.class);
     private static final Field<Boolean> IS_PAID_FIELD = DSL.field(DSL.name("is_paid"), Boolean.class);
     private static final Field<Integer> ORDERDISH_SET_ID = DSL.field(DSL.name("set_id"), Integer.class);
+    private static final Field<Double> ORDERDISH_UNIT_PRICE = DSL.field(DSL.name("unit_price"), Double.class);
+    private static final Field<Double> ORDERDISH_UNIT_COST = DSL.field(DSL.name("unit_cost"), Double.class);
     private static final org.jooq.Table<?> DISH_SET = DSL.table(DSL.name("sales", "dish_set"));
     private static final org.jooq.Field<Integer> DISH_SET_ID = DSL.field(DSL.name("sales", "dish_set", "setid"), Integer.class);
     private static final org.jooq.Field<String> DISH_SET_NAME = DSL.field(DSL.name("sales", "dish_set", "setname"), String.class);
@@ -42,9 +51,11 @@ public class ShiftService {
     private static final org.jooq.Field<Double> DISH_SET_FIRST_COST = DSL.field(DSL.name("sales", "dish_set", "first_cost"), Double.class);
 
     private final DSLContext dsl;
+    private final ShiftInventorySnapshotService shiftInventorySnapshotService;
 
-    public ShiftService(DSLContext dsl) {
+    public ShiftService(DSLContext dsl, ShiftInventorySnapshotService shiftInventorySnapshotService) {
         this.dsl = dsl;
+        this.shiftInventorySnapshotService = shiftInventorySnapshotService;
     }
 
     // Получить все смены
@@ -57,42 +68,51 @@ public class ShiftService {
     }
 
     // Создание новой смены
+    @Transactional
     public ShiftDTO createShift(ShiftDTO dto) {
         LinkedHashSet<Integer> workerIds = normalizeWorkerIds(dto);
         if (workerIds.isEmpty()) {
-            throw new RuntimeException("Выберите хотя бы одного сотрудника");
+            throw new InvalidShiftRequestException("Выберите хотя бы одного сотрудника");
         }
+        lockWorkers(workerIds);
         validateWorkersAvailable(workerIds, null);
 
         ShiftRecord record = dsl.newRecord(Shift.SHIFT);
-        record.setData(dto.data);
-        record.setExpenses(dto.expenses);
-        record.setProfit(dto.profit);
-        record.setIncome(dto.income); // добавлено
-        record.setStarttime(dto.startTime);
-        record.setEndtime(dto.endTime);
+        record.setData(dto.data != null ? dto.data : LocalDate.now());
+        record.setExpenses(BigDecimal.ZERO);
+        record.setProfit(BigDecimal.ZERO);
+        record.setIncome(0.0);
+        record.setStarttime(dto.startTime != null ? dto.startTime : LocalTime.now());
+        record.setEndtime(null);
         record.setPersoncode(workerIds.iterator().next());
-        record.store(); // id присвоится автоматически базой
+        record.store();
 
         syncShiftPersons(record.getId(), workerIds, record.getPersoncode());
+        shiftInventorySnapshotService.captureSnapshotForShift(record.getId());
         return getShiftById(record.getId());
     }
 
     // Обновление смены
+    @Transactional
     public ShiftDTO updateShift(int shiftId, ShiftDTO dto) {
+        ShiftRecord current = lockShift(shiftId);
+        if (current.getEndtime() != null) {
+            throw new ShiftStateConflictException("Закрытую смену нельзя изменять");
+        }
+
         LinkedHashSet<Integer> workerIds = normalizeWorkerIds(dto);
         if (workerIds.isEmpty()) {
-            throw new RuntimeException("У смены должен быть хотя бы один сотрудник");
+            throw new InvalidShiftRequestException("У смены должен быть хотя бы один сотрудник");
         }
+
+        LinkedHashSet<Integer> affectedWorkerIds = new LinkedHashSet<>(
+                loadWorkerIds(shiftId, current.getPersoncode())
+        );
+        affectedWorkerIds.addAll(workerIds);
+        lockWorkers(affectedWorkerIds);
         validateWorkersAvailable(workerIds, shiftId);
 
         int rows = dsl.update(Shift.SHIFT)
-                .set(Shift.SHIFT.DATA, dto.data)
-                .set(Shift.SHIFT.EXPENSES, dto.expenses)
-                .set(Shift.SHIFT.PROFIT, dto.profit)
-                .set(Shift.SHIFT.INCOME, dto.income)
-                .set(Shift.SHIFT.STARTTIME, dto.startTime)
-                .set(Shift.SHIFT.ENDTIME, dto.endTime)
                 .set(Shift.SHIFT.PERSONCODE, workerIds.iterator().next())
                 .where(Shift.SHIFT.ID.eq(shiftId))
                 .execute();
@@ -116,12 +136,22 @@ public class ShiftService {
     }
 
     // Открытие смены
+    @Transactional
     public ShiftRecord openShift(int personCode) {
+        LinkedHashSet<Integer> workerIds = new LinkedHashSet<>();
+        workerIds.add(personCode);
+        lockWorkers(workerIds);
+        validateWorkersAvailable(workerIds, null);
+
         ShiftRecord shift = dsl.newRecord(Shift.SHIFT);
         shift.setData(LocalDate.now());
         shift.setPersoncode(personCode);
         shift.setStarttime(LocalTime.now());
+        shift.setIncome(0.0);
+        shift.setExpenses(BigDecimal.ZERO);
+        shift.setProfit(BigDecimal.ZERO);
         shift.store();
+        shiftInventorySnapshotService.captureSnapshotForShift(shift.getId());
         return shift;
     }
 
@@ -136,6 +166,8 @@ public class ShiftService {
                         Orderdish.ORDERDISH.DISHID,
                         ORDERDISH_SET_ID,
                         Orderdish.ORDERDISH.QTY,
+                        ORDERDISH_UNIT_PRICE,
+                        ORDERDISH_UNIT_COST,
                         Dish.DISH.DISHNAME,
                         dishPriceField,
                         dishFirstCostField,
@@ -152,12 +184,18 @@ public class ShiftService {
                     Integer setId = record.get(ORDERDISH_SET_ID);
                     int qty = record.get(Orderdish.ORDERDISH.QTY) != null ? record.get(Orderdish.ORDERDISH.QTY) : 0;
                     boolean isDish = dishId != null && dishId > 0;
+                    Double storedPrice = record.get(ORDERDISH_UNIT_PRICE);
+                    Double storedFirstCost = record.get(ORDERDISH_UNIT_COST);
                     return new OrderLineItem(
                             dishId,
                             setId,
                             isDish ? record.get(Dish.DISH.DISHNAME) : record.get(setNameField),
-                            isDish ? record.get(dishPriceField) : record.get(setPriceField),
-                            isDish ? record.get(dishFirstCostField) : record.get(setFirstCostField),
+                            storedPrice != null
+                                    ? storedPrice
+                                    : isDish ? record.get(dishPriceField) : record.get(setPriceField),
+                            storedFirstCost != null
+                                    ? storedFirstCost
+                                    : isDish ? record.get(dishFirstCostField) : record.get(setFirstCostField),
                             qty
                     );
                 });
@@ -173,10 +211,24 @@ public class ShiftService {
     ) {}
 
     // Закрытие смены
+    @Transactional
     public ShiftRecord closeShift(int shiftId, BigDecimal expenses) {
-        // Получаем все заказы за эту смену
+        if (expenses == null) {
+            throw new InvalidShiftRequestException("Расходы смены должны быть указаны");
+        }
+        if (expenses.signum() < 0) {
+            throw new InvalidShiftRequestException("Расходы смены не могут быть отрицательными");
+        }
+
+        ShiftRecord shift = lockShift(shiftId);
+        if (shift.getEndtime() != null) {
+            return shift;
+        }
+
         var orders = dsl.selectFrom(Order.ORDER)
                 .where(Order.ORDER.SHIFTID.eq(shiftId))
+                .and(ORDER_CANCELLED_AT.isNull())
+                .and(IS_PAID_FIELD.eq(true))
                 .fetch();
 
         Double income = orders.stream()
@@ -203,18 +255,17 @@ public class ShiftService {
                         .sum())
                 .sum();
 
-        BigDecimal profit = BigDecimal.valueOf(income - totalCost - expenses.doubleValue());
+        BigDecimal profit = BigDecimal.valueOf(income)
+                .subtract(BigDecimal.valueOf(totalCost))
+                .subtract(expenses);
 
-        // Обновляем запись смены
-        dsl.update(Shift.SHIFT)
-                .set(Shift.SHIFT.ENDTIME, LocalTime.now())
-                .set(Shift.SHIFT.INCOME, income)
-                .set(Shift.SHIFT.EXPENSES, expenses)
-                .set(Shift.SHIFT.PROFIT, profit)
-                .where(Shift.SHIFT.ID.eq(shiftId))
-                .execute();
-
-        return dsl.fetchOne(Shift.SHIFT, Shift.SHIFT.ID.eq(shiftId));
+        shift.setEndtime(LocalTime.now());
+        shift.setIncome(income);
+        shift.setExpenses(expenses);
+        shift.setProfit(profit);
+        shift.store();
+        shift.refresh();
+        return shift;
     }
 
     public List<DishDTO> getDishesByOrderId(int orderId) {
@@ -276,14 +327,19 @@ public class ShiftService {
                 )
                 .from(Order.ORDER)
                 .where(Order.ORDER.SHIFTID.eq(shiftId))
+                .and(ORDER_CANCELLED_AT.isNull())
                 .orderBy(Order.ORDER.ORDERID.asc())
                 .fetch();
 
         List<Map<String, Object>> orders = new ArrayList<>();
         double totalRevenue = 0.0;
+        double totalUnpaidAmount = 0.0;
+        double totalCost = 0.0;
         double totalDeliveryExpense = 0.0;
         double totalItemsAmount = 0.0;
         int totalDishesCount = 0;
+        int paidOrdersCount = 0;
+        int unpaidOrdersCount = 0;
         Map<String, Map<String, Object>> positionStats = new HashMap<>();
 
         for (Record orderRow : orderRows) {
@@ -298,12 +354,14 @@ public class ShiftService {
             }
             List<Map<String, Object>> items = new ArrayList<>();
             double itemsTotal = 0.0;
+            double orderCost = 0.0;
             for (OrderLineItem itemRow : loadOrderLineItems(orderId)) {
                 String dishName = itemRow.name();
                 Integer qty = itemRow.qty();
                 Double price = itemRow.price() != null ? itemRow.price() : 0.0;
                 double lineTotal = price * qty;
                 itemsTotal += lineTotal;
+                orderCost += (itemRow.firstCost() != null ? itemRow.firstCost() : 0.0) * qty;
                 totalDishesCount += qty;
                 Map<String, Object> stats = positionStats.computeIfAbsent(
                         dishName != null ? dishName : "Без названия",
@@ -329,8 +387,16 @@ public class ShiftService {
             Double orderAmount = orderRow.get(Order.ORDER.AMOUNT) != null ? orderRow.get(Order.ORDER.AMOUNT) : itemsTotal;
             boolean isDelivery = Boolean.TRUE.equals(orderRow.get(Order.ORDER.TYPE));
             double deliveryExpense = isDelivery ? Math.max(0.0, orderAmount - itemsTotal) : 0.0;
+            boolean isPaid = Boolean.TRUE.equals(orderRow.get(IS_PAID_FIELD));
 
-            totalRevenue += orderAmount;
+            if (isPaid) {
+                paidOrdersCount++;
+                totalRevenue += orderAmount;
+                totalCost += orderCost;
+            } else {
+                unpaidOrdersCount++;
+                totalUnpaidAmount += orderAmount;
+            }
             totalItemsAmount += itemsTotal;
             totalDeliveryExpense += deliveryExpense;
 
@@ -340,7 +406,7 @@ public class ShiftService {
             orderData.put("status", orderRow.get(Order.ORDER.STATUS));
             orderData.put("isDelivery", isDelivery);
             orderData.put("paymentType", orderRow.get(PAYMENT_TYPE_FIELD));
-            orderData.put("isPaid", orderRow.get(IS_PAID_FIELD));
+            orderData.put("isPaid", isPaid);
             orderData.put("itemsTotal", itemsTotal);
             orderData.put("deliveryExpense", deliveryExpense);
             orderData.put("orderAmount", orderAmount);
@@ -357,10 +423,23 @@ public class ShiftService {
 
         Map<String, Object> totals = new HashMap<>();
         totals.put("ordersCount", orders.size());
+        totals.put("paidOrdersCount", paidOrdersCount);
+        totals.put("unpaidOrdersCount", unpaidOrdersCount);
         totals.put("dishesCount", totalDishesCount);
         totals.put("itemsAmount", totalItemsAmount);
         totals.put("deliveryExpense", totalDeliveryExpense);
         totals.put("revenue", totalRevenue);
+        totals.put("unpaidAmount", totalUnpaidAmount);
+        totals.put("cost", totalCost);
+        totals.put("expenses", shift.getExpenses() != null ? shift.getExpenses() : BigDecimal.ZERO);
+        totals.put(
+                "profit",
+                shift.getProfit() != null
+                        ? shift.getProfit()
+                        : BigDecimal.valueOf(totalRevenue)
+                                .subtract(BigDecimal.valueOf(totalCost))
+                                .subtract(shift.getExpenses() != null ? shift.getExpenses() : BigDecimal.ZERO)
+        );
         totals.put("delayedOrdersCount", orders.stream().filter(o -> ((Double) o.get("delayMinutes")) > 0).count());
 
         Map<String, Object> report = new HashMap<>();
@@ -496,6 +575,33 @@ public class ShiftService {
                 .where(Person.PERSON.PERSONID.eq(workerId))
                 .fetchOne(Person.PERSON.NAME);
         return name != null && !name.isBlank() ? name : "ID " + workerId;
+    }
+
+    private ShiftRecord lockShift(int shiftId) {
+        ShiftRecord shift = dsl.selectFrom(Shift.SHIFT)
+                .where(Shift.SHIFT.ID.eq(shiftId))
+                .forUpdate()
+                .fetchOne();
+        if (shift == null) {
+            throw new ShiftNotFoundException(shiftId);
+        }
+        return shift;
+    }
+
+    private void lockWorkers(Set<Integer> workerIds) {
+        if (workerIds == null || workerIds.isEmpty()) {
+            return;
+        }
+        List<Integer> sortedWorkerIds = workerIds.stream().sorted().toList();
+        List<Integer> foundWorkerIds = dsl.select(Person.PERSON.PERSONID)
+                .from(Person.PERSON)
+                .where(Person.PERSON.PERSONID.in(sortedWorkerIds))
+                .orderBy(Person.PERSON.PERSONID)
+                .forUpdate()
+                .fetch(Person.PERSON.PERSONID);
+        if (foundWorkerIds.size() != sortedWorkerIds.size()) {
+            throw new InvalidShiftRequestException("Один или несколько сотрудников не найдены");
+        }
     }
 
 

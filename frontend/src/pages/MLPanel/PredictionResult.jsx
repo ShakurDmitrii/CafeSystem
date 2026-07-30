@@ -1,21 +1,24 @@
+import { BarChartOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import React from 'react';
+import { formatCurrency, formatNumber, formatPercent, formatTime } from './formatters';
 import styles from './mlStyles.module.css';
-
 
 export default function PredictionResult({ prediction, loading, error }) {
     if (loading) {
         return (
-            <div className={styles.loading}>
-                <div className={styles.spinner}></div>
-                <p>ИИ анализирует состав ролла...</p>
+            <div className={`${styles.resultCard} ${styles.centeredState}`} role="status">
+                <span className={styles.spinner} aria-hidden="true" />
+                <h3>Модель считает сценарий</h3>
+                <p>Сопоставляем состав с историей продаж и себестоимостью.</p>
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className={styles.error}>
-                <h3>❌ Ошибка предсказания</h3>
+            <div className={`${styles.resultCard} ${styles.errorState}`} role="alert">
+                <span className={styles.stateMark}>!</span>
+                <h3>Прогноз не готов</h3>
                 <p>{error}</p>
             </div>
         );
@@ -23,49 +26,52 @@ export default function PredictionResult({ prediction, loading, error }) {
 
     if (!prediction) {
         return (
-            <div className={styles.empty}>
-                <h3>🔮 Предсказание продаж</h3>
-                <p>Выберите ингредиенты и нажмите "Предсказать"</p>
+            <div className={`${styles.resultCard} ${styles.emptyState}`}>
+                <span className={styles.emptyIcon} aria-hidden="true"><BarChartOutlined /></span>
+                <p className={styles.eyebrow}>Результат</p>
+                <h3>Здесь появится прогноз</h3>
+                <p>После расчёта вы увидите продажи в день, уверенность модели и финансовые показатели.</p>
             </div>
         );
     }
 
-    const confidenceClass = prediction.confidenceScore > 0.8
+    const confidence = Number(prediction.confidenceScore) || 0;
+    const confidenceTone = confidence >= 0.8
         ? styles.confidenceHigh
-        : prediction.confidenceScore > 0.6
+        : confidence >= 0.6
             ? styles.confidenceMedium
             : styles.confidenceLow;
 
     return (
-        <div className={styles.predictionCard}>
-            <div className={styles.predictionHeader}>
-                <h3 className={styles.predictionTitle}>📊 Результат предсказания</h3>
-                <span className={`${styles.confidenceBadge} ${confidenceClass}`}>
-                    {(prediction.confidenceScore * 100).toFixed(1)}%
+        <article className={`${styles.resultCard} ${styles.resultCardReady}`} aria-live="polite">
+            <div className={styles.resultTopline}>
+                <span className={styles.successMark} aria-hidden="true"><CheckCircleOutlined /></span>
+                <span className={`${styles.confidenceBadge} ${confidenceTone}`}>
+                    Уверенность {formatPercent(confidence, { fraction: true, digits: 0 })}
                 </span>
             </div>
 
+            <p className={styles.eyebrow}>Прогноз спроса</p>
             <div className={styles.salesValue}>
-                {prediction.predictedSales?.toFixed(1) || '0'} в день
+                {formatNumber(prediction.predictedSales)}
+                <span>продаж в день</span>
             </div>
 
-            {prediction.estimatedCost && (
-                <div className={styles.financialGrid}>
-                    <div className={styles.financialItem}>
-                        <span className={styles.financialLabel}>Себестоимость:</span>
-                        <span className={styles.financialValue}>{prediction.estimatedCost.toFixed(2)}₽</span>
-                    </div>
-                    <div className={styles.financialItem}>
-                        <span className={styles.financialLabel}>Прибыль:</span>
-                        <span className={styles.financialValue}>{prediction.estimatedProfit?.toFixed(2) || '—'}₽</span>
-                    </div>
+            <div className={styles.metricGrid}>
+                <div>
+                    <span>Себестоимость</span>
+                    <strong>{formatCurrency(prediction.estimatedCost)}</strong>
                 </div>
-            )}
+                <div>
+                    <span>Ожидаемая прибыль</span>
+                    <strong>{formatCurrency(prediction.estimatedProfit)}</strong>
+                </div>
+            </div>
 
             <div className={styles.metaInfo}>
-                <small>Модель: {prediction.modelVersion || '1.0'}</small>
-                <small>Время: {new Date().toLocaleTimeString()}</small>
+                <span>Модель {prediction.modelVersion || '1.0'}</span>
+                <span>Расчёт в {formatTime(prediction.timestamp)}</span>
             </div>
-        </div>
+        </article>
     );
 }

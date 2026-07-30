@@ -70,6 +70,7 @@ export default function ProductionModal({
                             step="0.01"
                             className={styles.input}
                             value={form.batchCount}
+                            onWheel={(event) => event.currentTarget.blur()}
                             onChange={(event) => onChange("batchCount", event.target.value)}
                             required
                         />

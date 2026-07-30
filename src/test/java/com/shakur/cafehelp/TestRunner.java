@@ -3,11 +3,13 @@ package com.shakur.cafehelp;
 import com.shakur.cafehelp.Service.MlServices.SalesService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 
 @Component
+@Profile("manual-sales-smoke")
 @RequiredArgsConstructor
 public class TestRunner implements CommandLineRunner {
 

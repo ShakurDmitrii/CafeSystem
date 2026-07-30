@@ -4,35 +4,79 @@ import { API_BASE_URL } from "../../../auth";
 import styles from "./KitchenDisplayPage.module.css";
 
 const API_ORDERS = `${API_BASE_URL}/api/orders`;
-const ROTATION_INTERVAL_MS = 5000;
-const PAGE_EXIT_MS = 760;
-const PAGE_SETTLE_MS = 1720;
-const MIN_CARD_WIDTH = 128;
-const CARD_HEIGHT = 104;
+const REFRESH_INTERVAL_MS = 5000;
+const MIN_CARD_WIDTH = 150;
+const CARD_HEIGHT = 118;
 const GRID_GAP = 12;
 
 function getPageSize(container) {
-    if (!container) {
-        return 1;
-    }
-
-    const width = container.clientWidth || 0;
-    const height = container.clientHeight || 0;
-    const columns = Math.max(1, Math.floor((width + GRID_GAP) / (MIN_CARD_WIDTH + GRID_GAP)));
-    const rows = Math.max(1, Math.floor((height + GRID_GAP) / (CARD_HEIGHT + GRID_GAP)));
-
+    if (!container) return 1;
+    const columns = Math.max(1, Math.floor((container.clientWidth + GRID_GAP) / (MIN_CARD_WIDTH + GRID_GAP)));
+    const rows = Math.max(1, Math.floor((container.clientHeight + GRID_GAP) / (CARD_HEIGHT + GRID_GAP)));
     return Math.max(1, columns * rows);
 }
 
 function getVisibleOrders(orders, pageSize, pageIndex) {
-    if (!orders.length || pageSize <= 0) {
-        return orders;
-    }
-
-    const pageCount = Math.max(1, Math.ceil(orders.length / pageSize));
-    const safeIndex = pageIndex % pageCount;
-    const start = safeIndex * pageSize;
+    if (!orders.length || pageSize <= 0) return orders;
+    const pages = Math.max(1, Math.ceil(orders.length / pageSize));
+    const start = (pageIndex % pages) * pageSize;
     return orders.slice(start, start + pageSize);
+}
+
+function KitchenLane({
+    title,
+    description,
+    tone,
+    orders,
+    pageIndex,
+    pageCount,
+    pageSize,
+    isLoading,
+    freshReadyIds,
+    bodyRef
+}) {
+    const visibleOrders = getVisibleOrders(orders, pageSize, pageIndex);
+    const emptyText = tone === "ready"
+        ? "Готовые заказы появятся здесь"
+        : "Сейчас ничего не готовится";
+
+    return (
+        <section className={`${styles.lane} ${styles[`${tone}Lane`]}`}>
+            <header className={styles.laneHeader}>
+                <div>
+                    <span className={styles.laneSignal} aria-hidden="true" />
+                    <div>
+                        <h2>{title}</h2>
+                        <p>{description}</p>
+                    </div>
+                </div>
+                <div className={styles.laneCount}>
+                    <strong>{orders.length}</strong>
+                    {pageCount > 1 && <span>{pageIndex + 1} / {pageCount}</span>}
+                </div>
+            </header>
+
+            <div ref={bodyRef} className={styles.laneBody} aria-live="polite">
+                {isLoading && orders.length === 0 ? (
+                    <div className={styles.emptyState}>Загружаем очередь…</div>
+                ) : orders.length === 0 ? (
+                    <div className={styles.emptyState}>{emptyText}</div>
+                ) : visibleOrders.map((order) => (
+                    <article
+                        key={order.orderId}
+                        className={[
+                            styles.ticket,
+                            styles[`${tone}Ticket`],
+                            freshReadyIds.includes(order.orderId) ? styles.freshTicket : ""
+                        ].filter(Boolean).join(" ")}
+                    >
+                        <span>{tone === "ready" ? "Забрать" : "Готовится"}</span>
+                        <strong>#{order.orderId}</strong>
+                    </article>
+                ))}
+            </div>
+        </section>
+    );
 }
 
 export default function KitchenDisplayPage() {
@@ -40,12 +84,11 @@ export default function KitchenDisplayPage() {
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState("");
+    const [clock, setClock] = useState(new Date());
     const [freshReadyIds, setFreshReadyIds] = useState([]);
     const [pageSize, setPageSize] = useState({ cooking: 1, ready: 1 });
     const [pageIndex, setPageIndex] = useState({ cooking: 0, ready: 0 });
-    const [pagePhase, setPagePhase] = useState({ cooking: "idle", ready: "idle" });
     const previousOrdersRef = useRef([]);
-    const rotationTimeoutsRef = useRef([]);
     const cookingBodyRef = useRef(null);
     const readyBodyRef = useRef(null);
 
@@ -54,253 +97,144 @@ export default function KitchenDisplayPage() {
         if (!silent) setIsLoading(true);
 
         try {
-            setError("");
-            const ordersResponse = await fetch(API_ORDERS);
-
-            if (!ordersResponse.ok) {
-                throw new Error(`Не удалось загрузить заказы (${ordersResponse.status})`);
-            }
-            const ordersText = await ordersResponse.text();
-
-            const rawOrders = ordersText ? JSON.parse(ordersText) : [];
-            const visibleOrders = (Array.isArray(rawOrders) ? rawOrders : [])
-                .filter((order) => Number(order?.shiftId) === Number(shiftId))
-                .filter((order) => !order?.date_issue && !order?.dateIssue);
-
-            const detailedOrders = visibleOrders;
+            const response = await fetch(API_ORDERS);
+            if (!response.ok) throw new Error(`Не удалось загрузить заказы (${response.status})`);
+            const payload = await response.json();
+            const visibleOrders = (Array.isArray(payload) ? payload : [])
+                .filter((order) => Number(order.shiftId) === Number(shiftId))
+                .filter((order) => !order.date_issue && !order.dateIssue);
 
             const previousReadyIds = new Set(
-                previousOrdersRef.current
-                    .filter((order) => order?.status)
-                    .map((order) => order.orderId)
+                previousOrdersRef.current.filter((order) => order.status).map((order) => order.orderId)
             );
-            const justReady = detailedOrders
-                .filter((order) => order?.status && !previousReadyIds.has(order.orderId))
+            const justReady = visibleOrders
+                .filter((order) => order.status && !previousReadyIds.has(order.orderId))
                 .map((order) => order.orderId);
 
-            previousOrdersRef.current = detailedOrders;
-            setOrders(detailedOrders);
+            previousOrdersRef.current = visibleOrders;
+            setOrders(visibleOrders);
+            setError("");
 
             if (justReady.length > 0) {
-                setFreshReadyIds((prev) => Array.from(new Set([...prev, ...justReady])));
+                setFreshReadyIds((current) => [...new Set([...current, ...justReady])]);
                 window.setTimeout(() => {
-                    setFreshReadyIds((prev) => prev.filter((id) => !justReady.includes(id)));
-                }, 1400);
+                    setFreshReadyIds((current) => current.filter((id) => !justReady.includes(id)));
+                }, 1800);
             }
         } catch (loadError) {
             console.error(loadError);
-            setError(loadError.message || "Не удалось загрузить кухонный экран");
+            setError(loadError.message || "Не удалось загрузить экран кухни");
         } finally {
             if (!silent) setIsLoading(false);
         }
     }, [shiftId]);
 
-    const measurePageSizes = useCallback(() => {
-        setPageSize({
-            cooking: getPageSize(cookingBodyRef.current),
-            ready: getPageSize(readyBodyRef.current)
-        });
-    }, []);
-
     useEffect(() => {
         loadData();
-        const interval = window.setInterval(() => loadData(true), ROTATION_INTERVAL_MS);
-        return () => window.clearInterval(interval);
+        const refreshInterval = window.setInterval(() => loadData(true), REFRESH_INTERVAL_MS);
+        const clockInterval = window.setInterval(() => setClock(new Date()), 1000);
+        return () => {
+            window.clearInterval(refreshInterval);
+            window.clearInterval(clockInterval);
+        };
     }, [loadData]);
 
     useEffect(() => {
-        measurePageSizes();
+        const measure = () => setPageSize({
+            cooking: getPageSize(cookingBodyRef.current),
+            ready: getPageSize(readyBodyRef.current)
+        });
+        measure();
 
-        const resizeObserver = typeof ResizeObserver !== "undefined"
-            ? new ResizeObserver(() => measurePageSizes())
-            : null;
-
-        if (resizeObserver) {
-            if (cookingBodyRef.current) {
-                resizeObserver.observe(cookingBodyRef.current);
-            }
-            if (readyBodyRef.current) {
-                resizeObserver.observe(readyBodyRef.current);
-            }
+        const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+        if (observer) {
+            if (cookingBodyRef.current) observer.observe(cookingBodyRef.current);
+            if (readyBodyRef.current) observer.observe(readyBodyRef.current);
         } else {
-            window.addEventListener("resize", measurePageSizes);
+            window.addEventListener("resize", measure);
         }
-
         return () => {
-            if (resizeObserver) {
-                resizeObserver.disconnect();
-            } else {
-                window.removeEventListener("resize", measurePageSizes);
-            }
-        };
-    }, [measurePageSizes]);
-
-    useEffect(() => {
-        const previousBodyOverflow = document.body.style.overflow;
-        const previousHtmlOverflow = document.documentElement.style.overflow;
-
-        document.body.style.overflow = "hidden";
-        document.documentElement.style.overflow = "hidden";
-
-        return () => {
-            document.body.style.overflow = previousBodyOverflow;
-            document.documentElement.style.overflow = previousHtmlOverflow;
+            observer?.disconnect();
+            if (!observer) window.removeEventListener("resize", measure);
         };
     }, []);
 
     const cookingOrders = useMemo(
         () => orders
-            .filter((order) => !order?.status)
+            .filter((order) => !order.status)
             .sort((a, b) => Number(b.orderId || 0) - Number(a.orderId || 0)),
         [orders]
     );
-
     const readyOrders = useMemo(
         () => orders
-            .filter((order) => order?.status)
+            .filter((order) => order.status)
             .sort((a, b) => Number(b.orderId || 0) - Number(a.orderId || 0)),
         [orders]
     );
-
-    const cookingPageCount = Math.max(1, Math.ceil(cookingOrders.length / pageSize.cooking));
-    const readyPageCount = Math.max(1, Math.ceil(readyOrders.length / pageSize.ready));
-
-    useEffect(() => {
-        setPageIndex((prev) => ({
-            cooking: prev.cooking >= cookingPageCount ? 0 : prev.cooking,
-            ready: prev.ready >= readyPageCount ? 0 : prev.ready
-        }));
-    }, [cookingPageCount, readyPageCount]);
+    const pageCount = {
+        cooking: Math.max(1, Math.ceil(cookingOrders.length / pageSize.cooking)),
+        ready: Math.max(1, Math.ceil(readyOrders.length / pageSize.ready))
+    };
 
     useEffect(() => {
         const interval = window.setInterval(() => {
-            const shouldRotateCooking = cookingPageCount > 1;
-            const shouldRotateReady = readyPageCount > 1;
-
-            if (!shouldRotateCooking && !shouldRotateReady) {
-                return;
-            }
-
-            setPagePhase({
-                cooking: shouldRotateCooking ? "leaving" : "idle",
-                ready: shouldRotateReady ? "leaving" : "idle"
-            });
-
-            rotationTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
-            rotationTimeoutsRef.current = [];
-
-            const switchTimeout = window.setTimeout(() => {
-                setPageIndex((prev) => ({
-                    cooking: shouldRotateCooking ? (prev.cooking + 1) % cookingPageCount : 0,
-                    ready: shouldRotateReady ? (prev.ready + 1) % readyPageCount : 0
-                }));
-                setPagePhase({
-                    cooking: shouldRotateCooking ? "entering" : "idle",
-                    ready: shouldRotateReady ? "entering" : "idle"
-                });
-            }, PAGE_EXIT_MS);
-
-            const settleTimeout = window.setTimeout(() => {
-                setPagePhase({ cooking: "idle", ready: "idle" });
-            }, PAGE_SETTLE_MS);
-
-            rotationTimeoutsRef.current = [switchTimeout, settleTimeout];
-        }, ROTATION_INTERVAL_MS);
-
-        return () => {
-            window.clearInterval(interval);
-            rotationTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
-            rotationTimeoutsRef.current = [];
-        };
-    }, [cookingPageCount, readyPageCount]);
-
-    const visibleCookingOrders = useMemo(
-        () => getVisibleOrders(cookingOrders, pageSize.cooking, pageIndex.cooking),
-        [cookingOrders, pageIndex.cooking, pageSize.cooking]
-    );
-
-    const visibleReadyOrders = useMemo(
-        () => getVisibleOrders(readyOrders, pageSize.ready, pageIndex.ready),
-        [readyOrders, pageIndex.ready, pageSize.ready]
-    );
+            setPageIndex((current) => ({
+                cooking: pageCount.cooking > 1 ? (current.cooking + 1) % pageCount.cooking : 0,
+                ready: pageCount.ready > 1 ? (current.ready + 1) % pageCount.ready : 0
+            }));
+        }, REFRESH_INTERVAL_MS);
+        return () => window.clearInterval(interval);
+    }, [pageCount.cooking, pageCount.ready]);
 
     return (
-        <div className={styles.screen}>
-            <div className={styles.backgroundGlow}></div>
-            {error && <div className={styles.error}>{error}</div>}
+        <main className={styles.screen}>
+            <header className={styles.topbar}>
+                <div className={styles.identity}>
+                    <span>Кухонный экран</span>
+                    <h1>Смена #{shiftId}</h1>
+                </div>
+                <div className={styles.flow} aria-label="Путь заказа">
+                    <span>Касса</span><i aria-hidden="true" />
+                    <strong>Кухня</strong><i aria-hidden="true" />
+                    <span>Выдача</span>
+                </div>
+                <time dateTime={clock.toISOString()}>
+                    {new Intl.DateTimeFormat("ru-RU", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit"
+                    }).format(clock)}
+                </time>
+            </header>
+
+            {error && <div className={styles.error} role="alert">{error}</div>}
 
             <div className={styles.board}>
-                <section className={styles.column}>
-                    <div className={styles.columnHeader}>
-                        <div className={styles.columnTitleBlock}>
-                            <span className={styles.columnBadge}>В процессе</span>
-                            {cookingPageCount > 1 && (
-                                <span className={styles.pageBadge}>
-                                    {pageIndex.cooking + 1}/{cookingPageCount}
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    <div ref={cookingBodyRef} className={styles.columnBody}>
-                        {isLoading && cookingOrders.length === 0 ? (
-                            <div className={styles.emptyState}>Загрузка заказов...</div>
-                        ) : cookingOrders.length === 0 ? (
-                            <div className={styles.emptyState}>Сейчас ничего не готовится</div>
-                        ) : (
-                            visibleCookingOrders.map((order, index) => {
-                                return (
-                                    <article
-                                        key={order.orderId}
-                                        className={`${styles.orderCard} ${styles.cookingCard} ${styles.numberOnlyCard} ${pagePhase.cooking === "leaving" ? styles.cardPageLeaving : ""} ${pagePhase.cooking === "entering" ? styles.cardPageEntering : ""}`}
-                                        style={{ "--card-index": index }}
-                                    >
-                                        <div className={styles.numberOnlyInner}>
-                                            <div className={styles.orderNumber}>#{order.orderId}</div>
-                                        </div>
-                                    </article>
-                                );
-                            })
-                        )}
-                    </div>
-                </section>
-
-                <section className={styles.column}>
-                    <div className={styles.columnHeader}>
-                        <div className={styles.columnTitleBlock}>
-                            <span className={styles.columnBadgeReady}>Готово</span>
-                            {readyPageCount > 1 && (
-                                <span className={styles.pageBadge}>
-                                    {pageIndex.ready + 1}/{readyPageCount}
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    <div ref={readyBodyRef} className={styles.columnBody}>
-                        {isLoading && readyOrders.length === 0 ? (
-                            <div className={styles.emptyState}>Загрузка заказов...</div>
-                        ) : readyOrders.length === 0 ? (
-                            <div className={styles.emptyState}>Готовые заказы появятся здесь</div>
-                        ) : (
-                            visibleReadyOrders.map((order, index) => {
-                                const isFresh = freshReadyIds.includes(order.orderId) && pagePhase.ready === "idle";
-                                return (
-                                    <article
-                                        key={order.orderId}
-                                        className={`${styles.orderCard} ${styles.readyCard} ${styles.numberOnlyCard} ${isFresh ? styles.cardFreshReady : ""} ${pagePhase.ready === "leaving" ? styles.cardPageLeaving : ""} ${pagePhase.ready === "entering" ? styles.cardPageEntering : ""}`}
-                                        style={{ "--card-index": index }}
-                                    >
-                                        <div className={styles.numberOnlyInner}>
-                                            <div className={styles.orderNumber}>#{order.orderId}</div>
-                                        </div>
-                                    </article>
-                                );
-                            })
-                        )}
-                    </div>
-                </section>
+                <KitchenLane
+                    title="В работе"
+                    description="Заказы, которые готовит кухня"
+                    tone="cooking"
+                    orders={cookingOrders}
+                    pageIndex={pageIndex.cooking}
+                    pageCount={pageCount.cooking}
+                    pageSize={pageSize.cooking}
+                    isLoading={isLoading}
+                    freshReadyIds={[]}
+                    bodyRef={cookingBodyRef}
+                />
+                <KitchenLane
+                    title="К выдаче"
+                    description="Можно забирать на стойке"
+                    tone="ready"
+                    orders={readyOrders}
+                    pageIndex={pageIndex.ready}
+                    pageCount={pageCount.ready}
+                    pageSize={pageSize.ready}
+                    isLoading={isLoading}
+                    freshReadyIds={freshReadyIds}
+                    bodyRef={readyBodyRef}
+                />
             </div>
-        </div>
+        </main>
     );
 }

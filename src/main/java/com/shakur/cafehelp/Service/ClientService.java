@@ -7,6 +7,7 @@ import jooqdata.tables.Dish;
 import jooqdata.tables.Order;
 import jooqdata.tables.records.ClientRecord;
 import org.jooq.DSLContext;
+import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,8 @@ import static org.jooq.impl.DSL.condition;
 
 @Service
 public class ClientService {
+    private static final Field<LocalDateTime> ORDER_CANCELLED_AT =
+            DSL.field(DSL.name("cancelled_at"), LocalDateTime.class);
 
     public static DSLContext dsl;
 
@@ -59,6 +62,7 @@ public class ClientService {
                     .from(CLIENT)
                     .join(ORDER).on(ORDER.CLIENTID.eq(CLIENT.CLIENTID))
                     .where(ORDER.DUTY.eq(duty))
+                    .and(ORDER_CANCELLED_AT.isNull())
                     .fetch()
                     .stream()
                     .map(record -> {
@@ -76,6 +80,7 @@ public class ClientService {
                 List<OrderDTO> dutyOrders = dsl.selectFrom(ORDER)
                         .where(ORDER.CLIENTID.eq(client.getClientId())
                                 .and(ORDER.DUTY.eq(duty)))
+                        .and(ORDER_CANCELLED_AT.isNull())
                         .fetch()
                         .stream()
                         .map(record -> {
@@ -164,6 +169,7 @@ public class ClientService {
             List<OrderDTO> dutyOrdersBefore = dsl.selectFrom(ORDER)
                     .where(ORDER.CLIENTID.eq(clientId)
                             .and(ORDER.DUTY.eq(true)))
+                    .and(ORDER_CANCELLED_AT.isNull())
                     .fetch()
                     .map(record -> {
                         OrderDTO order = new OrderDTO();
@@ -187,6 +193,7 @@ public class ClientService {
                     .set(ORDER.DUTY, false)
                     .where(ORDER.CLIENTID.eq(clientId)
                             .and(ORDER.DUTY.eq(true)))
+                    .and(ORDER_CANCELLED_AT.isNull())
                     .execute();
 
             System.out.println("Обновлено заказов: " + updatedCount + ", сумма долгов: " + totalDutyAmount);
@@ -221,6 +228,7 @@ public class ClientService {
             // 1. Получаем заказ
             OrderDTO order = dsl.selectFrom(ORDER)
                     .where(ORDER.ORDERID.eq(orderId))
+                    .and(ORDER_CANCELLED_AT.isNull())
                     .fetchOptional()
                     .map(record -> {
                         OrderDTO dto = new OrderDTO();
@@ -242,6 +250,7 @@ public class ClientService {
             dsl.update(ORDER)
                     .set(ORDER.DUTY, false)
                     .where(ORDER.ORDERID.eq(orderId))
+                    .and(ORDER_CANCELLED_AT.isNull())
                     .execute();
 
             // 4. Возвращаем результат
@@ -277,6 +286,7 @@ public class ClientService {
             int updated = dsl.update(Order.ORDER)
                     .set(Order.ORDER.DEBT_PAYMENT_DATE, paymentDate)
                     .where(Order.ORDER.ORDERID.eq(orderId))
+                    .and(ORDER_CANCELLED_AT.isNull())
                     .execute();
 
             if (updated == 0) {
@@ -286,6 +296,7 @@ public class ClientService {
             // 2. Возвращаем обновленный заказ
             return dsl.selectFrom(Order.ORDER)
                     .where(Order.ORDER.ORDERID.eq(orderId))
+                    .and(ORDER_CANCELLED_AT.isNull())
                     .fetchOne(record -> {
                         OrderDTO dto = new OrderDTO();
                         dto.setOrderId(record.get(Order.ORDER.ORDERID));
@@ -318,6 +329,7 @@ public class ClientService {
             dsl.select(ORDER.ORDERID, ORDER.DEBT_PAYMENT_DATE)
                     .from(ORDER)
                     .where(ORDER.DEBT_PAYMENT_DATE.isNotNull())
+                    .and(ORDER_CANCELLED_AT.isNull())
                     .limit(5)
                     .fetch()
                     .forEach(record -> {
@@ -338,6 +350,7 @@ public class ClientService {
                     .where(ORDER.DUTY.eq(true)
                             .and(ORDER.DEBT_PAYMENT_DATE.eq(today)) // пробуем как LocalDate
                             .and(ORDER.STATUS.eq(true)))
+                    .and(ORDER_CANCELLED_AT.isNull())
                     .fetch(record -> {
                         OrderDTO dto = new OrderDTO();
                         dto.setOrderId(record.get(ORDER.ORDERID));
@@ -410,6 +423,7 @@ public class ClientService {
                         .where(ORDER.DUTY.eq(true)
                                 .and(condition("DATE({0}) = DATE(?)", ORDER.DEBT_PAYMENT_DATE, today))
                                 .and(ORDER.STATUS.eq(false)))
+                        .and(ORDER_CANCELLED_AT.isNull())
                         .getSQL();
                 System.out.println("SQL запрос: " + sql);
 
@@ -419,6 +433,7 @@ public class ClientService {
                         .where(ORDER.DUTY.eq(true)
                                 .and(condition("DATE({0}) = DATE(?)", ORDER.DEBT_PAYMENT_DATE, today))
                                 .and(ORDER.STATUS.eq(false)))
+                        .and(ORDER_CANCELLED_AT.isNull())
                         .fetch(record -> {
                             OrderDTO dto = new OrderDTO();
                             dto.setOrderId(record.get(ORDER.ORDERID));
@@ -471,6 +486,7 @@ public class ClientService {
                     .where(ORDER.DUTY.eq(true)
                             .and(ORDER.DEBT_PAYMENT_DATE.lt(today)) // как LocalDate
                             .and(ORDER.STATUS.eq(false)))
+                    .and(ORDER_CANCELLED_AT.isNull())
                     .fetch(record -> {
                         OrderDTO dto = new OrderDTO();
                         dto.setOrderId(record.get(ORDER.ORDERID));
@@ -502,6 +518,7 @@ public class ClientService {
                         .where(ORDER.DUTY.eq(true)
                                 .and(condition("DATE({0}) < DATE(?)", ORDER.DEBT_PAYMENT_DATE, today))
                                 .and(ORDER.STATUS.eq(false)))
+                        .and(ORDER_CANCELLED_AT.isNull())
                         .fetch(record -> {
                             OrderDTO dto = new OrderDTO();
                             dto.setOrderId(record.get(ORDER.ORDERID));

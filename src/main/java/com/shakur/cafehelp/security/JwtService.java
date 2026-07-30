@@ -19,7 +19,7 @@ public class JwtService {
     private final long jwtExpirationSeconds;
 
     public JwtService(
-            @Value("${security.jwt.secret:VGhpc0lzQUNhZmVoZWxwU2VjcmV0S2V5VGhhdE11c3RCZUxvbmdFbm91Z2hGb3JIQzI1Ng==}") String jwtSecret,
+            @Value("${security.jwt.secret}") String jwtSecret,
             @Value("${security.jwt.expiration-seconds:28800}") long jwtExpirationSeconds
     ) {
         this.jwtSecret = jwtSecret;
@@ -70,4 +70,3 @@ public class JwtService {
         return Keys.hmacShaKeyFor(keyBytes);
     }
 }
-

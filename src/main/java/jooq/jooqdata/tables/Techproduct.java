@@ -9,17 +9,21 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
 
+import jooqdata.Indexes;
 import jooqdata.Keys;
 import jooqdata.Sales;
 import jooqdata.tables.Dish.DishPath;
+import jooqdata.tables.Preparation.PreparationPath;
 import jooqdata.tables.Product.ProductPath;
 import jooqdata.tables.records.TechproductRecord;
 
+import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function5;
+import org.jooq.Function7;
 import org.jooq.Identity;
+import org.jooq.Index;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -27,7 +31,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row5;
+import org.jooq.Row7;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -38,6 +42,7 @@ import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
+import org.jooq.impl.Internal;
 import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 
@@ -66,12 +71,12 @@ public class Techproduct extends TableImpl<TechproductRecord> {
     /**
      * The column <code>sales.techproduct.DishId</code>.
      */
-    public final TableField<TechproductRecord, Integer> DISHID = createField(DSL.name("DishId"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<TechproductRecord, Integer> DISHID = createField(DSL.name("DishId"), SQLDataType.INTEGER, this, "");
 
     /**
      * The column <code>sales.techproduct.productid</code>.
      */
-    public final TableField<TechproductRecord, Integer> PRODUCTID = createField(DSL.name("productid"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<TechproductRecord, Integer> PRODUCTID = createField(DSL.name("productid"), SQLDataType.INTEGER, this, "");
 
     /**
      * The column <code>sales.techproduct.waste</code>.
@@ -87,6 +92,16 @@ public class Techproduct extends TableImpl<TechproductRecord> {
      * The column <code>sales.techproduct.techproductid</code>.
      */
     public final TableField<TechproductRecord, Integer> TECHPRODUCTID = createField(DSL.name("techproductid"), SQLDataType.INTEGER.nullable(false).identity(true), this, "");
+
+    /**
+     * The column <code>sales.techproduct.preparation_id</code>.
+     */
+    public final TableField<TechproductRecord, Integer> PREPARATION_ID = createField(DSL.name("preparation_id"), SQLDataType.INTEGER, this, "");
+
+    /**
+     * The column <code>sales.techproduct.ingredient_preparation_id</code>.
+     */
+    public final TableField<TechproductRecord, Integer> INGREDIENT_PREPARATION_ID = createField(DSL.name("ingredient_preparation_id"), SQLDataType.INTEGER, this, "");
 
     private Techproduct(Name alias, Table<TechproductRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -156,6 +171,11 @@ public class Techproduct extends TableImpl<TechproductRecord> {
     }
 
     @Override
+    public List<Index> getIndexes() {
+        return Arrays.asList(Indexes.TECHPRODUCT_PREPARATION_INGREDIENT_IDX, Indexes.TECHPRODUCT_PREPARATION_OWNER_IDX);
+    }
+
+    @Override
     public Identity<TechproductRecord, Integer> getIdentity() {
         return (Identity<TechproductRecord, Integer>) super.getIdentity();
     }
@@ -167,7 +187,7 @@ public class Techproduct extends TableImpl<TechproductRecord> {
 
     @Override
     public List<ForeignKey<TechproductRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.TECHPRODUCT__TECHPRODUCT_DISH_FK, Keys.TECHPRODUCT__TECHPRODUCT_PRODUCT_FK);
+        return Arrays.asList(Keys.TECHPRODUCT__TECHPRODUCT_DISH_FK, Keys.TECHPRODUCT__TECHPRODUCT_PRODUCT_FK, Keys.TECHPRODUCT__TECHPRODUCT_PREPARATION_OWNER_FK, Keys.TECHPRODUCT__TECHPRODUCT_INGREDIENT_PREPARATION_FK);
     }
 
     private transient DishPath _dish;
@@ -192,6 +212,40 @@ public class Techproduct extends TableImpl<TechproductRecord> {
             _product = new ProductPath(this, Keys.TECHPRODUCT__TECHPRODUCT_PRODUCT_FK, null);
 
         return _product;
+    }
+
+    private transient PreparationPath _techproductPreparationOwnerFk;
+
+    /**
+     * Get the implicit join path to the <code>sales.preparation</code> table,
+     * via the <code>techproduct_preparation_owner_fk</code> key.
+     */
+    public PreparationPath techproductPreparationOwnerFk() {
+        if (_techproductPreparationOwnerFk == null)
+            _techproductPreparationOwnerFk = new PreparationPath(this, Keys.TECHPRODUCT__TECHPRODUCT_PREPARATION_OWNER_FK, null);
+
+        return _techproductPreparationOwnerFk;
+    }
+
+    private transient PreparationPath _techproductIngredientPreparationFk;
+
+    /**
+     * Get the implicit join path to the <code>sales.preparation</code> table,
+     * via the <code>techproduct_ingredient_preparation_fk</code> key.
+     */
+    public PreparationPath techproductIngredientPreparationFk() {
+        if (_techproductIngredientPreparationFk == null)
+            _techproductIngredientPreparationFk = new PreparationPath(this, Keys.TECHPRODUCT__TECHPRODUCT_INGREDIENT_PREPARATION_FK, null);
+
+        return _techproductIngredientPreparationFk;
+    }
+
+    @Override
+    public List<Check<TechproductRecord>> getChecks() {
+        return Arrays.asList(
+            Internal.createCheck(this, DSL.name("techproduct_ingredient_chk"), "(((\nCASE\n    WHEN (productid IS NOT NULL) THEN 1\n    ELSE 0\nEND +\nCASE\n    WHEN (ingredient_preparation_id IS NOT NULL) THEN 1\n    ELSE 0\nEND) = 1))", true),
+            Internal.createCheck(this, DSL.name("techproduct_owner_chk"), "(((\nCASE\n    WHEN (\"DishId\" IS NOT NULL) THEN 1\n    ELSE 0\nEND +\nCASE\n    WHEN (preparation_id IS NOT NULL) THEN 1\n    ELSE 0\nEND) = 1))", true)
+        );
     }
 
     @Override
@@ -318,18 +372,18 @@ public class Techproduct extends TableImpl<TechproductRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row5 type methods
+    // Row7 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row5<Integer, Integer, Double, Double, Integer> fieldsRow() {
-        return (Row5) super.fieldsRow();
+    public Row7<Integer, Integer, Double, Double, Integer, Integer, Integer> fieldsRow() {
+        return (Row7) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function5<? super Integer, ? super Integer, ? super Double, ? super Double, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function7<? super Integer, ? super Integer, ? super Double, ? super Double, ? super Integer, ? super Integer, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -337,7 +391,7 @@ public class Techproduct extends TableImpl<TechproductRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function5<? super Integer, ? super Integer, ? super Double, ? super Double, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function7<? super Integer, ? super Integer, ? super Double, ? super Double, ? super Integer, ? super Integer, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

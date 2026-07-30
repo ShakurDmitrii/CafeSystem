@@ -18,7 +18,17 @@ alter table sales.product
     alter column base_unit set not null,
     alter column unit_factor set not null;
 
-alter table sales.product
-    add constraint if not exists product_unit_factor_positive_chk
-        check (unit_factor > 0);
-
+do $$
+begin
+    if not exists (
+        select 1
+        from information_schema.table_constraints
+        where constraint_schema = 'sales'
+          and table_name = 'product'
+          and constraint_name = 'product_unit_factor_positive_chk'
+    ) then
+        alter table sales.product
+            add constraint product_unit_factor_positive_chk
+            check (unit_factor > 0);
+    end if;
+end $$;

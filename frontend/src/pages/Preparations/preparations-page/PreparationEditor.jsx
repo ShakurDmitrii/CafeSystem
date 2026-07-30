@@ -71,6 +71,7 @@ export default function PreparationEditor({
                         min="0.01"
                         step="0.01"
                         value={form.outputWeight}
+                        onWheel={(event) => event.currentTarget.blur()}
                         onChange={(event) => onChange("outputWeight", event.target.value)}
                         placeholder="Например, 500…"
                         className={styles.input}

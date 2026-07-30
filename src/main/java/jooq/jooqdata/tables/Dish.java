@@ -9,8 +9,11 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
 
+import jooqdata.Indexes;
 import jooqdata.Keys;
 import jooqdata.Sales;
+import jooqdata.tables.DishCategory.DishCategoryPath;
+import jooqdata.tables.DishSetItem.DishSetItemPath;
 import jooqdata.tables.Orderdish.OrderdishPath;
 import jooqdata.tables.Techproduct.TechproductPath;
 import jooqdata.tables.records.DishRecord;
@@ -18,8 +21,9 @@ import jooqdata.tables.records.DishRecord;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function7;
+import org.jooq.Function9;
 import org.jooq.Identity;
+import org.jooq.Index;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
 import org.jooq.Path;
@@ -27,7 +31,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row7;
+import org.jooq.Row9;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -98,6 +102,16 @@ public class Dish extends TableImpl<DishRecord> {
      */
     public final TableField<DishRecord, String> CATEGORY = createField(DSL.name("category"), SQLDataType.VARCHAR, this, "");
 
+    /**
+     * The column <code>sales.dish.image_url</code>.
+     */
+    public final TableField<DishRecord, String> IMAGE_URL = createField(DSL.name("image_url"), SQLDataType.VARCHAR(1024), this, "");
+
+    /**
+     * The column <code>sales.dish.category_id</code>.
+     */
+    public final TableField<DishRecord, Integer> CATEGORY_ID = createField(DSL.name("category_id"), SQLDataType.INTEGER, this, "");
+
     private Dish(Name alias, Table<DishRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -166,6 +180,11 @@ public class Dish extends TableImpl<DishRecord> {
     }
 
     @Override
+    public List<Index> getIndexes() {
+        return Arrays.asList(Indexes.DISH_CATEGORY_ID_IDX);
+    }
+
+    @Override
     public Identity<DishRecord, Integer> getIdentity() {
         return (Identity<DishRecord, Integer>) super.getIdentity();
     }
@@ -178,6 +197,36 @@ public class Dish extends TableImpl<DishRecord> {
     @Override
     public List<UniqueKey<DishRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.DISH_UNIQUE);
+    }
+
+    @Override
+    public List<ForeignKey<DishRecord, ?>> getReferences() {
+        return Arrays.asList(Keys.DISH__DISH_CATEGORY_FK);
+    }
+
+    private transient DishCategoryPath _dishCategory;
+
+    /**
+     * Get the implicit join path to the <code>sales.dish_category</code> table.
+     */
+    public DishCategoryPath dishCategory() {
+        if (_dishCategory == null)
+            _dishCategory = new DishCategoryPath(this, Keys.DISH__DISH_CATEGORY_FK, null);
+
+        return _dishCategory;
+    }
+
+    private transient DishSetItemPath _dishSetItem;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>sales.dish_set_item</code> table
+     */
+    public DishSetItemPath dishSetItem() {
+        if (_dishSetItem == null)
+            _dishSetItem = new DishSetItemPath(this, null, Keys.DISH_SET_ITEM__DISH_SET_ITEM_DISH_FK.getInverseKey());
+
+        return _dishSetItem;
     }
 
     private transient OrderdishPath _orderdish;
@@ -330,18 +379,18 @@ public class Dish extends TableImpl<DishRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row7 type methods
+    // Row9 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row7<String, Double, Double, Double, Integer, Integer, String> fieldsRow() {
-        return (Row7) super.fieldsRow();
+    public Row9<String, Double, Double, Double, Integer, Integer, String, String, Integer> fieldsRow() {
+        return (Row9) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function7<? super String, ? super Double, ? super Double, ? super Double, ? super Integer, ? super Integer, ? super String, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function9<? super String, ? super Double, ? super Double, ? super Double, ? super Integer, ? super Integer, ? super String, ? super String, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -349,7 +398,7 @@ public class Dish extends TableImpl<DishRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function7<? super String, ? super Double, ? super Double, ? super Double, ? super Integer, ? super Integer, ? super String, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function9<? super String, ? super Double, ? super Double, ? super Double, ? super Integer, ? super Integer, ? super String, ? super String, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

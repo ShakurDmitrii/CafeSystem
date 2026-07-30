@@ -151,11 +151,21 @@ public class WareHouseService {
     @Transactional
     public void addProductsToWarehouse(int warehouseId, List<ProductWarehouseDTO> products) {
         if (products == null || products.isEmpty()) return;
+        if (!lockWarehouses(warehouseId)) {
+            throw new IllegalArgumentException("Склад не найден: " + warehouseId);
+        }
         Field<BigDecimal> PRODUCT_UNIT_FACTOR = DSL.field(DSL.name("unit_factor"), BigDecimal.class);
         var PRODUCT = DSL.table(DSL.name("sales", "product"));
         var PRODUCT_ID = DSL.field(DSL.name("productid"), Integer.class);
 
         for (ProductWarehouseDTO pw : products) {
+            if (pw == null || pw.getProductId() <= 0) {
+                throw new IllegalArgumentException("Не указан продукт для склада");
+            }
+            Double displayQuantity = pw.getQuantity();
+            if (displayQuantity == null || !Double.isFinite(displayQuantity) || displayQuantity < 0) {
+                throw new IllegalArgumentException("Количество продукта должно быть конечным неотрицательным числом");
+            }
             BigDecimal factor;
             try {
                 factor = dsl.select(PRODUCT_UNIT_FACTOR)
@@ -166,7 +176,10 @@ public class WareHouseService {
                 factor = BigDecimal.ONE;
             }
             if (factor == null || factor.compareTo(BigDecimal.ZERO) <= 0) factor = BigDecimal.ONE;
-            double qtyBase = (pw.getQuantity() != null ? pw.getQuantity() : 0.0) * factor.doubleValue();
+            double qtyBase = displayQuantity * factor.doubleValue();
+            if (!Double.isFinite(qtyBase) || qtyBase < 0) {
+                throw new IllegalArgumentException("Количество продукта после пересчёта некорректно");
+            }
 
             ProductwarehouseRecord record = dsl.newRecord(Productwarehouse.PRODUCTWAREHOUSE);
             record.setWarehouseid(warehouseId);
@@ -222,10 +235,14 @@ public class WareHouseService {
     /** Изменить количество продукта на складе (положительный delta — добавить, отрицательный — списать) */
     @Transactional
     public boolean adjustQuantity(int warehouseId, int productId, double delta) {
+        if (!Double.isFinite(delta) || !lockWarehouses(warehouseId)) {
+            return false;
+        }
         List<ProductwarehouseRecord> records = dsl.selectFrom(Productwarehouse.PRODUCTWAREHOUSE)
                 .where(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID.eq(warehouseId))
                 .and(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID.eq(productId))
                 .orderBy(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTWAREHOUSEID.asc())
+                .forUpdate()
                 .fetch();
 
         if (records.isEmpty()) return false;
@@ -243,9 +260,7 @@ public class WareHouseService {
                 .map(r -> r.getQuantity() != null ? r.getQuantity() : 0.0)
                 .reduce(0.0, Double::sum);
 
-        if (available <= 0) return true;
-
-        if (needToSubtract > available) needToSubtract = available;
+        if (needToSubtract > available + 1e-6) return false;
 
         for (ProductwarehouseRecord record : records) {
             if (needToSubtract <= 0) break;
@@ -271,13 +286,102 @@ public class WareHouseService {
         return sum != null ? sum : 0.0;
     }
 
+    /**
+     * Списывает доступную часть требуемого количества, не уводя остаток в минус.
+     * Нехватка является бизнес-событием для инвентаризационного отчёта, а не
+     * ошибкой, блокирующей продажу.
+     *
+     * @return фактически списанное количество
+     */
+    @Transactional
+    public double consumeAvailableQuantity(int warehouseId, int productId, double requestedQuantity) {
+        if (!Double.isFinite(requestedQuantity) || requestedQuantity <= 0) {
+            return 0.0;
+        }
+        if (!lockWarehouses(warehouseId)) {
+            return 0.0;
+        }
+
+        List<ProductwarehouseRecord> records = dsl.selectFrom(Productwarehouse.PRODUCTWAREHOUSE)
+                .where(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID.eq(warehouseId))
+                .and(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID.eq(productId))
+                .orderBy(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTWAREHOUSEID.asc())
+                .forUpdate()
+                .fetch();
+
+        double remaining = requestedQuantity;
+        double consumed = 0.0;
+        for (ProductwarehouseRecord record : records) {
+            if (remaining <= 0) {
+                break;
+            }
+            double current = record.getQuantity() != null ? Math.max(0.0, record.getQuantity()) : 0.0;
+            if (current <= 0) {
+                continue;
+            }
+
+            double take = Math.min(current, remaining);
+            record.setQuantity(current - take);
+            record.store();
+            remaining -= take;
+            consumed += take;
+        }
+        return consumed;
+    }
+
+    @Transactional
+    public void setProductQuantity(int warehouseId, int productId, double quantity) {
+        if (!Double.isFinite(quantity)) {
+            throw new IllegalArgumentException("Количество должно быть конечным числом");
+        }
+        if (!lockWarehouses(warehouseId)) {
+            throw new IllegalArgumentException("Склад не найден: " + warehouseId);
+        }
+        double normalizedQuantity = Math.max(0.0, quantity);
+        List<ProductwarehouseRecord> records = dsl.selectFrom(Productwarehouse.PRODUCTWAREHOUSE)
+                .where(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID.eq(warehouseId))
+                .and(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID.eq(productId))
+                .orderBy(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTWAREHOUSEID.asc())
+                .forUpdate()
+                .fetch();
+
+        if (records.isEmpty()) {
+            if (normalizedQuantity <= 0) {
+                return;
+            }
+            ProductwarehouseRecord record = dsl.newRecord(Productwarehouse.PRODUCTWAREHOUSE);
+            record.setWarehouseid(warehouseId);
+            record.setProductid(productId);
+            record.setQuantity(normalizedQuantity);
+            record.store();
+            return;
+        }
+
+        ProductwarehouseRecord first = records.get(0);
+        first.setQuantity(normalizedQuantity);
+        first.store();
+
+        for (int i = 1; i < records.size(); i++) {
+            ProductwarehouseRecord record = records.get(i);
+            if ((record.getQuantity() != null ? record.getQuantity() : 0.0) == 0.0) {
+                continue;
+            }
+            record.setQuantity(0.0);
+            record.store();
+        }
+    }
+
     @Transactional
     public boolean adjustPreparationQuantity(int warehouseId, int preparationId, double delta) {
+        if (!Double.isFinite(delta) || !lockWarehouses(warehouseId)) {
+            return false;
+        }
         var records = dsl.select(PW_ID, PW_WAREHOUSE_ID, PW_PREPARATION_ID, PW_QUANTITY)
                 .from(PREPARATION_WAREHOUSE)
                 .where(PW_WAREHOUSE_ID.eq(warehouseId))
                 .and(PW_PREPARATION_ID.eq(preparationId))
                 .orderBy(PW_ID.asc())
+                .forUpdate()
                 .fetch();
 
         if (records.isEmpty()) {
@@ -329,15 +433,62 @@ public class WareHouseService {
         return sum != null ? sum : 0.0;
     }
 
+    /**
+     * Списывает доступную часть заготовки. Если заготовки меньше требуемого,
+     * остаток становится нулевым, а продажа продолжается.
+     *
+     * @return фактически списанное количество
+     */
+    @Transactional
+    public double consumeAvailablePreparationQuantity(int warehouseId, int preparationId, double requestedQuantity) {
+        if (!Double.isFinite(requestedQuantity) || requestedQuantity <= 0) {
+            return 0.0;
+        }
+        if (!lockWarehouses(warehouseId)) {
+            return 0.0;
+        }
+
+        var records = dsl.select(PW_ID, PW_QUANTITY)
+                .from(PREPARATION_WAREHOUSE)
+                .where(PW_WAREHOUSE_ID.eq(warehouseId))
+                .and(PW_PREPARATION_ID.eq(preparationId))
+                .orderBy(PW_ID.asc())
+                .forUpdate()
+                .fetch();
+
+        double remaining = requestedQuantity;
+        double consumed = 0.0;
+        for (var record : records) {
+            if (remaining <= 0) {
+                break;
+            }
+            double current = record.get(PW_QUANTITY) != null ? Math.max(0.0, record.get(PW_QUANTITY)) : 0.0;
+            if (current <= 0) {
+                continue;
+            }
+
+            double take = Math.min(current, remaining);
+            dsl.update(PREPARATION_WAREHOUSE)
+                    .set(PW_QUANTITY, current - take)
+                    .where(PW_ID.eq(record.get(PW_ID)))
+                    .execute();
+            remaining -= take;
+            consumed += take;
+        }
+        return consumed;
+    }
+
     /** Перемещение количества товара между складами */
     @Transactional
     public boolean moveProduct(int fromWarehouseId, int toWarehouseId, int productId, double quantity) {
-        if (quantity <= 0 || fromWarehouseId == toWarehouseId) return false;
+        if (!Double.isFinite(quantity) || quantity <= 0 || fromWarehouseId == toWarehouseId) return false;
+        if (!lockWarehouses(fromWarehouseId, toWarehouseId)) return false;
 
         List<ProductwarehouseRecord> fromRecords = dsl.selectFrom(Productwarehouse.PRODUCTWAREHOUSE)
                 .where(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID.eq(fromWarehouseId))
                 .and(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID.eq(productId))
                 .orderBy(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTWAREHOUSEID.asc())
+                .forUpdate()
                 .fetch();
 
         if (fromRecords.isEmpty()) return false;
@@ -370,6 +521,7 @@ public class WareHouseService {
                 .and(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID.eq(productId))
                 .orderBy(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTWAREHOUSEID.asc())
                 .limit(1)
+                .forUpdate()
                 .fetchOne();
 
         if (toRecord == null) {
@@ -384,6 +536,25 @@ public class WareHouseService {
         toRecord.store();
 
         return true;
+    }
+
+    private boolean lockWarehouses(int... warehouseIds) {
+        List<Integer> ids = java.util.Arrays.stream(warehouseIds)
+                .boxed()
+                .distinct()
+                .sorted()
+                .toList();
+        if (ids.isEmpty()) {
+            return false;
+        }
+
+        List<Integer> lockedIds = dsl.select(WAREHOUSE.WAREHOUSEID)
+                .from(WAREHOUSE)
+                .where(WAREHOUSE.WAREHOUSEID.in(ids))
+                .orderBy(WAREHOUSE.WAREHOUSEID.asc())
+                .forUpdate()
+                .fetch(WAREHOUSE.WAREHOUSEID);
+        return lockedIds.size() == ids.size();
     }
 
 }

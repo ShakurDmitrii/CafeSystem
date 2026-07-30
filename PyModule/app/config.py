@@ -1,14 +1,17 @@
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    APP_NAME: str = "Printer Service"
-    DEFAULT_PRINTER: str = "windows"  # windows | escpos
-    PRINTER_NAME: str | None = None
-    WINDOWS_PRINT_MODE: str = "auto"  # auto | com | startfile
-    ESCPOS_CONNECTION: str = "usb"  # usb | windows
-    ESCPOS_USB_VENDOR_ID: str | None = None  # e.g. 0x0483
-    ESCPOS_USB_PRODUCT_ID: str | None = None  # e.g. 0x070b
-    ESCPOS_USB_TIMEOUT_MS: int = 3000
+    APP_NAME: str = "CafeHelp Analytics Service"
+    JAVA_API_URL: str = "http://localhost:8080"
+    INTERNAL_SERVICE_TOKEN: SecretStr
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("INTERNAL_SERVICE_TOKEN")
+    @classmethod
+    def validate_internal_service_token(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value()) < 24:
+            raise ValueError("INTERNAL_SERVICE_TOKEN должен содержать не менее 24 символов")
+        return value
 
 settings = Settings()

@@ -2,11 +2,15 @@ package com.shakur.cafehelp.Service;
 
 import com.shakur.cafehelp.DTO.OrderDTO;
 import com.shakur.cafehelp.DTO.OrderDishDTO;
+import com.shakur.cafehelp.DTO.OrderEditRequestDTO;
+import com.shakur.cafehelp.exception.InvalidOrderRequestException;
+import com.shakur.cafehelp.exception.OrderNotFoundException;
+import com.shakur.cafehelp.exception.OrderStateConflictException;
 import jooqdata.tables.Order;
 import jooqdata.tables.Orderdish;
 import jooqdata.tables.Dish;
+import jooqdata.tables.Shift;
 import jooqdata.tables.records.OrderRecord;
-import jooqdata.tables.records.OrderdishRecord;
 import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.DSLContext;
@@ -14,6 +18,8 @@ import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -30,7 +36,12 @@ public class OrderService {
     private static final Field<String> DELIVERY_ADDRESS_FIELD = DSL.field(DSL.name("delivery_address"), String.class);
     private static final Field<String> PAYMENT_TYPE_FIELD = DSL.field(DSL.name("payment_type"), String.class);
     private static final Field<Boolean> IS_PAID_FIELD = DSL.field(DSL.name("is_paid"), Boolean.class);
+    private static final Field<LocalDateTime> CANCELLED_AT_FIELD = DSL.field(DSL.name("cancelled_at"), LocalDateTime.class);
+    private static final Field<String> CANCEL_REASON_FIELD = DSL.field(DSL.name("cancel_reason"), String.class);
+    private static final Field<Integer> VERSION_FIELD = DSL.field(DSL.name("version"), Integer.class);
     private static final Field<Integer> ORDERDISH_SET_ID = DSL.field(DSL.name("set_id"), Integer.class);
+    private static final Field<Double> ORDERDISH_UNIT_PRICE = DSL.field(DSL.name("unit_price"), Double.class);
+    private static final Field<Double> ORDERDISH_UNIT_COST = DSL.field(DSL.name("unit_cost"), Double.class);
     private static final org.jooq.Table<?> DISH_SET = DSL.table(DSL.name("sales", "dish_set"));
     private static final org.jooq.Table<?> DISH_SET_ITEM = DSL.table(DSL.name("sales", "dish_set_item"));
     private static final Field<Integer> DISH_SET_ID = DSL.field(DSL.name("sales", "dish_set", "setid"), Integer.class);
@@ -44,12 +55,6 @@ public class OrderService {
     private final DSLContext dsl;
     private final WareHouseService wareHouseService;
     private final RecipeRequirementService recipeRequirementService;
-    private static final org.jooq.Table<?> PRODUCT = DSL.table(DSL.name("sales", "product"));
-    private static final Field<Integer> PRODUCT_ID = DSL.field(DSL.name("productid"), Integer.class);
-    private static final Field<java.math.BigDecimal> PRODUCT_UNIT_FACTOR = DSL.field(DSL.name("unit_factor"), java.math.BigDecimal.class);
-    private static final Field<String> PRODUCT_NAME = DSL.field(DSL.name("productname"), String.class);
-    private static final Field<String> PRODUCT_BASE_UNIT = DSL.field(DSL.name("base_unit"), String.class);
-    private volatile Boolean baseUnitPresent = null;
 
     public OrderService(DSLContext dsl, WareHouseService wareHouseService, RecipeRequirementService recipeRequirementService) {
         this.dsl = dsl;
@@ -57,6 +62,7 @@ public class OrderService {
         this.recipeRequirementService = recipeRequirementService;
     }
 
+    @Transactional
     public OrderDTO createOrder(OrderDTO orderDTO) {
         LocalDateTime now = LocalDateTime.now();
         try {
@@ -64,8 +70,24 @@ public class OrderService {
             if (orderDTO.getShiftId() == 0) {
                 throw new IllegalArgumentException("Shift ID is required");
             }
+            lockOpenShift(orderDTO.getShiftId());
 
-            // Создаем запись заказа
+            List<ValidatedOrderItem> items = validateOrderItems(orderDTO.getItems());
+            boolean delivery = Boolean.TRUE.equals(orderDTO.getType());
+            double itemsTotal = items.stream()
+                    .map(ValidatedOrderItem::lineTotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .setScale(2, RoundingMode.HALF_UP)
+                    .doubleValue();
+            double requestedTotal = orderDTO.getAmount() != null
+                    ? normalizeNonNegative(orderDTO.getAmount(), "Сумма заказа")
+                    : itemsTotal;
+            double deliveryCost = delivery ? Math.max(0.0, requestedTotal - itemsTotal) : 0.0;
+            double serverTotal = BigDecimal.valueOf(itemsTotal)
+                    .add(BigDecimal.valueOf(deliveryCost))
+                    .setScale(2, RoundingMode.HALF_UP)
+                    .doubleValue();
+
             String normalizedPaymentType = normalizePaymentType(orderDTO.getPaymentType());
             boolean paid = orderDTO.getPaid() != null ? orderDTO.getPaid() : false;
             String storedPaymentType = paid ? normalizedPaymentType : "unpaid";
@@ -79,9 +101,9 @@ public class OrderService {
                     .set(ORDER.SHIFTID, orderDTO.getShiftId())
                     .set(ORDER.DATE, orderDTO.getDate() != null ? orderDTO.getDate() : LocalDate.now())
                     .set(ORDER.CREATED_AT, now)
-                    .set(ORDER.AMOUNT, orderDTO.getAmount() != null ? orderDTO.getAmount() : 0.0)
+                    .set(ORDER.AMOUNT, serverTotal)
                     .set(ORDER.STATUS, orderDTO.getStatus() != null ? orderDTO.getStatus() : false)
-                    .set(ORDER.TYPE, orderDTO.getType() != null ? orderDTO.getType() : false)
+                    .set(ORDER.TYPE, delivery)
                     .set(ORDER.TIME, orderDTO.getTime() != null ? orderDTO.getTime() : 30.0) // время по умолчанию 30 мин
                     .set(ORDER.TIMEDELAY, orderDTO.getTimeDelay()) // может быть null
                     .set(ORDER.DUTY, orderDTO.getDuty())
@@ -100,33 +122,24 @@ public class OrderService {
             Integer orderId = result.get(ORDER.ORDERID);
             System.out.println("Created order with ID: " + orderId);
 
-            if (orderDTO.getItems() != null) {
-                for (var item : orderDTO.getItems()) {
-                    if (item == null) continue;
-                    int qty = item.getQty();
-                    Integer dishId = item.getDishID();
-                    Integer setId = item.getSetId();
-                    if (qty <= 0) continue;
-                    if ((dishId == null || dishId <= 0) && (setId == null || setId <= 0)) continue;
-
+            if (!items.isEmpty()) {
+                for (ValidatedOrderItem item : items) {
                     var insert = dsl.insertInto(ORDERDISH)
                             .set(ORDERDISH.ORDERID, orderId)
-                            .set(ORDERDISH.QTY, qty);
+                            .set(ORDERDISH.QTY, item.qty())
+                            .set(ORDERDISH_UNIT_PRICE, item.unitPrice())
+                            .set(ORDERDISH_UNIT_COST, item.unitCost());
 
-                    if (dishId != null && dishId > 0) {
-                        insert.set(ORDERDISH.DISHID, dishId);
+                    if (item.dishId() != null) {
+                        insert.set(ORDERDISH.DISHID, item.dishId());
                     } else {
-                        insert.set(ORDERDISH_SET_ID, setId);
+                        insert.set(ORDERDISH_SET_ID, item.setId());
                     }
 
                     insert.execute();
                 }
                 if (paid) {
-                    try {
-                        applyWarehouseWriteoffForOrder(orderId);
-                    } catch (RuntimeException e) {
-                        System.err.println("Warehouse writeoff failed for order " + orderId + ": " + e.getMessage());
-                    }
+                    applyWarehouseWriteoffForOrder(orderId);
                 }
             }
 
@@ -136,6 +149,8 @@ public class OrderService {
 
             return createdOrder;
 
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             System.err.println("Error creating order: " + e.getMessage());
             e.printStackTrace();
@@ -144,14 +159,8 @@ public class OrderService {
     }
     @Transactional
     public Boolean updateOrderStatus(int orderId, Boolean status) {
-        var record = dsl.selectFrom(ORDER)
-                .where(ORDER.ORDERID.eq(orderId))
-                .fetchOne();
-
-        if (record == null) {
-            throw new RuntimeException("Заказ с id " + orderId + " не найден");
-        }
-
+        OrderRecord record = lockOrderForMutation(orderId);
+        ensureOrderActive(orderId);
         record.setStatus(status); // обновляем статус
         record.store();           // сохраняем
 
@@ -160,7 +169,15 @@ public class OrderService {
 
     public OrderDTO getOrderById(int id) {
         return dsl.select(ORDER.fields())
-                .select(DELIVERY_PHONE_FIELD, DELIVERY_ADDRESS_FIELD, PAYMENT_TYPE_FIELD, IS_PAID_FIELD)
+                .select(
+                        DELIVERY_PHONE_FIELD,
+                        DELIVERY_ADDRESS_FIELD,
+                        PAYMENT_TYPE_FIELD,
+                        IS_PAID_FIELD,
+                        CANCELLED_AT_FIELD,
+                        CANCEL_REASON_FIELD,
+                        VERSION_FIELD
+                )
                 .from(ORDER)
                 .where(ORDER.ORDERID.eq(id))
                 .fetchOne(record -> {
@@ -180,6 +197,9 @@ public class OrderService {
                     order.deliveryAddress = record.get(DELIVERY_ADDRESS_FIELD);
                     order.paymentType = record.get(PAYMENT_TYPE_FIELD);
                     order.paid = record.get(IS_PAID_FIELD);
+                    order.cancelledAt = record.get(CANCELLED_AT_FIELD);
+                    order.cancelReason = record.get(CANCEL_REASON_FIELD);
+                    order.version = record.get(VERSION_FIELD);
                     order.items = buildOrderDishDtos(record.get(ORDER.ORDERID));
                     return order;
                 });
@@ -191,6 +211,7 @@ public class OrderService {
                 .select(PAYMENT_TYPE_FIELD, IS_PAID_FIELD)
                 .from(ORDER)
                 .where(ORDER.CLIENTID.eq(clientId))
+                .and(CANCELLED_AT_FIELD.isNull())
                 .fetch(record -> {
                     OrderDTO order = new OrderDTO();
                     order.setClientId(record.get(ORDER.CLIENTID));
@@ -212,6 +233,7 @@ public class OrderService {
     public List<OrderDTO> getOrdersByDate(LocalDate date) {
         return dsl.selectFrom(ORDER)
                 .where(ORDER.DATE.eq(date))
+                .and(CANCELLED_AT_FIELD.isNull())
                 .fetch(record -> {
                     OrderDTO order = new OrderDTO();
                     order.setClientId(record.get(ORDER.CLIENTID));
@@ -233,6 +255,7 @@ public class OrderService {
         return dsl.selectFrom(ORDER)
                 .where(ORDER.CLIENTID.eq(id)
                         .and(ORDER.DATE.eq(date)))
+                .and(CANCELLED_AT_FIELD.isNull())
                 .fetch(record -> {
                     OrderDTO order = new OrderDTO();
                     order.setClientId(record.get(ORDER.CLIENTID));
@@ -252,6 +275,7 @@ public class OrderService {
     public List<OrderDTO> getOrdersByStatus(Boolean status) {
         return dsl.selectFrom(ORDER)
                 .where(ORDER.STATUS.eq(status))
+                .and(CANCELLED_AT_FIELD.isNull())
                 .fetch(record -> {
                     OrderDTO order = new OrderDTO();
                     order.setClientId(record.get(ORDER.CLIENTID));
@@ -270,6 +294,7 @@ public class OrderService {
     public List<OrderDTO> getOrdersByShift(int id) {
         return dsl.selectFrom(ORDER)
                 .where(ORDER.SHIFTID.eq(id))
+                .and(CANCELLED_AT_FIELD.isNull())
                 .fetch(record -> {
                     OrderDTO order = new OrderDTO();
                     order.setClientId(record.get(ORDER.CLIENTID));
@@ -289,6 +314,7 @@ public List<OrderDTO> getOrders() {
         return dsl.select(ORDER.fields())
                 .select(DELIVERY_PHONE_FIELD, DELIVERY_ADDRESS_FIELD, PAYMENT_TYPE_FIELD, IS_PAID_FIELD)
                 .from(ORDER)
+                .where(CANCELLED_AT_FIELD.isNull())
                 .fetch()
                 .stream()
                 .map(record ->{
@@ -326,7 +352,10 @@ public List<OrderDTO> getOrders() {
         order.setDate_issue(record.get(ORDER.DATE_ISSUE));
         return order;
     }
+    @Transactional
     public OrderDTO addTimeDelay(int orderId, Double delayMinutes) {
+        lockOrderForMutation(orderId);
+        ensureOrderActive(orderId);
         // Обновляем время задержки
         dsl.update(ORDER)
                 .set(ORDER.TIMEDELAY, delayMinutes)
@@ -342,7 +371,106 @@ public List<OrderDTO> getOrders() {
     }
 
     @Transactional
+    public OrderDTO replaceEditableOrder(int orderId, OrderEditRequestDTO request) {
+        if (request == null) {
+            throw new InvalidOrderRequestException("Не переданы данные заказа");
+        }
+
+        OrderRecord order = lockOrderForMutation(orderId);
+        ensureEditableOrder(order, request.getExpectedVersion());
+        List<ValidatedOrderItem> items = validateOrderItems(request.getItems());
+
+        boolean delivery = request.getType() != null ? request.getType() : Boolean.TRUE.equals(order.getType());
+        double deliveryCost = request.getDeliveryCost() != null
+                ? normalizeNonNegative(request.getDeliveryCost(), "Стоимость доставки")
+                : currentDeliveryCost(orderId, order);
+        double itemsTotal = items.stream()
+                .map(ValidatedOrderItem::lineTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP)
+                .doubleValue();
+        double total = BigDecimal.valueOf(itemsTotal)
+                .add(BigDecimal.valueOf(delivery ? deliveryCost : 0.0))
+                .setScale(2, RoundingMode.HALF_UP)
+                .doubleValue();
+
+        Integer clientId = request.getClientId() != null ? request.getClientId() : order.getClientid();
+        if (clientId != null && clientId == 0) {
+            clientId = null;
+        }
+        double preparationTime = request.getTime() != null ? request.getTime() : safeDouble(order.getTime(), 30.0);
+        double delay = request.getTimeDelay() != null ? request.getTimeDelay() : safeDouble(order.getTimedelay(), 0.0);
+        if (!Double.isFinite(preparationTime) || preparationTime < 0) {
+            throw new InvalidOrderRequestException("Время приготовления должно быть неотрицательным числом");
+        }
+        if (!Double.isFinite(delay) || delay < 0) {
+            throw new InvalidOrderRequestException("Задержка должна быть неотрицательным числом");
+        }
+
+        int currentVersion = currentOrderVersion(orderId);
+        dsl.update(ORDER)
+                .set(ORDER.CLIENTID, clientId)
+                .set(ORDER.TYPE, delivery)
+                .set(ORDER.TIME, preparationTime)
+                .set(ORDER.TIMEDELAY, delay)
+                .set(ORDER.AMOUNT, total)
+                .set(DELIVERY_PHONE_FIELD, trimToNull(request.getDeliveryPhone()))
+                .set(DELIVERY_ADDRESS_FIELD, trimToNull(request.getDeliveryAddress()))
+                .set(VERSION_FIELD, currentVersion + 1)
+                .where(ORDER.ORDERID.eq(orderId))
+                .execute();
+
+        dsl.deleteFrom(ORDERDISH)
+                .where(ORDERDISH.ORDERID.eq(orderId))
+                .execute();
+        for (ValidatedOrderItem item : items) {
+            var insert = dsl.insertInto(ORDERDISH)
+                    .set(ORDERDISH.ORDERID, orderId)
+                    .set(ORDERDISH.QTY, item.qty())
+                    .set(ORDERDISH_UNIT_PRICE, item.unitPrice())
+                    .set(ORDERDISH_UNIT_COST, item.unitCost());
+            if (item.dishId() != null) {
+                insert.set(ORDERDISH.DISHID, item.dishId());
+            } else {
+                insert.set(ORDERDISH_SET_ID, item.setId());
+            }
+            insert.execute();
+        }
+
+        return getOrderById(orderId);
+    }
+
+    @Transactional
+    public OrderDTO cancelOrder(int orderId, String reason, Integer expectedVersion) {
+        OrderRecord order = lockOrderForMutation(orderId);
+        LocalDateTime cancelledAt = dsl.select(CANCELLED_AT_FIELD)
+                .from(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .fetchOne(CANCELLED_AT_FIELD);
+        if (cancelledAt != null) {
+            return getOrderById(orderId);
+        }
+
+        ensureEditableOrder(order, expectedVersion);
+        String normalizedReason = trimToNull(reason);
+        if (normalizedReason != null && normalizedReason.length() > 500) {
+            throw new InvalidOrderRequestException("Причина отмены не должна превышать 500 символов");
+        }
+
+        int currentVersion = currentOrderVersion(orderId);
+        dsl.update(ORDER)
+                .set(CANCELLED_AT_FIELD, LocalDateTime.now())
+                .set(CANCEL_REASON_FIELD, normalizedReason != null ? normalizedReason : "Отменён пользователем")
+                .set(VERSION_FIELD, currentVersion + 1)
+                .where(ORDER.ORDERID.eq(orderId))
+                .execute();
+        return getOrderById(orderId);
+    }
+
+    @Transactional
     public OrderDTO markOrderIssued(int orderId) {
+        lockOrderForMutation(orderId);
+        ensureOrderActive(orderId);
         int updated = dsl.update(ORDER)
                 .set(ORDER.DATE_ISSUE, LocalDate.now())
                 .where(ORDER.ORDERID.eq(orderId))
@@ -355,12 +483,8 @@ public List<OrderDTO> getOrders() {
 
     @Transactional
     public OrderDTO updateOrderPayment(int orderId, String paymentType, Boolean paid) {
-        OrderRecord record = dsl.selectFrom(ORDER)
-                .where(ORDER.ORDERID.eq(orderId))
-                .fetchOne();
-        if (record == null) {
-            throw new RuntimeException("Заказ с id " + orderId + " не найден");
-        }
+        OrderRecord record = lockOrderForMutation(orderId);
+        ensureOrderActive(orderId);
 
         String normalizedPaymentType = normalizePaymentType(paymentType);
         boolean nextPaid = paid != null ? paid : !"unpaid".equals(normalizedPaymentType);
@@ -373,11 +497,7 @@ public List<OrderDTO> getOrders() {
                 .execute();
 
         if (!wasPaid && nextPaid) {
-            try {
-                applyWarehouseWriteoffForOrder(orderId);
-            } catch (RuntimeException e) {
-                System.err.println("Warehouse writeoff failed for order " + orderId + ": " + e.getMessage());
-            }
+            applyWarehouseWriteoffForOrder(orderId);
         }
 
         return getOrderById(orderId);
@@ -387,21 +507,25 @@ public List<OrderDTO> getOrders() {
     public void addDishToOrder(int orderId, int dishId, int qty) {
         System.out.println("addDishToOrder вызван с параметрами: orderId=" + orderId + ", dishId=" + dishId + ", qty=" + qty);
 
+        lockOrderForMutation(orderId);
+        ensureOrderActive(orderId);
         boolean paid = isOrderPaid(orderId);
-        if (paid) {
-            try {
-                applyWarehouseWriteoffForDish(dishId, qty);
-            } catch (RuntimeException e) {
-                System.err.println("Warehouse writeoff failed for dish " + dishId + ": " + e.getMessage());
-            }
-        }
+        OrderDishDTO requestedItem = new OrderDishDTO();
+        requestedItem.setDishID(dishId);
+        requestedItem.setQty(qty);
+        ValidatedOrderItem item = validateOrderItems(List.of(requestedItem)).get(0);
 
-        OrderdishRecord record = dsl.newRecord(Orderdish.ORDERDISH);
-        record.setOrderid(orderId);
-        record.setDishid(dishId);
-        record.setQty(qty);
-        record.store(); // безопаснее execute()
-        System.out.println("Блюдо добавлено в заказ: " + record.getOrderid() + ", " + record.getDishid() + ", qty=" + record.getQty());
+        dsl.insertInto(ORDERDISH)
+                .set(ORDERDISH.ORDERID, orderId)
+                .set(ORDERDISH.DISHID, dishId)
+                .set(ORDERDISH.QTY, qty)
+                .set(ORDERDISH_UNIT_PRICE, item.unitPrice())
+                .set(ORDERDISH_UNIT_COST, item.unitCost())
+                .execute();
+        if (paid) {
+            applyWarehouseWriteoffForDish(dishId, qty);
+        }
+        System.out.println("Блюдо добавлено в заказ: " + orderId + ", " + dishId + ", qty=" + qty);
     }
 
     private boolean isOrderPaid(int orderId) {
@@ -500,133 +624,18 @@ public List<OrderDTO> getOrders() {
         boolean noPreparations = requiredByPreparation == null || requiredByPreparation.isEmpty();
         if (noProducts && noPreparations) return;
 
-        Map<Integer, ProductInfo> productInfo = loadProductInfo(
-                requiredByProduct != null ? requiredByProduct.keySet() : java.util.Set.of()
-        );
-        Map<Integer, PreparationInfo> preparationInfo = loadPreparationInfo(
-                requiredByPreparation != null ? requiredByPreparation.keySet() : java.util.Set.of()
-        );
-        List<String> missing = new java.util.ArrayList<>();
-
         for (Map.Entry<Integer, Double> e : (requiredByProduct != null ? requiredByProduct.entrySet() : java.util.Collections.<Map.Entry<Integer, Double>>emptySet())) {
             Integer productId = e.getKey();
             double required = e.getValue() != null ? e.getValue() : 0.0;
             if (required <= 0) continue;
-
-            double available = wareHouseService.getAvailableQuantity(warehouseId, productId);
-            if (available + 1e-6 < required) {
-                ProductInfo info = productInfo.get(productId);
-                String name = info != null && info.name != null ? info.name : ("ID " + productId);
-                String unit = info != null && info.unit != null ? info.unit : "g";
-                missing.add(name + " (" + formatQty(available) + "/" + formatQty(required) + " " + unit + ")");
-            }
+            wareHouseService.consumeAvailableQuantity(warehouseId, productId, required);
         }
 
         for (Map.Entry<Integer, Double> e : (requiredByPreparation != null ? requiredByPreparation.entrySet() : java.util.Collections.<Map.Entry<Integer, Double>>emptySet())) {
             Integer preparationId = e.getKey();
             double required = e.getValue() != null ? e.getValue() : 0.0;
             if (required <= 0) continue;
-
-            double available = wareHouseService.getAvailablePreparationQuantity(warehouseId, preparationId);
-            if (available + 1e-6 < required) {
-                PreparationInfo info = preparationInfo.get(preparationId);
-                String name = info != null && info.name != null ? info.name : ("Заготовка ID " + preparationId);
-                missing.add(name + " (" + formatQty(available) + "/" + formatQty(required) + " g)");
-            }
-        }
-
-        if (!missing.isEmpty()) {
-            throw new RuntimeException("Не хватает продуктов на складе: " + String.join(", ", missing));
-        }
-
-        for (Map.Entry<Integer, Double> e : (requiredByProduct != null ? requiredByProduct.entrySet() : java.util.Collections.<Map.Entry<Integer, Double>>emptySet())) {
-            Integer productId = e.getKey();
-            double required = e.getValue() != null ? e.getValue() : 0.0;
-            if (required <= 0) continue;
-            boolean ok = wareHouseService.adjustQuantity(warehouseId, productId, -required);
-            if (!ok) {
-                throw new RuntimeException("Не удалось списать продукт: ID " + productId);
-            }
-        }
-
-        for (Map.Entry<Integer, Double> e : (requiredByPreparation != null ? requiredByPreparation.entrySet() : java.util.Collections.<Map.Entry<Integer, Double>>emptySet())) {
-            Integer preparationId = e.getKey();
-            double required = e.getValue() != null ? e.getValue() : 0.0;
-            if (required <= 0) continue;
-            boolean ok = wareHouseService.adjustPreparationQuantity(warehouseId, preparationId, -required);
-            if (!ok) {
-                throw new RuntimeException("Не удалось списать заготовку: ID " + preparationId);
-            }
-        }
-    }
-
-    private Map<Integer, ProductInfo> loadProductInfo(java.util.Set<Integer> productIds) {
-        Map<Integer, ProductInfo> result = new HashMap<>();
-        if (productIds == null || productIds.isEmpty()) return result;
-
-        boolean hasBaseUnit = hasBaseUnitColumn();
-        var query = hasBaseUnit
-                ? dsl.select(PRODUCT_ID, PRODUCT_NAME, PRODUCT_BASE_UNIT).from(PRODUCT)
-                : dsl.select(PRODUCT_ID, PRODUCT_NAME).from(PRODUCT);
-
-        var rows = query.where(PRODUCT_ID.in(productIds)).fetch();
-        for (Record r : rows) {
-            Integer id = r.get(PRODUCT_ID);
-            if (id == null) continue;
-            String name = r.get(PRODUCT_NAME);
-            String unit = hasBaseUnit ? r.get(PRODUCT_BASE_UNIT) : null;
-            if (unit == null || unit.isBlank()) unit = "g";
-            result.put(id, new ProductInfo(name, unit));
-        }
-        return result;
-    }
-
-    private Map<Integer, PreparationInfo> loadPreparationInfo(java.util.Set<Integer> preparationIds) {
-        Map<Integer, PreparationInfo> result = new HashMap<>();
-        if (preparationIds == null || preparationIds.isEmpty()) return result;
-
-        var rows = dsl.select(RecipeSchema.PREPARATION_ID, RecipeSchema.PREPARATION_NAME)
-                .from(RecipeSchema.PREPARATION)
-                .where(RecipeSchema.PREPARATION_ID.in(preparationIds))
-                .fetch();
-        for (Record r : rows) {
-            Integer id = r.get(RecipeSchema.PREPARATION_ID);
-            if (id == null) continue;
-            result.put(id, new PreparationInfo(r.get(RecipeSchema.PREPARATION_NAME)));
-        }
-        return result;
-    }
-
-    private boolean hasBaseUnitColumn() {
-        if (baseUnitPresent != null) return baseUnitPresent;
-        Integer cnt = dsl.selectCount()
-                .from(DSL.table(DSL.name("information_schema", "columns")))
-                .where(DSL.field(DSL.name("table_schema"), String.class).eq("sales"))
-                .and(DSL.field(DSL.name("table_name"), String.class).eq("product"))
-                .and(DSL.field(DSL.name("column_name"), String.class).eq("base_unit"))
-                .fetchOne(0, Integer.class);
-        baseUnitPresent = cnt != null && cnt > 0;
-        return baseUnitPresent;
-    }
-
-    private String formatQty(double value) {
-        return String.format(java.util.Locale.US, "%.2f", value);
-    }
-
-    private static class ProductInfo {
-        final String name;
-        final String unit;
-        ProductInfo(String name, String unit) {
-            this.name = name;
-            this.unit = unit;
-        }
-    }
-
-    private static class PreparationInfo {
-        final String name;
-
-        PreparationInfo(String name) {
-            this.name = name;
+            wareHouseService.consumeAvailablePreparationQuantity(warehouseId, preparationId, required);
         }
     }
 
@@ -639,6 +648,7 @@ public List<OrderDTO> getOrders() {
                         ORDERDISH.DISHID,
                         ORDERDISH_SET_ID,
                         ORDERDISH.QTY,
+                        ORDERDISH_UNIT_PRICE,
                         DISH.DISHNAME,
                         dishPriceField,
                         setNameField,
@@ -655,9 +665,12 @@ public List<OrderDTO> getOrders() {
                     String name = dishId != null && dishId > 0
                             ? record.get(DISH.DISHNAME)
                             : record.get(setNameField);
-                    Double price = dishId != null && dishId > 0
-                            ? record.get(dishPriceField)
-                            : record.get(setPriceField);
+                    Double price = record.get(ORDERDISH_UNIT_PRICE);
+                    if (price == null) {
+                        price = dishId != null && dishId > 0
+                                ? record.get(dishPriceField)
+                                : record.get(setPriceField);
+                    }
                     return new OrderLineItem(
                             dishId,
                             setId,
@@ -689,6 +702,7 @@ public List<OrderDTO> getOrders() {
                         ORDERDISH.DISHID,
                         ORDERDISH_SET_ID,
                         ORDERDISH.QTY,
+                        ORDERDISH_UNIT_COST,
                         DISH.FIRSTCOST,
                         DISH_SET_FIRST_COST
                 )
@@ -702,9 +716,12 @@ public List<OrderDTO> getOrders() {
             int qty = row.get(ORDERDISH.QTY) != null ? row.get(ORDERDISH.QTY) : 0;
             if (qty <= 0) continue;
             Integer dishId = row.get(ORDERDISH.DISHID);
-            double firstCost = dishId != null && dishId > 0
-                    ? (row.get(DISH.FIRSTCOST) != null ? row.get(DISH.FIRSTCOST) : 0.0)
-                    : (row.get(DISH_SET_FIRST_COST) != null ? row.get(DISH_SET_FIRST_COST) : 0.0);
+            Double storedUnitCost = row.get(ORDERDISH_UNIT_COST);
+            double firstCost = storedUnitCost != null
+                    ? storedUnitCost
+                    : dishId != null && dishId > 0
+                            ? (row.get(DISH.FIRSTCOST) != null ? row.get(DISH.FIRSTCOST) : 0.0)
+                            : (row.get(DISH_SET_FIRST_COST) != null ? row.get(DISH_SET_FIRST_COST) : 0.0);
             total += firstCost * qty;
         }
         return total;
@@ -740,6 +757,7 @@ public List<OrderDTO> getOrders() {
         if (order == null) {
             throw new RuntimeException("Заказ с id " + orderId + " не найден");
         }
+        ensureOrderActive(orderId);
 
         List<OrderLineItem> rows = loadOrderLineItems(orderId);
         if (rows.isEmpty()) {
@@ -824,6 +842,206 @@ public List<OrderDTO> getOrders() {
             case "cash", "transfer", "unpaid" -> raw;
             default -> "cash";
         };
+    }
+
+    private OrderRecord lockOrder(int orderId) {
+        OrderRecord order = dsl.selectFrom(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .forUpdate()
+                .fetchOne();
+        if (order == null) {
+            throw new OrderNotFoundException(orderId);
+        }
+        return order;
+    }
+
+    private OrderRecord lockOrderForMutation(int orderId) {
+        Integer shiftId = dsl.select(ORDER.SHIFTID)
+                .from(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .fetchOne(ORDER.SHIFTID);
+        if (shiftId == null) {
+            throw new OrderNotFoundException(orderId);
+        }
+        lockOpenShift(shiftId);
+        return lockOrder(orderId);
+    }
+
+    private void lockOpenShift(int shiftId) {
+        var shift = dsl.select(Shift.SHIFT.ID, Shift.SHIFT.ENDTIME)
+                .from(Shift.SHIFT)
+                .where(Shift.SHIFT.ID.eq(shiftId))
+                .forShare()
+                .fetchOne();
+        if (shift == null) {
+            throw new OrderStateConflictException("Смена заказа не найдена");
+        }
+        if (shift.get(Shift.SHIFT.ENDTIME) != null) {
+            throw new OrderStateConflictException(
+                    "Смена уже закрыта; заказы закрытой смены нельзя создавать или изменять"
+            );
+        }
+    }
+
+    private void ensureEditableOrder(OrderRecord order, Integer expectedVersion) {
+        int orderId = order.getOrderid();
+        ensureOrderActive(orderId);
+        if (Boolean.TRUE.equals(order.getIsPaid())) {
+            throw new OrderStateConflictException(
+                    "Оплаченный заказ нельзя редактировать или отменять без оформления возврата"
+            );
+        }
+        if (order.getDateIssue() != null) {
+            throw new OrderStateConflictException("Выданный заказ нельзя редактировать или отменять");
+        }
+
+        var shift = dsl.select(Shift.SHIFT.ENDTIME)
+                .from(Shift.SHIFT)
+                .where(Shift.SHIFT.ID.eq(order.getShiftid()))
+                .fetchOne();
+        if (shift == null) {
+            throw new OrderStateConflictException("Смена заказа не найдена");
+        }
+        if (shift.get(Shift.SHIFT.ENDTIME) != null) {
+            throw new OrderStateConflictException("Заказ закрытой смены нельзя редактировать или отменять");
+        }
+
+        int currentVersion = currentOrderVersion(orderId);
+        if (expectedVersion != null && expectedVersion != currentVersion) {
+            throw new OrderStateConflictException(
+                    "Заказ уже был изменён. Обновите данные и повторите операцию"
+            );
+        }
+    }
+
+    private void ensureOrderActive(int orderId) {
+        LocalDateTime cancelledAt = dsl.select(CANCELLED_AT_FIELD)
+                .from(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .fetchOne(CANCELLED_AT_FIELD);
+        if (cancelledAt != null) {
+            throw new OrderStateConflictException("Заказ уже отменён");
+        }
+    }
+
+    private int currentOrderVersion(int orderId) {
+        Integer version = dsl.select(VERSION_FIELD)
+                .from(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .fetchOne(VERSION_FIELD);
+        return version != null ? version : 0;
+    }
+
+    private List<ValidatedOrderItem> validateOrderItems(List<OrderDishDTO> requestedItems) {
+        if (requestedItems == null || requestedItems.isEmpty()) {
+            throw new InvalidOrderRequestException("Заказ должен содержать хотя бы одну позицию");
+        }
+        if (requestedItems.size() > 200) {
+            throw new InvalidOrderRequestException("В заказе не может быть больше 200 позиций");
+        }
+
+        java.util.ArrayList<ValidatedOrderItem> result = new java.util.ArrayList<>();
+        for (OrderDishDTO requested : requestedItems) {
+            if (requested == null) {
+                throw new InvalidOrderRequestException("Позиция заказа не может быть пустой");
+            }
+            Integer dishId = requested.getDishID();
+            Integer setId = requested.getSetId();
+            boolean hasDish = dishId != null && dishId > 0;
+            boolean hasSet = setId != null && setId > 0;
+            if (hasDish == hasSet) {
+                throw new InvalidOrderRequestException(
+                        "Для каждой позиции нужно указать либо dishID, либо setId"
+                );
+            }
+            if (requested.getQty() <= 0 || requested.getQty() > 1000) {
+                throw new InvalidOrderRequestException("Количество позиции должно быть от 1 до 1000");
+            }
+
+            Double price;
+            Double firstCost;
+            if (hasDish) {
+                var dish = dsl.select(DISH.PRICE, DISH.FIRSTCOST)
+                        .from(DISH)
+                        .where(DISH.DISHID.eq(dishId))
+                        .fetchOne();
+                if (dish == null) {
+                    throw new InvalidOrderRequestException("Блюдо не найдено: " + dishId);
+                }
+                price = dish.get(DISH.PRICE);
+                firstCost = dish.get(DISH.FIRSTCOST);
+            } else {
+                var set = dsl.select(DISH_SET_PRICE, DISH_SET_FIRST_COST)
+                        .from(DISH_SET)
+                        .where(DISH_SET_ID.eq(setId))
+                        .fetchOne();
+                if (set == null) {
+                    throw new InvalidOrderRequestException("Набор не найден: " + setId);
+                }
+                price = set.get(DISH_SET_PRICE);
+                firstCost = set.get(DISH_SET_FIRST_COST);
+            }
+
+            double normalizedPrice = price != null && Double.isFinite(price) && price >= 0 ? price : 0.0;
+            double normalizedFirstCost = firstCost != null
+                    && Double.isFinite(firstCost)
+                    && firstCost >= 0
+                    ? firstCost
+                    : 0.0;
+            BigDecimal lineTotal = BigDecimal.valueOf(normalizedPrice)
+                    .multiply(BigDecimal.valueOf(requested.getQty()));
+            result.add(new ValidatedOrderItem(
+                    hasDish ? dishId : null,
+                    hasSet ? setId : null,
+                    requested.getQty(),
+                    normalizedPrice,
+                    normalizedFirstCost,
+                    lineTotal
+            ));
+        }
+        return result;
+    }
+
+    private double currentDeliveryCost(int orderId, OrderRecord order) {
+        if (!Boolean.TRUE.equals(order.getType())) {
+            return 0.0;
+        }
+        double itemsTotal = loadOrderLineItems(orderId).stream()
+                .mapToDouble(item -> safeDouble(item.price, 0.0) * (item.qty != null ? item.qty : 0))
+                .sum();
+        return Math.max(0.0, safeDouble(order.getAmount(), 0.0) - itemsTotal);
+    }
+
+    private double normalizeNonNegative(Double value, String fieldName) {
+        if (value == null) {
+            return 0.0;
+        }
+        if (!Double.isFinite(value) || value < 0) {
+            throw new InvalidOrderRequestException(fieldName + " должна быть неотрицательным числом");
+        }
+        return value;
+    }
+
+    private double safeDouble(Double value, double fallback) {
+        return value != null && Double.isFinite(value) ? value : fallback;
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private record ValidatedOrderItem(
+            Integer dishId,
+            Integer setId,
+            int qty,
+            double unitPrice,
+            double unitCost,
+            BigDecimal lineTotal
+    ) {
     }
 
 }

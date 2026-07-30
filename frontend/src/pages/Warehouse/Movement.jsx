@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { API_BASE_URL } from "../../auth";
+import MovementHero from "./movement-page/MovementHero";
+import MovementFilters from "./movement-page/MovementFilters";
+import MovementLedger from "./movement-page/MovementLedger";
 import styles from "./Movement.module.css";
 
 const API_MOVEMENTS = `${API_BASE_URL}/movements`;
@@ -72,20 +76,22 @@ const getAverageValue = (amount, qty) => {
 };
 
 export default function MovementPage() {
+    const [searchParams, setSearchParams] = useSearchParams();
     const [movements, setMovements] = useState([]);
     const [warehouses, setWarehouses] = useState([]);
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
-    const [filterWarehouse, setFilterWarehouse] = useState("");
-    const [filterProduct, setFilterProduct] = useState("");
-    const [filterProductName, setFilterProductName] = useState("");
-    const [filterType, setFilterType] = useState("");
-    const [sortByProductName, setSortByProductName] = useState("");
-    const [sortByDate, setSortByDate] = useState("desc");
+    const [filterWarehouse, setFilterWarehouse] = useState(() => searchParams.get("warehouse") ?? "");
+    const [filterProduct, setFilterProduct] = useState(() => searchParams.get("productId") ?? "");
+    const [filterProductName, setFilterProductName] = useState(() => searchParams.get("q") ?? "");
+    const [filterType, setFilterType] = useState(() => searchParams.get("type") ?? "");
+    const [sortByProductName, setSortByProductName] = useState(() => searchParams.get("productSort") ?? "");
+    const [sortByDate, setSortByDate] = useState(() => searchParams.get("dateSort") ?? "desc");
     const [editDates, setEditDates] = useState({});
     const [savingDateId, setSavingDateId] = useState(null);
+    const [dateError, setDateError] = useState("");
     const [showReport, setShowReport] = useState(false);
     const [reportProductId, setReportProductId] = useState("");
     const [reportDateFrom, setReportDateFrom] = useState("");
@@ -196,6 +202,34 @@ export default function MovementPage() {
     }, []);
 
     useEffect(() => {
+        const next = new URLSearchParams(searchParams);
+        const values = {
+            warehouse: filterWarehouse,
+            productId: filterProduct,
+            q: filterProductName,
+            type: filterType,
+            productSort: sortByProductName,
+            dateSort: sortByDate === "desc" ? "" : sortByDate
+        };
+        Object.entries(values).forEach(([key, value]) => {
+            if (value) next.set(key, value);
+            else next.delete(key);
+        });
+        if (next.toString() !== searchParams.toString()) {
+            setSearchParams(next, { replace: true });
+        }
+    }, [
+        filterProduct,
+        filterProductName,
+        filterType,
+        filterWarehouse,
+        searchParams,
+        setSearchParams,
+        sortByDate,
+        sortByProductName
+    ]);
+
+    useEffect(() => {
         if (!printPayload) return undefined;
 
         const handleAfterPrint = () => {
@@ -216,12 +250,13 @@ export default function MovementPage() {
     const saveMovementDate = async (movementId) => {
         const dateVal = editDates[movementId];
         if (!dateVal) {
-            alert("Выберите дату");
+            setDateError("Выберите дату движения перед сохранением.");
             return;
         }
 
         try {
             setSavingDateId(movementId);
+            setDateError("");
             const res = await fetch(`${API_MOVEMENTS}/${movementId}/date`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
@@ -231,7 +266,7 @@ export default function MovementPage() {
             await loadData();
         } catch (e) {
             console.error(e);
-            alert(e.message || "Ошибка обновления даты");
+            setDateError(e.message || "Ошибка обновления даты");
         } finally {
             setSavingDateId(null);
         }
@@ -239,7 +274,7 @@ export default function MovementPage() {
 
     const loadReport = async () => {
         if (!reportDateFrom || !reportDateTo) {
-            alert("Выберите период");
+            setReportError("Выберите даты начала и окончания периода.");
             return;
         }
 
@@ -268,7 +303,7 @@ export default function MovementPage() {
 
     const loadTurnoverReport = async () => {
         if (!turnoverDateFrom || !turnoverDateTo) {
-            alert("Выберите период");
+            setTurnoverError("Выберите даты начала и окончания периода.");
             return;
         }
 
@@ -450,18 +485,15 @@ export default function MovementPage() {
     return (
         <div className={styles.page}>
             <div className={styles.screenContent}>
-            <div className={styles.header}>
-                <h2>Движения товаров</h2>
-                <div className={styles.headerActions}>
-                    <button className={styles.refreshBtn} onClick={loadData}>Обновить</button>
-                    <button className={styles.refreshBtn} onClick={() => setShowReport(prev => !prev)}>
-                        {showReport ? "Скрыть отчет" : "Отчет по закупкам"}
-                    </button>
-                    <button className={styles.refreshBtn} onClick={() => setShowTurnoverReport(prev => !prev)}>
-                        {showTurnoverReport ? "Скрыть приход/уход" : "Отчет приход/уход"}
-                    </button>
-                </div>
-            </div>
+            <MovementHero
+                movements={movements}
+                loading={loading}
+                showReport={showReport}
+                showTurnoverReport={showTurnoverReport}
+                onRefresh={loadData}
+                onToggleReport={() => setShowReport((previous) => !previous)}
+                onToggleTurnover={() => setShowTurnoverReport((previous) => !previous)}
+            />
 
             {showReport && (
                 <div className={styles.reportCard}>
@@ -479,18 +511,22 @@ export default function MovementPage() {
                         </button>
                         <input
                             type="date"
+                            name="receiptDateFrom"
+                            aria-label="Начало периода закупок"
                             className={styles.input}
                             value={reportDateFrom}
                             onChange={e => setReportDateFrom(e.target.value)}
                         />
                         <input
                             type="date"
+                            name="receiptDateTo"
+                            aria-label="Конец периода закупок"
                             className={styles.input}
                             value={reportDateTo}
                             onChange={e => setReportDateTo(e.target.value)}
                         />
                         <button className={styles.refreshBtn} onClick={loadReport} disabled={reportLoading}>
-                            {reportLoading ? "Загрузка..." : "Показать"}
+                            {reportLoading ? "Загрузка…" : "Показать"}
                         </button>
                         <button className={styles.clearButton} type="button" onClick={exportReceiptReportToPdf} disabled={reportRows.length === 0}>
                             Сохранить PDF
@@ -574,18 +610,22 @@ export default function MovementPage() {
                         </button>
                         <input
                             type="date"
+                            name="turnoverDateFrom"
+                            aria-label="Начало периода оборота"
                             className={styles.input}
                             value={turnoverDateFrom}
                             onChange={e => setTurnoverDateFrom(e.target.value)}
                         />
                         <input
                             type="date"
+                            name="turnoverDateTo"
+                            aria-label="Конец периода оборота"
                             className={styles.input}
                             value={turnoverDateTo}
                             onChange={e => setTurnoverDateTo(e.target.value)}
                         />
                         <button className={styles.refreshBtn} onClick={loadTurnoverReport} disabled={turnoverLoading}>
-                            {turnoverLoading ? "Загрузка..." : "Показать"}
+                            {turnoverLoading ? "Загрузка…" : "Показать"}
                         </button>
                         <button className={styles.clearButton} type="button" onClick={exportTurnoverReportToPdf} disabled={turnoverRows.length === 0}>
                             Сохранить PDF
@@ -674,140 +714,63 @@ export default function MovementPage() {
                 </div>
             )}
 
-            <div className={styles.filters}>
-                <select
-                    className={styles.input}
-                    value={filterWarehouse}
-                    onChange={e => setFilterWarehouse(e.target.value)}
-                >
-                    <option value="">Все склады</option>
-                    {warehouses.map(w => (
-                        <option key={w.warehouseId} value={w.warehouseId}>
-                            {w.warehouseName}
-                        </option>
-                    ))}
-                </select>
-
-                <input
-                    className={styles.input}
-                    type="text"
-                    placeholder="Фильтр по ID товара"
-                    value={filterProduct}
-                    onChange={e => setFilterProduct(e.target.value)}
-                />
-
-                <input
-                    className={styles.input}
-                    type="text"
-                    placeholder="Фильтр по имени товара"
-                    value={filterProductName}
-                    onChange={e => setFilterProductName(e.target.value)}
-                />
-
-                <select
-                    className={styles.input}
-                    value={filterType}
-                    onChange={e => setFilterType(e.target.value)}
-                >
-                    <option value="">Все типы</option>
-                    {uniqueTypes.map(t => (
-                        <option key={t} value={t}>{t}</option>
-                    ))}
-                </select>
-
-                <select
-                    className={styles.input}
-                    value={sortByProductName}
-                    onChange={e => setSortByProductName(e.target.value)}
-                >
-                    <option value="">Без сортировки</option>
-                    <option value="asc">Товар: А-Я</option>
-                    <option value="desc">Товар: Я-А</option>
-                </select>
-
-                <select
-                    className={styles.input}
-                    value={sortByDate}
-                    onChange={e => setSortByDate(e.target.value)}
-                >
-                    <option value="desc">Дата: новые сверху</option>
-                    <option value="asc">Дата: старые сверху</option>
-                    <option value="">Дата: без сортировки</option>
-                </select>
-            </div>
-
-            {loading ? (
-                <p>Загрузка движений...</p>
-            ) : error ? (
-                <p className={styles.error}>{error}</p>
-            ) : (
-                <div className={styles.tableWrap}>
-                    <table className={styles.table}>
-                        <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Дата</th>
-                            <th>Тип</th>
-                            <th>Со склада</th>
-                            <th>На склад</th>
-                            <th>Товар</th>
-                            <th>ID товара</th>
-                            <th>Количество</th>
-                            <th>Цена</th>
-                            <th>Сумма</th>
-                            <th>Статус</th>
-                            <th>Изменить дату</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {filteredMovements.length > 0 ? filteredMovements.map(m => (
-                            <tr key={`${m.id}-${m.productId}`}>
-                                <td>{m.id}</td>
-                                <td>{formatDate(m.docDate)}</td>
-                                <td>{m.docType ?? "—"}</td>
-                                <td>{warehouseMap[m.fromWarehouseId] ?? m.fromWarehouseId ?? "—"}</td>
-                                <td>{warehouseMap[m.toWarehouseId] ?? m.toWarehouseId ?? "—"}</td>
-                                <td>{productMap[m.productId] ?? `Товар #${m.productId}`}</td>
-                                <td>{m.productId}</td>
-                                <td>{formatNumber(m.quantity)}</td>
-                                <td>{m.unitPrice != null ? `${formatNumber(m.unitPrice)} ₽` : "—"}</td>
-                                <td>{m.lineTotal != null ? `${formatNumber(m.lineTotal)} ₽` : "—"}</td>
-                                <td>{m.status ?? "—"}</td>
-                                <td>
-                                    <div className={styles.dateEditCell}>
-                                        <input
-                                            type="datetime-local"
-                                            className={styles.input}
-                                            value={editDates[m.id] ?? ""}
-                                            onChange={e => setEditDates(prev => ({ ...prev, [m.id]: e.target.value }))}
-                                        />
-                                        <button
-                                            type="button"
-                                            className={styles.refreshBtn}
-                                            onClick={() => saveMovementDate(m.id)}
-                                            disabled={savingDateId === m.id}
-                                        >
-                                            {savingDateId === m.id ? "..." : "Сохранить"}
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        )) : (
-                            <tr>
-                                <td colSpan="12" className={styles.empty}>Движений не найдено</td>
-                            </tr>
-                        )}
-                        </tbody>
-                    </table>
+            <section className={styles.ledgerSection} aria-labelledby="movement-ledger-heading">
+                <div className={styles.sectionHeading}>
+                    <div>
+                        <p>Складской след</p>
+                        <h2 id="movement-ledger-heading">Журнал операций</h2>
+                        <span>Фильтры сохраняются в адресе страницы.</span>
+                    </div>
+                    <strong>{filteredMovements.length} из {movements.length}</strong>
                 </div>
-            )}
+                <MovementFilters
+                    warehouses={warehouses}
+                    uniqueTypes={uniqueTypes}
+                    values={{ filterWarehouse, filterProduct, filterProductName, filterType, sortByProductName, sortByDate }}
+                    onChange={{
+                        filterWarehouse: setFilterWarehouse,
+                        filterProduct: setFilterProduct,
+                        filterProductName: setFilterProductName,
+                        filterType: setFilterType,
+                        sortByProductName: setSortByProductName,
+                        sortByDate: setSortByDate
+                    }}
+                    onReset={() => {
+                        setFilterWarehouse("");
+                        setFilterProduct("");
+                        setFilterProductName("");
+                        setFilterType("");
+                        setSortByProductName("");
+                        setSortByDate("desc");
+                    }}
+                />
+                {dateError && <div className={`${styles.stateCard} ${styles.error}`} role="alert">{dateError}</div>}
+                <MovementLedger
+                    movements={filteredMovements}
+                    loading={loading}
+                    error={error}
+                    warehouseMap={warehouseMap}
+                    productMap={productMap}
+                    editDates={editDates}
+                    savingDateId={savingDateId}
+                    onDateChange={(id, value) => setEditDates((previous) => ({ ...previous, [id]: value }))}
+                    onSaveDate={saveMovementDate}
+                    formatDate={formatDate}
+                    formatNumber={formatNumber}
+                />
+            </section>
 
             {productPickerTarget && (
-                <div className={styles.modalOverlay} onClick={closeProductPicker}>
-                    <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+                <div className={styles.modalOverlay}>
+                    <div
+                        className={styles.modal}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="movement-product-picker-title"
+                    >
                         <div className={styles.modalHeader}>
                             <div>
-                                <h3 className={styles.modalTitle}>Выбор товара</h3>
+                                <h3 className={styles.modalTitle} id="movement-product-picker-title">Выбор товара</h3>
                                 <p className={styles.modalSubtitle}>
                                     Можно выбрать конкретный товар или оставить пусто, чтобы строить отчет по всем товарам.
                                 </p>
@@ -819,8 +782,11 @@ export default function MovementPage() {
 
                         <input
                             type="text"
+                            name="movementProductPickerSearch"
+                            autoComplete="off"
+                            aria-label="Поиск товара"
                             className={styles.input}
-                            placeholder="Поиск по названию, поставщику или ID..."
+                            placeholder="Поиск по названию, поставщику или ID…"
                             value={productSearch}
                             onChange={(e) => setProductSearch(e.target.value)}
                         />

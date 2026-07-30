@@ -51,6 +51,14 @@ const getResponseMessage = (raw, fallback) => {
     return data?.message || data?.detail || raw || fallback;
 };
 
+const parseDecimal = (value) => {
+    if (value == null) return NaN;
+    const normalized = String(value).trim().replace(",", ".");
+    if (!normalized) return NaN;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : NaN;
+};
+
 export default function PreparationsPage() {
     const navigate = useNavigate();
     const [preparations, setPreparations] = useState([]);
@@ -261,7 +269,7 @@ export default function PreparationsPage() {
 
     const savePreparation = async () => {
         const trimmedName = preparationForm.preparationName.trim();
-        const outputWeight = Number(preparationForm.outputWeight);
+        const outputWeight = parseDecimal(preparationForm.outputWeight);
 
         if (!trimmedName) {
             setPreparationError("Введите название заготовки.");
@@ -348,7 +356,7 @@ export default function PreparationsPage() {
         if (!selectedPreparation) return;
 
         const warehouseId = Number(productionForm.warehouseId);
-        const batchCount = Number(productionForm.batchCount);
+        const batchCount = parseDecimal(productionForm.batchCount);
 
         if (!Number.isFinite(warehouseId) || warehouseId <= 0) {
             setProductionError("Выберите склад списания и прихода.");

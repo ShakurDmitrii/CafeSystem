@@ -79,6 +79,7 @@ public class MovementService {
         if (dto == null
                 || dto.getProductId() == null
                 || dto.getQuantity() == null
+                || !Double.isFinite(dto.getQuantity())
                 || dto.getQuantity() <= 0) {
             return null;
         }

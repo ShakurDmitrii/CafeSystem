@@ -18,7 +18,8 @@ const managementNavigation = [
     { to: "/suppliers", label: "Поставщики", roles: ["OWNER"] },
     { to: "/person", label: "Персонал", roles: ["OWNER"] },
     { to: "/consigment", label: "Накладные", roles: ["OWNER"] },
-    { to: "/ml", label: "AI-аналитика", roles: ["OWNER"] }
+    { to: "/ml", label: "AI-аналитика", roles: ["OWNER"] },
+    { to: "/tax", label: "Налог", roles: ["OWNER"] }
 ];
 
 const allNavigation = [...primaryNavigation, ...managementNavigation];
@@ -97,6 +98,8 @@ export default function AppShell({ auth, onLogout, children }) {
         || location.pathname.startsWith("/preparation-tech-card/")
     )
         ? "Техкарта"
+        : location.pathname.startsWith("/consignment-notes/print/")
+            ? "Печатная форма"
         : currentPage?.label || "CafeHelp";
 
     useEffect(() => {

@@ -1,5 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE_URL } from "../../auth";
+import InventoryShiftReport from "./InventoryShiftReport";
+import WarehouseHero from "./warehouse-page/WarehouseHero";
+import WarehouseSetup from "./warehouse-page/WarehouseSetup";
+import TransferPanel from "./warehouse-page/TransferPanel";
+import WarehouseCard from "./warehouse-page/WarehouseCard";
+import {
+    buildIncomingPriceMaps,
+    getProductId,
+    getSafeUnitFactor,
+    normalizeMovementPayload,
+    normalizeCollection,
+    parseDecimal
+} from "./warehouse-page/warehouseUtils";
 import styles from "./WarehousePage.module.css";
 
 const API_WAREHOUSES = `${API_BASE_URL}/warehouses`;
@@ -7,1113 +20,497 @@ const API_MOVEMENTS = `${API_BASE_URL}/movements`;
 const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
 const API_PRODUCTS = `${API_BASE_URL}/api/product`;
 
-const getSafeUnitFactor = (value) => {
-    const n = Number(value);
-    return Number.isFinite(n) && n > 0 ? n : 1;
-};
-
-const toDisplayQty = (qtyBase, unitFactor) => Number(qtyBase ?? 0) / getSafeUnitFactor(unitFactor);
-const normalizeUnit = (value) => String(value ?? "").trim().toLowerCase();
-const hasExpandedUnitDisplay = (product) => getSafeUnitFactor(product?.unitFactor) > 1;
-const hasPackLikeDisplay = (product) =>
-    hasExpandedUnitDisplay(product)
-    && normalizeUnit(product?.unit) === normalizeUnit(product?.baseUnit);
-
-const getWarehouseUnitLabel = (product) => {
-    const unit = product?.unit ?? product?.baseUnit ?? "pcs";
-    const baseUnit = product?.baseUnit ?? unit;
-    const factor = getSafeUnitFactor(product?.unitFactor);
-    if (!hasExpandedUnitDisplay(product)) {
-        return unit;
-    }
-    return `${unit} (1 ед. = ${factor} ${baseUnit})`;
-};
-
-const getQuantityInputLabel = (product) => {
-    if (hasPackLikeDisplay(product)) {
-        return `${product?.baseUnit ?? product?.unit ?? "pcs"}, base`;
-    }
-    return product?.unit ?? product?.baseUnit ?? "pcs";
-};
-
-const normalizeMovementPayload = (product, qty, unitPrice) => {
-    const quantity = Number(qty);
-    const price = Number(unitPrice);
-
-    if (!hasPackLikeDisplay(product)) {
-        return {
-            quantity,
-            unitPrice: price
-        };
-    }
-
-    const factor = getSafeUnitFactor(product?.unitFactor);
-    return {
-        quantity: quantity / factor,
-        unitPrice: Number.isFinite(price) ? price * factor : price
-    };
-};
-
-const formatQty = (value) => {
-    const n = Number(value ?? 0);
-    if (!Number.isFinite(n)) return "0";
-    return n.toLocaleString("ru-RU", { maximumFractionDigits: 3 });
-};
-
-const formatPriceWithUnit = (value, unit) => {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return "—";
-    const digits = Math.abs(n) > 0 && Math.abs(n) < 1 ? 4 : 2;
-    return `${n.toLocaleString("ru-RU", {
-        minimumFractionDigits: digits,
-        maximumFractionDigits: digits
-    })} ₽/${unit || "ед."}`;
+const EMPTY_NEW_PRODUCT = {
+    productName: "",
+    supplierId: "",
+    productPrice: "",
+    waste: "",
+    quantity: ""
 };
 
 export default function WarehousePage() {
     const [warehouses, setWarehouses] = useState([]);
+    const [catalogProducts, setCatalogProducts] = useState([]);
+    const [suppliers, setSuppliers] = useState([]);
+    const [movements, setMovements] = useState([]);
+    const [warehouseProducts, setWarehouseProducts] = useState({});
+    const [loading, setLoading] = useState(true);
+    const [pageError, setPageError] = useState("");
+    const [notice, setNotice] = useState("");
     const [warehouseName, setWarehouseName] = useState("");
     const [editingId, setEditingId] = useState(null);
+    const [savingWarehouse, setSavingWarehouse] = useState(false);
     const [showZeroStock, setShowZeroStock] = useState(false);
+    const [openStockPanel, setOpenStockPanel] = useState(null);
+    const [catalogSearch, setCatalogSearch] = useState("");
+    const [catalogForm, setCatalogForm] = useState({ productId: "", quantity: "", unitPrice: "" });
+    const [newProductForm, setNewProductForm] = useState(EMPTY_NEW_PRODUCT);
+    const [stockInputs, setStockInputs] = useState({});
+    const [busyKey, setBusyKey] = useState("");
+    const [transferForm, setTransferForm] = useState({
+        fromWarehouseId: "",
+        toWarehouseId: "",
+        productId: "",
+        quantity: ""
+    });
 
-    const [movementFrom, setMovementFrom] = useState("");
-    const [movementTo, setMovementTo] = useState("");
-    const [movementProduct, setMovementProduct] = useState("");
-    const [movementQuantity, setMovementQuantity] = useState("");
+    const supplierNamesById = useMemo(() => new Map(
+        suppliers.map((supplier) => [
+            Number(supplier?.supplierId ?? supplier?.supplierID ?? supplier?.id),
+            supplier?.supplierName ?? supplier?.name ?? "—"
+        ])
+    ), [suppliers]);
 
-    const [productsFrom, setProductsFrom] = useState([]);
-    const [warehouseProducts, setWarehouseProducts] = useState({});
-    const [avgReceiptPriceByWarehouseProduct, setAvgReceiptPriceByWarehouseProduct] = useState({});
-    const [loadingWarehouses, setLoadingWarehouses] = useState(true);
-    const [suppliers, setSuppliers] = useState([]);
-    const [catalogProducts, setCatalogProducts] = useState([]);
-    const [adjustQtyInputs, setAdjustQtyInputs] = useState({}); // { "whId-productId": "0" }
-    const [adjustPriceInputs, setAdjustPriceInputs] = useState({}); // { "whId-productId": "0" }
-    const [productPickerWarehouseId, setProductPickerWarehouseId] = useState(null);
-    const [productPickerSearch, setProductPickerSearch] = useState("");
-    const [selectedCatalogProductId, setSelectedCatalogProductId] = useState("");
-    const [selectedCatalogQuantity, setSelectedCatalogQuantity] = useState("");
-    const [selectedCatalogPrice, setSelectedCatalogPrice] = useState("");
-    const [productPickerError, setProductPickerError] = useState("");
+    const productMetaById = useMemo(() => new Map(
+        catalogProducts.map((product) => [getProductId(product), product])
+    ), [catalogProducts]);
 
-    // Состояния для добавления продукта
-    const [newProductName, setNewProductName] = useState("");
-    const [newProductSupplierId, setNewProductSupplierId] = useState("");
-    const [newProductPrice, setNewProductPrice] = useState("");
-    const [newProductWaste, setNewProductWaste] = useState("");
-    const [newProductQuantity, setNewProductQuantity] = useState(""); // Добавляем quantity
-    const [addingToWarehouseId, setAddingToWarehouseId] = useState(null);
+    const { averageMap, latestMap } = useMemo(
+        () => buildIncomingPriceMaps(movements),
+        [movements]
+    );
 
-    useEffect(() => {
-        loadWarehouses();
+    const hydrateStocks = useCallback(async (warehouseList, products, supplierMap, averages, latest) => {
+        const productMap = new Map(products.map((product) => [getProductId(product), product]));
+        const entries = await Promise.all(warehouseList.map(async (warehouse) => {
+            const warehouseId = Number(warehouse.warehouseId);
+            try {
+                const response = await fetch(`${API_WAREHOUSES}/${warehouseId}/products`);
+                if (!response.ok) throw new Error("Не удалось загрузить остатки");
+                const rows = normalizeCollection(await response.json().catch(() => []));
+                return [warehouseId, rows.map((row) => {
+                    const productId = Number(row.productId);
+                    const product = productMap.get(productId) ?? {};
+                    const priceKey = `${warehouseId}-${productId}`;
+                    const unitFactor = getSafeUnitFactor(product.unitFactor);
+                    const averageBasePrice = averages[priceKey];
+                    return {
+                        ...product,
+                        ...row,
+                        productId,
+                        productName: product.productName ?? `Товар #${productId}`,
+                        quantityBase: Number(row.quantity ?? 0),
+                        quantityDisplay: Number(row.quantity ?? 0) / unitFactor,
+                        supplierName: supplierMap.get(Number(product.supplierId ?? product.supplierID)) ?? "—",
+                        averagePrice: averageBasePrice == null
+                            ? Number(product.productPrice ?? 0)
+                            : averageBasePrice * unitFactor,
+                        latestPrice: latest[priceKey] ?? null
+                    };
+                })];
+            } catch (error) {
+                console.error(error);
+                return [warehouseId, []];
+            }
+        }));
+        setWarehouseProducts(Object.fromEntries(entries));
     }, []);
 
-    useEffect(() => {
-        if (movementFrom) loadProductsFromWarehouse(movementFrom);
-        else setProductsFrom([]);
-        setMovementProduct("");
-    }, [movementFrom, avgReceiptPriceByWarehouseProduct]);
-
-    const filteredCatalogProducts = useMemo(() => {
-        const searchTerm = String(productPickerSearch || "").trim().toLowerCase();
-        const list = [...catalogProducts].sort((a, b) =>
-            String(a.productName ?? "").localeCompare(String(b.productName ?? ""), "ru")
-        );
-        if (!searchTerm) return list;
-
-        return list.filter((product) => {
-            const productName = String(product.productName ?? "").toLowerCase();
-            const supplierId = product.supplierId ?? product.supplierID;
-            const supplier = suppliers.find((s) => (s.supplierId ?? s.supplierID ?? s.id) === supplierId);
-            const supplierName = String(supplier?.supplierName ?? supplier?.name ?? "").toLowerCase();
-            return productName.includes(searchTerm) || supplierName.includes(searchTerm);
-        });
-    }, [catalogProducts, productPickerSearch, suppliers]);
-
-    const buildWarehouseIncomingPriceMaps = (movementsList) => {
-        const totalsByWarehouseProduct = {};
-        const latestByWarehouseProduct = {};
-
-        movementsList.forEach((movement) => {
-            const pid = Number(movement?.productId);
-            const qty = Number(movement?.quantity);
-            const price = Number(movement?.unitPrice);
-            const lineTotal = Number(movement?.lineTotal);
-            const docDateTs = movement?.docDate ? new Date(movement.docDate).getTime() : 0;
-
-            if (!Number.isFinite(pid) || !Number.isFinite(qty) || qty <= 0) return;
-            if (!Number.isFinite(price) || price < 0) return;
-
-            const incomingWarehouseId = movement?.docType === "receipt"
-                ? Number(movement?.toWarehouseId)
-                : movement?.docType === "movement"
-                    ? Number(movement?.toWarehouseId)
-                    : null;
-
-            if (!Number.isFinite(incomingWarehouseId) || incomingWarehouseId <= 0) return;
-
-            const key = `${incomingWarehouseId}-${pid}`;
-            if (!totalsByWarehouseProduct[key]) {
-                totalsByWarehouseProduct[key] = { qty: 0, amount: 0 };
-            }
-
-            totalsByWarehouseProduct[key].qty += qty;
-            totalsByWarehouseProduct[key].amount += Number.isFinite(lineTotal) ? lineTotal : qty * price;
-
-            const currentLatest = latestByWarehouseProduct[key];
-            if (!currentLatest || docDateTs >= currentLatest.timestamp) {
-                latestByWarehouseProduct[key] = { price, timestamp: docDateTs };
-            }
-        });
-
-        const averageMap = Object.entries(totalsByWarehouseProduct).reduce((acc, [key, total]) => {
-            if (total.qty > 0) {
-                acc[key] = total.amount / total.qty;
-            }
-            return acc;
-        }, {});
-
-        const latestMap = Object.entries(latestByWarehouseProduct).reduce((acc, [key, value]) => {
-            acc[key] = value.price;
-            return acc;
-        }, {});
-
-        return { averageMap, latestMap };
-    };
-
-    const loadWarehouses = async () => {
-        setLoadingWarehouses(true);
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        setPageError("");
         try {
-            const [whRes, supRes, movRes, productsRes] = await Promise.all([
+            const [warehouseResponse, supplierResponse, productResponse, movementResponse] = await Promise.all([
                 fetch(API_WAREHOUSES),
                 fetch(API_SUPPLIERS),
-                fetch(API_MOVEMENTS),
-                fetch(API_PRODUCTS)
+                fetch(API_PRODUCTS),
+                fetch(API_MOVEMENTS)
             ]);
-            const whData = whRes.ok ? await whRes.json().catch(() => []) : [];
-            const warehousesArray = Array.isArray(whData) ? whData : [];
-            setWarehouses(warehousesArray);
+            if (!warehouseResponse.ok) throw new Error("Не удалось загрузить склады.");
+            if (!productResponse.ok) throw new Error("Не удалось загрузить каталог товаров.");
 
-            const supData = supRes.ok ? await supRes.json().catch(() => []) : [];
-            const suppliersList = Array.isArray(supData) ? supData : [];
-            setSuppliers(suppliersList);
+            const [warehouseData, supplierData, productData, movementData] = await Promise.all([
+                warehouseResponse.json().catch(() => []),
+                supplierResponse.ok ? supplierResponse.json().catch(() => []) : [],
+                productResponse.json().catch(() => []),
+                movementResponse.ok ? movementResponse.json().catch(() => []) : []
+            ]);
+            const nextWarehouses = normalizeCollection(warehouseData);
+            const nextSuppliers = normalizeCollection(supplierData);
+            const nextProducts = normalizeCollection(productData);
+            const nextMovements = normalizeCollection(movementData);
+            const nextSupplierMap = new Map(nextSuppliers.map((supplier) => [
+                Number(supplier?.supplierId ?? supplier?.supplierID ?? supplier?.id),
+                supplier?.supplierName ?? supplier?.name ?? "—"
+            ]));
+            const prices = buildIncomingPriceMaps(nextMovements);
 
-            const productsData = productsRes.ok ? await productsRes.json().catch(() => []) : [];
-            setCatalogProducts(Array.isArray(productsData) ? productsData : []);
-
-            const movData = movRes.ok ? await movRes.json().catch(() => []) : [];
-            const movementsList = Array.isArray(movData) ? movData : [];
-            const { averageMap, latestMap } = buildWarehouseIncomingPriceMaps(movementsList);
-
-            setAvgReceiptPriceByWarehouseProduct(averageMap);
-
-            await loadAllWarehouseProducts(
-                warehousesArray,
-                suppliersList,
-                averageMap,
-                latestMap
+            setWarehouses(nextWarehouses);
+            setSuppliers(nextSuppliers);
+            setCatalogProducts(nextProducts);
+            setMovements(nextMovements);
+            await hydrateStocks(
+                nextWarehouses,
+                nextProducts,
+                nextSupplierMap,
+                prices.averageMap,
+                prices.latestMap
             );
-        } catch (err) {
-            console.error(err);
+        } catch (error) {
+            console.error(error);
+            setPageError(error.message || "Не удалось загрузить складские данные.");
         } finally {
-            setLoadingWarehouses(false);
+            setLoading(false);
+        }
+    }, [hydrateStocks]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
+    const warehouseStats = useMemo(() => {
+        let positions = 0;
+        let lowStock = 0;
+        Object.values(warehouseProducts).forEach((rows) => {
+            rows.forEach((row) => {
+                positions += 1;
+                if (Number(row.quantityBase ?? 0) <= 0) lowStock += 1;
+            });
+        });
+        return { positions, lowStock };
+    }, [warehouseProducts]);
+
+    const transferProducts = useMemo(() => {
+        const sourceId = Number(transferForm.fromWarehouseId);
+        return (warehouseProducts[sourceId] ?? []).filter((product) => Number(product.quantityBase) > 0);
+    }, [transferForm.fromWarehouseId, warehouseProducts]);
+
+    const filteredCatalog = useMemo(() => {
+        const term = catalogSearch.trim().toLocaleLowerCase("ru-RU");
+        return [...catalogProducts]
+            .sort((a, b) => String(a.productName ?? "").localeCompare(String(b.productName ?? ""), "ru"))
+            .filter((product) => {
+                if (!term) return true;
+                const supplierName = supplierNamesById.get(Number(product.supplierId ?? product.supplierID)) ?? "";
+                return `${product.productName ?? ""} ${supplierName} ${getProductId(product)}`
+                    .toLocaleLowerCase("ru-RU")
+                    .includes(term);
+            });
+    }, [catalogProducts, catalogSearch, supplierNamesById]);
+
+    const showNotice = (message) => {
+        setNotice(message);
+        window.setTimeout(() => setNotice(""), 4000);
+    };
+
+    const saveWarehouse = async (event) => {
+        event.preventDefault();
+        const name = warehouseName.trim();
+        if (!name) {
+            setPageError("Введите название склада.");
+            return;
+        }
+        setSavingWarehouse(true);
+        setPageError("");
+        try {
+            const response = await fetch(
+                editingId ? `${API_WAREHOUSES}/${editingId}` : API_WAREHOUSES,
+                {
+                    method: editingId ? "PUT" : "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ warehouseName: name })
+                }
+            );
+            if (!response.ok) throw new Error("Не удалось сохранить склад.");
+            showNotice(editingId ? "Название склада обновлено." : "Склад создан.");
+            setWarehouseName("");
+            setEditingId(null);
+            await loadData();
+        } catch (error) {
+            setPageError(error.message);
+        } finally {
+            setSavingWarehouse(false);
+        }
+    };
+
+    const deleteWarehouse = async (warehouse) => {
+        if (!window.confirm(`Удалить склад «${warehouse.warehouseName}»?`)) return;
+        setBusyKey(`warehouse-${warehouse.warehouseId}`);
+        try {
+            const response = await fetch(`${API_WAREHOUSES}/${warehouse.warehouseId}`, { method: "DELETE" });
+            if (!response.ok) throw new Error("Не удалось удалить склад. Проверьте связанные остатки.");
+            showNotice("Склад удалён.");
+            await loadData();
+        } catch (error) {
+            setPageError(error.message);
+        } finally {
+            setBusyKey("");
         }
     };
 
     const setMainWarehouse = async (warehouseId) => {
+        setBusyKey(`warehouse-${warehouseId}`);
         try {
-            const res = await fetch(`${API_WAREHOUSES}/${warehouseId}/main`, { method: "PUT" });
-            if (!res.ok) throw new Error("Не удалось установить главный склад");
-            await loadWarehouses();
-        } catch (err) {
-            console.error(err);
-            alert("Не удалось установить главный склад");
+            const response = await fetch(`${API_WAREHOUSES}/${warehouseId}/main`, { method: "PUT" });
+            if (!response.ok) throw new Error("Не удалось назначить главный склад.");
+            showNotice("Главный склад изменён.");
+            await loadData();
+        } catch (error) {
+            setPageError(error.message);
+        } finally {
+            setBusyKey("");
         }
     };
 
-    const loadAllWarehouseProducts = async (
-        warehousesList,
-        suppliersList = [],
-        weightedReceiptPriceByWarehouseProduct = {},
-        latestReceiptPriceByWarehouseProduct = {}
-    ) => {
-        const productsMap = {};
-
-        for (const wh of warehousesList) {
-            try {
-                const res = await fetch(`${API_WAREHOUSES}/${wh.warehouseId}/products`);
-                const warehouseProductsData = await res.json();
-
-                console.log(`Данные продуктов для склада ${wh.warehouseId}:`, warehouseProductsData);
-
-                if (Array.isArray(warehouseProductsData) && warehouseProductsData.length > 0) {
-                    const productsFullData = await Promise.all(
-                        warehouseProductsData.map(async (warehouseProduct) => {
-                            const { productId, quantity: whQuantity } = warehouseProduct;
-
-                            if (!productId) return null;
-
-                            try {
-                                const resProd = await fetch(`${API_BASE_URL}/api/product/${productId}`);
-                                if (!resProd.ok) {
-                                    return {
-                                        ...warehouseProduct,
-                                        productId,
-                                        productName: "Неизвестный продукт",
-                                        productPrice: "-",
-                                        avgPrice: "-",
-                                        lastPurchasePrice: "-",
-                                        waste: "-",
-                                        quantity: whQuantity ?? 0,
-                                        supplierName: "—"
-                                    };
-                                }
-
-                                const productData = await resProd.json();
-                                const product = Array.isArray(productData) ? productData[0] : productData;
-                                const warehouseProductKey = `${wh.warehouseId}-${productId}`;
-                                const weightedReceiptPrice = weightedReceiptPriceByWarehouseProduct[warehouseProductKey];
-                                const latestReceiptPrice = latestReceiptPriceByWarehouseProduct[warehouseProductKey];
-                                const supplierId = product.supplierId ?? product.supplierID;
-                                const supplier = suppliersList.find(s => (s.supplierId ?? s.supplierID ?? s.id) === supplierId);
-                                const supplierName = supplier ? (supplier.supplierName ?? supplier.name) : "—";
-                                const avgPrice = weightedReceiptPrice ?? product.productPrice;
-                                const unitFactor = getSafeUnitFactor(product.unitFactor);
-                                const quantityBase = Number(whQuantity ?? 0);
-                                const quantityDisplay = toDisplayQty(quantityBase, unitFactor);
-
-                                return {
-                                    ...product,
-                                    productPrice: avgPrice,
-                                    avgPrice,
-                                    lastPurchasePrice: latestReceiptPrice ?? null,
-                                    productWarehouseId: warehouseProduct.productWarehouseId,
-                                    quantityBase,
-                                    quantity: quantityDisplay,
-                                    unitFactor,
-                                    unit: product.unit ?? product.baseUnit ?? "pcs",
-                                    baseUnit: product.baseUnit ?? product.unit ?? "pcs",
-                                    supplierName
-                                };
-                            } catch (err) {
-                                console.error("Ошибка продукта", productId, err);
-                                return {
-                                    ...warehouseProduct,
-                                    productId,
-                                    productName: "Неизвестный продукт",
-                                    productPrice: "-",
-                                    avgPrice: "-",
-                                    lastPurchasePrice: "-",
-                                    waste: "-",
-                                    quantityBase: Number(whQuantity ?? 0),
-                                    quantity: Number(whQuantity ?? 0),
-                                    unitFactor: 1,
-                                    unit: "pcs",
-                                    baseUnit: "pcs",
-                                    supplierName: "—"
-                                };
-                            }
-                        })
-                    );
-
-                    productsMap[wh.warehouseId] = productsFullData.filter(p => p !== null);
-                } else {
-                    productsMap[wh.warehouseId] = [];
-                }
-            } catch (err) {
-                console.error(`Ошибка загрузки продуктов для склада ${wh.warehouseId}:`, err);
-                productsMap[wh.warehouseId] = [];
-            }
-        }
-
-        setWarehouseProducts(productsMap);
-    };
-    const loadProductsFromWarehouse = async (warehouseId) => {
+    const createMovement = async (payload, successMessage, operationKey) => {
+        setBusyKey(operationKey);
+        setPageError("");
         try {
-            const res = await fetch(`${API_WAREHOUSES}/${warehouseId}/products`);
-            const data = await res.json();
-            const baseProducts = Array.isArray(data) ? data : [];
-
-            const enriched = await Promise.all(
-                baseProducts.map(async (item) => {
-                    const productId = item.productId;
-                    if (!productId) return null;
-
-                    try {
-                        const prodRes = await fetch(`${API_BASE_URL}/api/product/${productId}`);
-                        if (!prodRes.ok) {
-                            return {
-                                ...item,
-                                productName: `Товар #${productId}`
-                            };
-                        }
-
-                        const prodData = await prodRes.json();
-                        const product = Array.isArray(prodData) ? prodData[0] : prodData;
-                        const unitFactor = getSafeUnitFactor(product?.unitFactor);
-                        const quantityBase = Number(item.quantity ?? 0);
-                        const warehouseProductKey = `${warehouseId}-${productId}`;
-                        return {
-                            ...item,
-                            productName: product?.productName ?? `Товар #${productId}`,
-                            productPrice: avgReceiptPriceByWarehouseProduct[warehouseProductKey] ?? product?.productPrice ?? 0,
-                            unit: product?.unit ?? product?.baseUnit ?? "pcs",
-                            baseUnit: product?.baseUnit ?? product?.unit ?? "pcs",
-                            unitFactor,
-                            quantityBase,
-                            quantity: toDisplayQty(quantityBase, unitFactor)
-                        };
-                    } catch (e) {
-                        console.error("Ошибка загрузки продукта для перемещения:", productId, e);
-                        return {
-                            ...item,
-                            productName: `Товар #${productId}`,
-                            productPrice: 0,
-                            unit: "pcs",
-                            baseUnit: "pcs",
-                            unitFactor: 1,
-                            quantityBase: Number(item.quantity ?? 0),
-                            quantity: Number(item.quantity ?? 0)
-                        };
-                    }
-                })
-            );
-
-            setProductsFrom(enriched.filter(p => p && Number(p.quantityBase ?? 0) > 0));
-        } catch (err) {
-            console.error(err);
-            setProductsFrom([]);
-        }
-    };
-
-    const handleSave = () => {
-        if (!warehouseName) return;
-
-        const payload = { warehouseName };
-        const method = editingId ? "PUT" : "POST";
-        const url = editingId ? `${API_WAREHOUSES}/${editingId}` : API_WAREHOUSES;
-
-        fetch(url, {
-            method,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        })
-            .then(res => res.json())
-            .then(() => {
-                setWarehouseName("");
-                setEditingId(null);
-                loadWarehouses();
-            })
-            .catch(err => console.error(err));
-    };
-
-    const handleEdit = (wh) => {
-        setWarehouseName(wh.warehouseName);
-        setEditingId(wh.warehouseId);
-    };
-
-    const handleDelete = (id) => {
-        if (!window.confirm("Удалить склад?")) return;
-
-        fetch(`${API_WAREHOUSES}/${id}`, { method: "DELETE" })
-            .then(() => loadWarehouses())
-            .catch(err => console.error(err));
-    };
-
-    const handleMovement = () => {
-        if (!movementFrom || !movementTo || !movementProduct || !movementQuantity) return;
-        const selectedProduct = productsFrom.find(p => String(p.productId) === String(movementProduct));
-        const unitPrice = Number(selectedProduct?.productPrice ?? 0);
-        const normalized = normalizeMovementPayload(selectedProduct, movementQuantity, unitPrice);
-
-        const payload = {
-            fromWarehouseId: movementFrom,
-            toWarehouseId: movementTo,
-            productId: movementProduct,
-            quantity: normalized.quantity,
-            unitPrice: Number.isFinite(normalized.unitPrice) ? normalized.unitPrice : 0
-        };
-
-        fetch(API_MOVEMENTS, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        })
-            .then(res => {
-                if (!res.ok) throw new Error("Ошибка создания перемещения");
-                return res;
-            })
-            .then(() => {
-                setMovementFrom("");
-                setMovementTo("");
-                setMovementProduct("");
-                setMovementQuantity("");
-                setProductsFrom([]);
-                alert("Перемещение создано");
-                loadWarehouses();
-            })
-            .catch(err => console.error(err));
-    };
-    const selectedMovementProduct = productsFrom.find(p => String(p.productId) === String(movementProduct));
-    const movementUnit = selectedMovementProduct ? getQuantityInputLabel(selectedMovementProduct) : "";
-
-    const openProductPicker = (warehouseId) => {
-        setProductPickerWarehouseId(warehouseId);
-        setProductPickerSearch("");
-        setSelectedCatalogProductId("");
-        setSelectedCatalogQuantity("");
-        setSelectedCatalogPrice("");
-        setProductPickerError("");
-    };
-
-    const closeProductPicker = () => {
-        setProductPickerWarehouseId(null);
-        setProductPickerSearch("");
-        setSelectedCatalogProductId("");
-        setSelectedCatalogQuantity("");
-        setSelectedCatalogPrice("");
-        setProductPickerError("");
-    };
-
-    const handleSelectCatalogProduct = (product) => {
-        setSelectedCatalogProductId(String(product.productId));
-        setSelectedCatalogPrice(String(product.productPrice ?? ""));
-        setProductPickerError("");
-    };
-
-    const handleAddExistingProductToWarehouse = async () => {
-        const warehouseId = Number(productPickerWarehouseId);
-        const productId = Number(selectedCatalogProductId);
-        const quantity = parseFloat(selectedCatalogQuantity);
-        const unitPrice = parseFloat(selectedCatalogPrice);
-
-        if (!warehouseId) {
-            setProductPickerError("Не выбран склад");
-            return;
-        }
-
-        if (!productId) {
-            setProductPickerError("Выберите продукт из списка");
-            return;
-        }
-
-        if (!Number.isFinite(quantity) || quantity <= 0) {
-            setProductPickerError("Укажите корректное количество");
-            return;
-        }
-
-        if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
-            setProductPickerError("Укажите корректную цену прихода");
-            return;
-        }
-
-        try {
-            const productMeta = catalogProducts.find((product) => Number(product.productId) === productId);
-            const normalized = normalizeMovementPayload(productMeta, quantity, unitPrice);
-
-            const res = await fetch(API_MOVEMENTS, {
+            const response = await fetch(API_MOVEMENTS, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    docType: "receipt",
-                    toWarehouseId: warehouseId,
-                    supplierId: productMeta?.supplierId ?? productMeta?.supplierID ?? null,
-                    productId,
-                    quantity: normalized.quantity,
-                    unitPrice: normalized.unitPrice,
-                    comment: `warehouse-existing-add:${warehouseId}`,
-                    createdBy: "warehouse-ui"
-                })
+                body: JSON.stringify(payload)
             });
-
-            if (!res.ok) {
-                throw new Error("Ошибка добавления продукта на склад");
-            }
-
-            await loadWarehouses();
-            closeProductPicker();
-            alert("Продукт добавлен на склад");
-        } catch (err) {
-            console.error(err);
-            setProductPickerError("Не удалось добавить выбранный продукт");
+            if (!response.ok) throw new Error("Операция не проведена. Проверьте остаток, цену и выбранные склады.");
+            showNotice(successMessage);
+            await loadData();
+            return true;
+        } catch (error) {
+            setPageError(error.message);
+            return false;
+        } finally {
+            setBusyKey("");
         }
     };
 
-    // Функция для добавления продукта на склад
-    const handleAddProductToWarehouse = async (warehouseId) => {
-        if (!newProductName.trim() || !newProductSupplierId || !newProductPrice.trim() || !newProductWaste.trim() || !newProductQuantity.trim()) {
-            alert("Заполните все поля для добавления продукта");
+    const submitTransfer = async (event) => {
+        event.preventDefault();
+        const product = transferProducts.find(
+            (row) => String(row.productId) === String(transferForm.productId)
+        );
+        const quantity = parseDecimal(transferForm.quantity);
+        if (!product || !Number.isFinite(quantity) || quantity <= 0) {
+            setPageError("Выберите товар и укажите положительное количество.");
             return;
         }
+        const normalized = normalizeMovementPayload(product, quantity, Number(product.averagePrice ?? 0));
+        const ok = await createMovement({
+            docType: "movement",
+            fromWarehouseId: Number(transferForm.fromWarehouseId),
+            toWarehouseId: Number(transferForm.toWarehouseId),
+            productId: Number(product.productId),
+            quantity: normalized.quantity,
+            unitPrice: normalized.unitPrice,
+            comment: "warehouse-transfer",
+            createdBy: "warehouse-ui"
+        }, "Перемещение проведено и записано в журнал.", "transfer");
+        if (ok) setTransferForm({ fromWarehouseId: "", toWarehouseId: "", productId: "", quantity: "" });
+    };
 
+    const submitCatalogReceipt = async (warehouseId) => {
+        const product = productMetaById.get(Number(catalogForm.productId));
+        const quantity = parseDecimal(catalogForm.quantity);
+        const unitPrice = parseDecimal(catalogForm.unitPrice);
+        if (!product || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+            setPageError("Выберите товар и укажите положительные количество и цену прихода.");
+            return;
+        }
+        const normalized = normalizeMovementPayload(product, quantity, unitPrice);
+        const ok = await createMovement({
+            docType: "receipt",
+            toWarehouseId: Number(warehouseId),
+            supplierId: Number(product.supplierId ?? product.supplierID),
+            productId: getProductId(product),
+            quantity: normalized.quantity,
+            unitPrice: normalized.unitPrice,
+            comment: `warehouse-existing-add:${warehouseId}`,
+            createdBy: "warehouse-ui"
+        }, "Приход проведён и добавлен в остаток.", `catalog-${warehouseId}`);
+        if (ok) {
+            setOpenStockPanel(null);
+            setCatalogSearch("");
+            setCatalogForm({ productId: "", quantity: "", unitPrice: "" });
+        }
+    };
+
+    const submitNewProduct = async (warehouseId) => {
+        const quantity = parseDecimal(newProductForm.quantity);
+        const price = parseDecimal(newProductForm.productPrice);
+        const waste = parseDecimal(newProductForm.waste);
+        if (!newProductForm.productName.trim() || !newProductForm.supplierId
+            || !Number.isFinite(quantity) || quantity <= 0
+            || !Number.isFinite(price) || price <= 0 || !Number.isFinite(waste)) {
+            setPageError("Заполните название, поставщика, цену, отход и количество.");
+            return;
+        }
+        setBusyKey(`new-${warehouseId}`);
         try {
-            const createdProductRes = await fetch(API_PRODUCTS, {
+            const response = await fetch(API_PRODUCTS, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    supplierId: Number(newProductSupplierId),
-                    productName: newProductName.trim(),
-                    productPrice: parseFloat(newProductPrice),
-                    waste: parseFloat(newProductWaste),
+                    supplierId: Number(newProductForm.supplierId),
+                    productName: newProductForm.productName.trim(),
+                    productPrice: price,
+                    waste,
                     isFavorite: false
                 })
             });
-
-            if (!createdProductRes.ok) {
-                const errorText = await createdProductRes.text();
-                throw new Error(errorText || "Ошибка создания продукта");
-            }
-
-            const createdProduct = await createdProductRes.json();
-            const createdProductId = Number(createdProduct?.productId);
-            if (!createdProductId) {
-                throw new Error("Не удалось получить ID созданного продукта");
-            }
-
-            const addToWarehouseRes = await fetch(`${API_WAREHOUSES}/${warehouseId}/products`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify([{
-                    productId: createdProductId,
-                    quantity: parseFloat(newProductQuantity)
-                }])
-            });
-
-            if (!addToWarehouseRes.ok) {
-                const errorText = await addToWarehouseRes.text();
-                throw new Error(errorText || "Ошибка добавления продукта на склад");
-            }
-
-            try {
-                await fetch(API_MOVEMENTS, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        docType: "receipt",
-                        toWarehouseId: Number(warehouseId),
-                        supplierId: Number(newProductSupplierId),
-                        productId: createdProductId,
-                        quantity: parseFloat(newProductQuantity),
-                        unitPrice: parseFloat(newProductPrice),
-                        comment: `warehouse-manual-add:${warehouseId}`,
-                        createdBy: "warehouse-ui"
-                    })
-                });
-            } catch (movementErr) {
-                console.warn("Не удалось записать движение прихода:", movementErr);
-            }
-
-            setNewProductName("");
-            setNewProductSupplierId("");
-            setNewProductPrice("");
-            setNewProductWaste("");
-            setNewProductQuantity("");
-            setAddingToWarehouseId(null);
-
-            loadWarehouses();
-            alert("Продукт успешно добавлен на склад!");
-        } catch (error) {
-            console.error("Ошибка:", error);
-            alert("Ошибка при добавлении продукта");
-        }
-    };
-
-    // Функция для начала добавления продукта на склад
-    const startAddingProduct = (warehouseId) => {
-        setAddingToWarehouseId(warehouseId);
-        setNewProductName("");
-        setNewProductSupplierId("");
-        setNewProductPrice("");
-        setNewProductWaste("");
-        setNewProductQuantity("");
-    };
-
-    const cancelAddingProduct = () => {
-        setAddingToWarehouseId(null);
-        setNewProductName("");
-        setNewProductSupplierId("");
-        setNewProductPrice("");
-        setNewProductWaste("");
-        setNewProductQuantity("");
-    };
-
-    const getAdjustKey = (warehouseId, productId) => `${warehouseId}-${productId}`;
-
-    const setAdjustInput = (key, value) => {
-        setAdjustQtyInputs(prev => ({ ...prev, [key]: value }));
-    };
-
-    const setAdjustPriceInput = (key, value) => {
-        setAdjustPriceInputs(prev => ({ ...prev, [key]: value }));
-    };
-
-    const handleWriteoffMovement = async (warehouseId, productId, qty, unitPrice, supplierId) => {
-        try {
-            const productMeta = (warehouseProducts[warehouseId] || []).find(
-                (p) => Number(p.productId) === Number(productId)
-            );
-            const normalized = normalizeMovementPayload(productMeta, qty, unitPrice);
-            const res = await fetch(API_MOVEMENTS, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    docType: "writeoff",
-                    fromWarehouseId: Number(warehouseId),
-                    productId: Number(productId),
-                    quantity: normalized.quantity,
-                    unitPrice: normalized.unitPrice,
-                    supplierId: supplierId ? Number(supplierId) : null,
-                    comment: `warehouse-writeoff:${warehouseId}`,
-                    createdBy: "warehouse-ui"
-                })
-            });
-            if (!res.ok) throw new Error("Ошибка списания через движение");
-            setAdjustQtyInputs(prev => ({ ...prev, [getAdjustKey(warehouseId, productId)]: "" }));
-            setAdjustPriceInputs(prev => ({ ...prev, [getAdjustKey(warehouseId, productId)]: "" }));
-            await loadWarehouses();
-        } catch (err) {
-            console.error(err);
-            alert("Не удалось списать товар через движение");
-        }
-    };
-
-    const handleAddWithReceiptMovement = async (warehouseId, productId, qty, unitPrice, supplierId) => {
-        try {
-            const productMeta = (warehouseProducts[warehouseId] || []).find(
-                (p) => Number(p.productId) === Number(productId)
-            );
-            const normalized = normalizeMovementPayload(productMeta, qty, unitPrice);
-            const res = await fetch(API_MOVEMENTS, {
+            if (!response.ok) throw new Error("Не удалось создать продукт.");
+            const created = await response.json();
+            const movementResponse = await fetch(API_MOVEMENTS, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     docType: "receipt",
                     toWarehouseId: Number(warehouseId),
-                    productId: Number(productId),
-                    quantity: normalized.quantity,
-                    unitPrice: normalized.unitPrice,
-                    supplierId: supplierId ? Number(supplierId) : null,
-                    comment: `warehouse-adjust-add:${warehouseId}`,
+                    supplierId: Number(newProductForm.supplierId),
+                    productId: getProductId(created),
+                    quantity,
+                    unitPrice: price,
+                    comment: `warehouse-manual-add:${warehouseId}`,
                     createdBy: "warehouse-ui"
                 })
             });
-            if (!res.ok) throw new Error("Ошибка добавления через движение");
-            setAdjustQtyInputs(prev => ({ ...prev, [getAdjustKey(warehouseId, productId)]: "" }));
-            setAdjustPriceInputs(prev => ({ ...prev, [getAdjustKey(warehouseId, productId)]: "" }));
-            await loadWarehouses();
-        } catch (err) {
-            console.error(err);
-            alert("Не удалось добавить товар через движение");
+            if (!movementResponse.ok) throw new Error("Продукт создан, но приход не проведён.");
+            setNewProductForm(EMPTY_NEW_PRODUCT);
+            setOpenStockPanel(null);
+            showNotice("Новый продукт создан и принят на склад.");
+            await loadData();
+        } catch (error) {
+            setPageError(error.message);
+        } finally {
+            setBusyKey("");
         }
     };
 
+    const adjustStock = async (warehouseId, product, direction) => {
+        const key = `${warehouseId}-${product.productId}`;
+        const values = stockInputs[key] ?? {};
+        const quantity = parseDecimal(values.quantity);
+        const enteredPrice = parseDecimal(values.unitPrice);
+        const fallbackPrice = Number(product.averagePrice ?? product.productPrice ?? 0);
+        const unitPrice = Number.isFinite(enteredPrice) && enteredPrice > 0 ? enteredPrice : fallbackPrice;
+        if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
+            setPageError("Укажите положительное количество. Для прихода также проверьте цену.");
+            return;
+        }
+        const normalized = normalizeMovementPayload(product, quantity, unitPrice);
+        const ok = await createMovement({
+            docType: direction === "in" ? "receipt" : "writeoff",
+            fromWarehouseId: direction === "out" ? Number(warehouseId) : null,
+            toWarehouseId: direction === "in" ? Number(warehouseId) : null,
+            supplierId: Number(product.supplierId ?? product.supplierID) || null,
+            productId: Number(product.productId),
+            quantity: normalized.quantity,
+            unitPrice: normalized.unitPrice,
+            comment: direction === "in" ? "warehouse-adjust-receipt" : "warehouse-adjust-writeoff",
+            createdBy: "warehouse-ui"
+        }, direction === "in" ? "Приход проведён." : "Списание проведено.", `stock-${key}`);
+        if (ok) setStockInputs((previous) => ({ ...previous, [key]: { quantity: "", unitPrice: "" } }));
+    };
+
     return (
-        <div className={styles.container}>
-            <h2 className={styles.header}>Управление складами</h2>
+        <div className={styles.page}>
+            <WarehouseHero
+                warehouses={warehouses}
+                warehouseProducts={warehouseProducts}
+                positions={warehouseStats.positions}
+                lowStock={warehouseStats.lowStock}
+            />
 
-            {/* Форма склада */}
-            <div className={styles.form}>
-                <input
-                    className={styles.input}
-                    type="text"
-                    placeholder="Название склада"
-                    value={warehouseName}
-                    onChange={e => setWarehouseName(e.target.value)}
-                />
-                <label className={styles.checkboxLabel} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <input
-                        type="checkbox"
-                        checked={showZeroStock}
-                        onChange={(e) => setShowZeroStock(e.target.checked)}
-                    />
-                    Показывать нулевые
-                </label>
-                <button className={styles.button} onClick={handleSave}>
-                    {editingId ? "Сохранить" : "Добавить"}
-                </button>
-                {editingId && (
-                    <button
-                        className={`${styles.button} ${styles.cancelButton}`}
-                        onClick={() => { setEditingId(null); setWarehouseName(""); }}
-                    >
-                        Отмена
-                    </button>
-                )}
-            </div>
-
-            {/* Список складов */}
-            {loadingWarehouses ? (
-                <p>Загрузка складов...</p>
-            ) : (
-                <div className={styles.warehousesList}>
-                    {warehouses.map(wh => (
-                        <div key={wh.warehouseId} className={styles.warehouseCard}>
-                            <div className={styles.warehouseHeader}>
-                                <h3 className={styles.warehouseTitle}>
-                                    {wh.warehouseName}
-                                    {wh.isMain && (
-                                        <span className={styles.mainBadge}>Главный</span>
-                                    )}
-                                    <span className={styles.productCount}>
-                                        ({warehouseProducts[wh.warehouseId]?.length || 0} товаров)
-                                    </span>
-                                </h3>
-                                <div className={styles.warehouseActions}>
-                                    {!wh.isMain && (
-                                        <button
-                                            className={`${styles.actionButton} ${styles.mainButton}`}
-                                            onClick={() => setMainWarehouse(wh.warehouseId)}
-                                        >
-                                            Сделать главным
-                                        </button>
-                                    )}
-                                    <button
-                                        className={`${styles.actionButton} ${styles.editButton}`}
-                                        onClick={() => handleEdit(wh)}
-                                    >
-                                        Редактировать
-                                    </button>
-                                    <button
-                                        className={`${styles.actionButton} ${styles.deleteButton}`}
-                                        onClick={() => handleDelete(wh.warehouseId)}
-                                    >
-                                        Удалить
-                                    </button>
-                                    <button
-                                        className={`${styles.actionButton} ${styles.addButton}`}
-                                        onClick={() => openProductPicker(wh.warehouseId)}
-                                    >
-                                        + Добавить продукт
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Форма добавления нового продукта */}
-                            {addingToWarehouseId === wh.warehouseId && (
-                                <div className={styles.addProductForm}>
-                                    <h4>Добавить новый продукт на склад</h4>
-                                    <div className={styles.productInputs}>
-                                        <input
-                                            className={styles.productInput}
-                                            type="text"
-                                            placeholder="Название продукта"
-                                            value={newProductName}
-                                            onChange={e => setNewProductName(e.target.value)}
-                                        />
-                                        <select
-                                            className={styles.productInput}
-                                            value={newProductSupplierId}
-                                            onChange={e => setNewProductSupplierId(e.target.value)}
-                                        >
-                                            <option value="">Поставщик</option>
-                                            {suppliers.map(s => (
-                                                <option key={s.supplierId ?? s.supplierID ?? s.id}
-                                                        value={s.supplierId ?? s.supplierID ?? s.id}>
-                                                    {s.supplierName ?? s.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <input
-                                            className={styles.productInput}
-                                            type="number"
-                                            placeholder="Цена продукта"
-                                            value={newProductPrice}
-                                            onChange={e => setNewProductPrice(e.target.value)}
-                                            min="0"
-                                            step="0.01"
-                                        />
-                                        <input
-                                            className={styles.productInput}
-                                            type="text"
-                                            placeholder="Waste"
-                                            value={newProductWaste}
-                                            onChange={e => setNewProductWaste(e.target.value)}
-                                        />
-                                        <input
-                                            className={styles.productInput}
-                                            type="number"
-                                            placeholder="Количество"
-                                            value={newProductQuantity}
-                                            onChange={e => setNewProductQuantity(e.target.value)}
-                                            min="0"
-                                            step="1"
-                                        />
-                                        <div className={styles.productFormButtons}>
-                                            <button
-                                                className={`${styles.button} ${styles.saveProductButton}`}
-                                                onClick={() => handleAddProductToWarehouse(wh.warehouseId)}
-                                            >
-                                                Сохранить продукт
-                                            </button>
-                                            <button
-                                                className={`${styles.button} ${styles.cancelProductButton}`}
-                                                onClick={cancelAddingProduct}
-                                            >
-                                                Отмена
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Продукты склада */}
-                            <div className={styles.productsSection}>
-                                {(() => {
-                                    const list = (warehouseProducts[wh.warehouseId] || []).filter(p => {
-                                        if (showZeroStock) return true;
-                                        return Number(p.quantityBase ?? 0) > 0;
-                                    });
-                                    if (list.length === 0) {
-                                        return <p className={styles.noProducts}>На складе нет продуктов</p>;
-                                    }
-                                    return (
-                                    <table className={styles.productsTable}>
-                                        <thead>
-                                        <tr>
-                                            <th>Продукт</th>
-                                            <th>ID</th>
-                                            <th>Средняя цена / base</th>
-                                            <th>Последняя цена / unit</th>
-                                            <th>Waste</th>
-                                            <th>Поставщик</th>
-                                            <th>Ед.</th>
-                                            <th>Количество</th>
-                                            <th>Добавить / Списать</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody>
-                                        {list.map(p => {
-                                            const adjustKey = getAdjustKey(wh.warehouseId, p.productId);
-                                            const inputVal = adjustQtyInputs[adjustKey] ?? "";
-                                            const inputPriceVal = adjustPriceInputs[adjustKey] ?? "";
-                                            return (
-                                                <tr key={p.productId}>
-                                                    <td>{p.productName}</td>
-                                                    <td>{p.productId}</td>
-                                                    <td>{formatPriceWithUnit(p.avgPrice ?? p.productPrice, p.baseUnit ?? p.unit ?? "pcs")}</td>
-                                                    <td>{p.lastPurchasePrice != null ? formatPriceWithUnit(p.lastPurchasePrice, p.unit ?? p.baseUnit ?? "pcs") : "—"}</td>
-                                                    <td>{p.waste}</td>
-                                                    <td>{p.supplierName ?? "—"}</td>
-                                                    <td>{getWarehouseUnitLabel(p)}</td>
-                                                    <td>
-                                                        {hasExpandedUnitDisplay(p)
-                                                            ? `${formatQty(p.quantityBase)} ${p.baseUnit ?? p.unit ?? "pcs"}`
-                                                            : `${formatQty(p.quantity)} ${p.unit ?? "pcs"}`}
-                                                        {hasExpandedUnitDisplay(p) && (
-                                                            <div className={styles.qtyHint}>
-                                                                Закупочно: {formatQty(p.quantity)} {p.unit ?? "ед."} (1 ед. = {getSafeUnitFactor(p.unitFactor)} {p.baseUnit ?? p.unit ?? "pcs"})
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td>
-                                                        <div className={styles.adjustQuantityCell}>
-                                                            <input
-                                                                type="number"
-                                                                className={styles.adjustInput}
-                                                                placeholder={`Кол-во${getQuantityInputLabel(p) ? ` (${getQuantityInputLabel(p)})` : ""}`}
-                                                                value={inputVal}
-                                                                onChange={e => setAdjustInput(adjustKey, e.target.value)}
-                                                                min="0"
-                                                                step="0.01"
-                                                            />
-                                                            <input
-                                                                type="number"
-                                                                className={styles.adjustInput}
-                                                                placeholder="Цена"
-                                                                value={inputPriceVal}
-                                                                onChange={e => setAdjustPriceInput(adjustKey, e.target.value)}
-                                                                min="0"
-                                                                step="0.01"
-                                                            />
-                                                            <button
-                                                                type="button"
-                                                                className={styles.adjustBtnAdd}
-                                                                onClick={() => {
-                                                                    const v = parseFloat(inputVal);
-                                                                    const price = parseFloat(inputPriceVal);
-                                                                    if (isNaN(v) || v <= 0) return;
-                                                                    if (isNaN(price) || price <= 0) {
-                                                                        alert("Укажите цену для добавления");
-                                                                        return;
-                                                                    }
-                                                                    handleAddWithReceiptMovement(wh.warehouseId, p.productId, v, price, p.supplierId ?? p.supplierID);
-                                                                }}
-                                                            >
-                                                                Добавить
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                className={styles.adjustBtnSubtract}
-                                                                onClick={() => {
-                                                                    const v = parseFloat(inputVal);
-                                                                    const price = parseFloat(inputPriceVal);
-                                                                    const fallbackPrice = Number(p.productPrice ?? 0);
-                                                                    const finalPrice = !isNaN(price) && price > 0 ? price : fallbackPrice;
-                                                                    if (isNaN(v) || v <= 0) return;
-                                                                    handleWriteoffMovement(
-                                                                        wh.warehouseId,
-                                                                        p.productId,
-                                                                        v,
-                                                                        finalPrice,
-                                                                        p.supplierId ?? p.supplierID
-                                                                    );
-                                                                }}
-                                                            >
-                                                                Списать
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                        </tbody>
-                                    </table>
-                                    );
-                                })()}
-                            </div>
-                        </div>
-                    ))}
+            {notice ? <div className={styles.notice} role="status" aria-live="polite">{notice}</div> : null}
+            {pageError ? (
+                <div className={styles.errorBanner} role="alert">
+                    <span>{pageError}</span>
+                    <button type="button" onClick={() => setPageError("")}>Закрыть</button>
                 </div>
-            )}
+            ) : null}
 
-            {/* Форма перемещения */}
-            <h3 className={styles.sectionTitle}>Создать перемещение</h3>
-            <div className={styles.form}>
-                <select className={styles.input} value={movementFrom} onChange={e => setMovementFrom(e.target.value)}>
-                    <option value="">Склад отправитель</option>
-                    {warehouses.map(w => <option key={w.warehouseId} value={w.warehouseId}>{w.warehouseName}</option>)}
-                </select>
-                <select className={styles.input} value={movementTo} onChange={e => setMovementTo(e.target.value)}>
-                    <option value="">Склад получатель</option>
-                    {warehouses.map(w => <option key={w.warehouseId} value={w.warehouseId}>{w.warehouseName}</option>)}
-                </select>
-                <select className={styles.input} value={movementProduct} onChange={e => setMovementProduct(e.target.value)} disabled={!movementFrom}>
-                    <option value="">Выберите продукт со склада отправителя</option>
-                    {productsFrom.map(p => (
-                        <option key={p.productId} value={p.productId}>
-                            {p.productName} (остаток: {hasExpandedUnitDisplay(p)
-                                ? `${formatQty(p.quantityBase)} ${p.baseUnit ?? p.unit ?? "pcs"}`
-                                : `${formatQty(p.quantity)} ${p.unit ?? "pcs"}`})
-                        </option>
-                    ))}
-                </select>
-                <input
-                    className={styles.input}
-                    type="number"
-                    placeholder={`Количество${movementUnit ? ` (${movementUnit})` : ""}`}
-                    value={movementQuantity}
-                    onChange={e => setMovementQuantity(e.target.value)}
-                    min={0}
+            <section className={styles.operationsGrid} aria-label="Операции со складами">
+                <WarehouseSetup
+                    warehouseName={warehouseName}
+                    editingId={editingId}
+                    saving={savingWarehouse}
+                    onNameChange={setWarehouseName}
+                    onSubmit={saveWarehouse}
+                    onCancel={() => {
+                        setWarehouseName("");
+                        setEditingId(null);
+                    }}
                 />
-                <button className={styles.button} onClick={handleMovement}>Создать</button>
-            </div>
+                <TransferPanel
+                    warehouses={warehouses}
+                    products={transferProducts}
+                    form={transferForm}
+                    busy={busyKey === "transfer"}
+                    onChange={(field, value) => setTransferForm((previous) => ({
+                        ...previous,
+                        [field]: value,
+                        ...(field === "fromWarehouseId" ? { productId: "" } : {})
+                    }))}
+                    onSubmit={submitTransfer}
+                />
+            </section>
 
-            {productPickerWarehouseId && (
-                <div className={styles.modalOverlay} onClick={closeProductPicker}>
-                    <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-                        <div className={styles.modalHeader}>
-                            <div>
-                                <h3 className={styles.modalTitle}>Добавить существующий продукт</h3>
-                                <p className={styles.modalSubtitle}>
-                                    Выберите товар из каталога, задайте количество и цену прихода для этого склада.
-                                </p>
-                            </div>
-                            <button
-                                type="button"
-                                className={`${styles.button} ${styles.cancelButton}`}
-                                onClick={closeProductPicker}
-                            >
-                                Закрыть
-                            </button>
-                        </div>
-
-                        <div className={styles.modalControls}>
-                            <input
-                                className={styles.input}
-                                type="text"
-                                placeholder="Поиск по названию или поставщику"
-                                value={productPickerSearch}
-                                onChange={e => setProductPickerSearch(e.target.value)}
-                            />
-                            <input
-                                className={styles.input}
-                                type="number"
-                                placeholder="Количество"
-                                value={selectedCatalogQuantity}
-                                onChange={e => setSelectedCatalogQuantity(e.target.value)}
-                                min="0"
-                                step="0.01"
-                            />
-                            <input
-                                className={styles.input}
-                                type="number"
-                                placeholder="Цена прихода"
-                                value={selectedCatalogPrice}
-                                onChange={e => setSelectedCatalogPrice(e.target.value)}
-                                min="0"
-                                step="0.01"
-                            />
-                        </div>
-
-                        <div className={styles.modalHint}>
-                            Если нужного товара нет, его можно создать на странице `Продукты`, а затем вернуться сюда.
-                        </div>
-
-                        {productPickerError && (
-                            <div className={styles.modalError}>{productPickerError}</div>
-                        )}
-
-                        <div className={styles.productPickerList}>
-                            {filteredCatalogProducts.length > 0 ? (
-                                filteredCatalogProducts.map((product) => {
-                                    const supplierId = product.supplierId ?? product.supplierID;
-                                    const supplier = suppliers.find((s) => (s.supplierId ?? s.supplierID ?? s.id) === supplierId);
-                                    const isActive = String(product.productId) === String(selectedCatalogProductId);
-                                    return (
-                                        <button
-                                            key={product.productId}
-                                            type="button"
-                                            className={`${styles.productPickerItem} ${isActive ? styles.productPickerItemActive : ""}`}
-                                            onClick={() => handleSelectCatalogProduct(product)}
-                                        >
-                                            <div className={styles.productPickerMain}>
-                                                <strong>{product.productName}</strong>
-                                                <span className={styles.productPickerMeta}>
-                                                    Поставщик: {supplier?.supplierName ?? supplier?.name ?? "—"}
-                                                </span>
-                                            </div>
-                                            <div className={styles.productPickerSide}>
-                                                <span>ID: {product.productId}</span>
-                                                <span>Цена: {Number(product.productPrice ?? 0).toFixed(2)}</span>
-                                                <span>Ед.: {product.unit ?? product.baseUnit ?? "pcs"}</span>
-                                            </div>
-                                        </button>
-                                    );
-                                })
-                            ) : (
-                                <div className={styles.noProducts}>Продукты не найдены</div>
-                            )}
-                        </div>
-
-                        <div className={styles.modalActions}>
-                            <button
-                                type="button"
-                                className={`${styles.button} ${styles.cancelButton}`}
-                                onClick={closeProductPicker}
-                            >
-                                Отмена
-                            </button>
-                            <button
-                                type="button"
-                                className={styles.button}
-                                onClick={handleAddExistingProductToWarehouse}
-                            >
-                                Добавить на склад
-                            </button>
-                        </div>
+            <section className={styles.stockSection} aria-labelledby="stock-heading">
+                <div className={styles.sectionHeader}>
+                    <div>
+                        <p className={styles.kicker}>Карта хранения</p>
+                        <h2 id="stock-heading">Остатки по складам</h2>
+                        <p>Каждый приход и списание проходит через журнал движений.</p>
                     </div>
+                    <label className={styles.switchLabel}>
+                        <input
+                            type="checkbox"
+                            checked={showZeroStock}
+                            onChange={(event) => setShowZeroStock(event.target.checked)}
+                        />
+                        Показывать нулевые остатки
+                    </label>
                 </div>
-            )}
+
+                {loading ? (
+                    <div className={styles.loadingState} role="status">Загружаем остатки…</div>
+                ) : warehouses.length === 0 ? (
+                    <div className={styles.emptyState}>Создайте первый склад — после этого здесь появятся остатки.</div>
+                ) : (
+                    <div className={styles.warehouseGrid}>
+                        {warehouses.map((warehouse) => (
+                            <WarehouseCard
+                                key={warehouse.warehouseId}
+                                warehouse={warehouse}
+                                products={warehouseProducts[warehouse.warehouseId] ?? []}
+                                showZeroStock={showZeroStock}
+                                busyKey={busyKey}
+                                openPanel={openStockPanel?.warehouseId === warehouse.warehouseId ? openStockPanel.mode : ""}
+                                catalogProducts={filteredCatalog}
+                                suppliers={suppliers}
+                                catalogSearch={catalogSearch}
+                                catalogForm={catalogForm}
+                                newProductForm={newProductForm}
+                                stockInputs={stockInputs}
+                                averageMap={averageMap}
+                                latestMap={latestMap}
+                                onEdit={() => {
+                                    setWarehouseName(warehouse.warehouseName);
+                                    setEditingId(warehouse.warehouseId);
+                                    window.scrollTo({ top: 0, behavior: "smooth" });
+                                }}
+                                onDelete={() => deleteWarehouse(warehouse)}
+                                onSetMain={() => setMainWarehouse(warehouse.warehouseId)}
+                                onOpenPanel={(mode) => {
+                                    setOpenStockPanel({ warehouseId: warehouse.warehouseId, mode });
+                                    setPageError("");
+                                }}
+                                onClosePanel={() => setOpenStockPanel(null)}
+                                onCatalogSearch={setCatalogSearch}
+                                onCatalogForm={setCatalogForm}
+                                onNewProductForm={setNewProductForm}
+                                onCatalogSubmit={() => submitCatalogReceipt(warehouse.warehouseId)}
+                                onNewProductSubmit={() => submitNewProduct(warehouse.warehouseId)}
+                                onStockInput={(key, value) => setStockInputs((previous) => ({
+                                    ...previous,
+                                    [key]: { ...(previous[key] ?? {}), ...value }
+                                }))}
+                                onAdjustStock={(product, direction) => adjustStock(warehouse.warehouseId, product, direction)}
+                            />
+                        ))}
+                    </div>
+                )}
+            </section>
+
+            <InventoryShiftReport warehouses={warehouses} onApplied={loadData} />
         </div>
     );
 }

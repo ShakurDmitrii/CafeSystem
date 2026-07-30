@@ -1,8 +1,6 @@
 package com.shakur.cafehelp.Controller.PyController;
 
 
-import java.time.ZoneOffset;
-import java.util.HashMap;
 import java.util.Map;
 import com.shakur.cafehelp.DTO.MlDTO.AnaliticDTO.HealthCheckDTO;
 import com.shakur.cafehelp.DTO.MlDTO.AnaliticDTO.*;
@@ -22,11 +20,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZonedDateTime;
 import java.util.List;
 
 import java.util.concurrent.TimeUnit;
@@ -203,52 +199,6 @@ public class AnalyticsDashboardController {
         );
 
         return ResponseEntity.ok(stats);
-    }
-    @GetMapping("/test-python")
-    public Map<String, Object> testPython() {
-        Map<String, Object> result = new HashMap<>();
-
-        try {
-            // 1. Проверь доступность Python
-            boolean pythonAvailable = PythonAnalyticsClient.isPythonServiceAvailable();
-            result.put("pythonAvailable", pythonAvailable);
-
-            if (pythonAvailable) {
-                // 2. Попробуй вызвать Python напрямую
-                try {
-                    String url = "http://localhost:8000/api/analytics/dashboard?timeRange=week";
-                    RestTemplate rt = new RestTemplate();
-                    String response = rt.getForObject(url, String.class);
-                    result.put("pythonResponseRaw", response);
-                } catch (Exception e) {
-                    result.put("pythonCallError", e.getMessage());
-                }
-
-                // 3. Попробуй через pythonClient
-                try {
-                    DashboardDataDTO data = PythonAnalyticsClient.getDashboardDataFromPython("week", null, null, false);
-                    result.put("pythonClientSuccess", data != null);
-                } catch (Exception e) {
-                    result.put("pythonClientError", e.getMessage());
-                }
-            }
-
-            // 4. Проверь RestTemplate
-            try {
-                RestTemplate testRt = new RestTemplate();
-                String testUrl = "http://localhost:8000/health";
-                ResponseEntity<String> resp = testRt.getForEntity(testUrl, String.class);
-                result.put("restTemplateTest", resp.getStatusCode());
-            } catch (Exception e) {
-                result.put("restTemplateError", e.getMessage());
-            }
-
-        } catch (Exception e) {
-            result.put("testError", e.getMessage());
-        }
-
-        result.put("timestamp", LocalDateTime.now());
-        return result;
     }
     /**
      * Создание ETag для кэширования

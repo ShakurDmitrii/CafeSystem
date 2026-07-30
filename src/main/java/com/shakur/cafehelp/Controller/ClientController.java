@@ -5,6 +5,7 @@ import com.shakur.cafehelp.DTO.ClientDishDTO;
 import com.shakur.cafehelp.DTO.ClientWithDutyDTO;
 import com.shakur.cafehelp.DTO.OrderDTO;
 import com.shakur.cafehelp.Service.ClientService;
+import com.shakur.cafehelp.Service.VkClientLinkService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,9 +20,11 @@ import java.util.Map;
 public class ClientController {
 
     private final ClientService clientService;
+    private final VkClientLinkService vkClientLinkService;
 
-    public ClientController(ClientService clientService) {
+    public ClientController(ClientService clientService, VkClientLinkService vkClientLinkService) {
         this.clientService = clientService;
+        this.vkClientLinkService = vkClientLinkService;
     }
 
     // 1. Получить всех клиентов
@@ -103,6 +106,18 @@ public class ClientController {
     }
 
     // 6. Обновить долг клиента (пометить все заказы как оплаченные)
+    @PostMapping("/{clientId}/vk-link-code")
+    public ResponseEntity<?> createVkLinkCode(@PathVariable int clientId) {
+        try {
+            return ResponseEntity.ok(vkClientLinkService.createLinkCode(clientId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Failed to create VK link code"));
+        }
+    }
+
     @DeleteMapping("/{clientId}/duty")
     public ResponseEntity<?> deleteClientDuty(@PathVariable int clientId) {
         try {

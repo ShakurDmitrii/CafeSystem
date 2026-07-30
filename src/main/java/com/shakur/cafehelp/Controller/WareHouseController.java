@@ -1,8 +1,11 @@
 package com.shakur.cafehelp.Controller;
 
 import com.shakur.cafehelp.DTO.PreparationWarehouseDTO;
+import com.shakur.cafehelp.DTO.InventoryShiftReportApplyRequestDTO;
+import com.shakur.cafehelp.DTO.InventoryShiftReportDTO;
 import com.shakur.cafehelp.DTO.ProductWarehouseDTO;
 import com.shakur.cafehelp.DTO.WareHouseDTO;
+import com.shakur.cafehelp.Service.InventoryShiftReportService;
 import com.shakur.cafehelp.Service.WareHouseService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,9 +17,14 @@ import java.util.List;
 public class WareHouseController {
 
     private final WareHouseService wareHouseService;
+    private final InventoryShiftReportService inventoryShiftReportService;
 
-    public WareHouseController(WareHouseService wareHouseService) {
+    public WareHouseController(
+            WareHouseService wareHouseService,
+            InventoryShiftReportService inventoryShiftReportService
+    ) {
         this.wareHouseService = wareHouseService;
+        this.inventoryShiftReportService = inventoryShiftReportService;
     }
 
     // Создание склада
@@ -83,6 +91,32 @@ public class WareHouseController {
     @GetMapping("/{id}/preparations")
     public ResponseEntity<List<PreparationWarehouseDTO>> getPreparationsOnWarehouse(@PathVariable("id") int warehouseId) {
         return ResponseEntity.ok(wareHouseService.getPreparationsOnWarehouse(warehouseId));
+    }
+
+    @GetMapping("/{id}/inventory-shift-report")
+    public ResponseEntity<?> getInventoryShiftReport(
+            @PathVariable("id") int warehouseId,
+            @RequestParam(value = "shiftId", required = false) Integer shiftId
+    ) {
+        try {
+            InventoryShiftReportDTO report = inventoryShiftReportService.getReport(warehouseId, shiftId);
+            return ResponseEntity.ok(report);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{id}/inventory-shift-report/apply")
+    public ResponseEntity<?> applyInventoryShiftReport(
+            @PathVariable("id") int warehouseId,
+            @RequestBody InventoryShiftReportApplyRequestDTO request
+    ) {
+        try {
+            InventoryShiftReportDTO report = inventoryShiftReportService.applyActualBalances(warehouseId, request);
+            return ResponseEntity.ok(report);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("message", e.getMessage()));
+        }
     }
 
     /** Добавить или списать количество продукта на складе (body: { "delta": число }) */

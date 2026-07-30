@@ -52,7 +52,7 @@ public class PersonController {
     // Обновление сотрудника
     @PutMapping("/{id}")
     public PersonDTO updatePerson(@PathVariable int id, @RequestBody PersonDTO dto) {
-        return personService.update(dto, dto); // dto в сервисе у тебя используется для personID и новых данных
+        return personService.update(id, dto);
     }
 
     // Удаление сотрудника

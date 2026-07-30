@@ -11,3 +11,4 @@ LEGACY_MLB_PATH = PYMODULE_DIR / "mlb.pkl"
 
 MODEL_PATH = MODELS_DIR / "xgb_model.pkl"
 MLB_PATH = MODELS_DIR / "mlb.pkl"
+MODEL_BUNDLE_PATH = MODELS_DIR / "model_bundle.joblib"

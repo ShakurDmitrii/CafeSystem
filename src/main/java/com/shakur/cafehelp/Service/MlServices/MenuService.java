@@ -6,9 +6,12 @@ import com.shakur.cafehelp.Service.RecipeExpansionService;
 import jooqdata.tables.records.DishRecord;
 import lombok.RequiredArgsConstructor;
 import org.jooq.DSLContext;
+import org.jooq.Field;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -18,6 +21,8 @@ import static jooqdata.tables.Dish.DISH;
 @Service
 @RequiredArgsConstructor
 public class  MenuService {
+    private static final Field<LocalDateTime> ORDER_CANCELLED_AT =
+            DSL.field(DSL.name("cancelled_at"), LocalDateTime.class);
 
     private final DSLContext dsl;
     private final RecipeExpansionService recipeExpansionService;
@@ -84,6 +89,7 @@ public class  MenuService {
                         .eq(jooqdata.tables.Order.ORDER.ORDERID))
                 .where(jooqdata.tables.Order.ORDER.DATE.greaterOrEqual(sinceDate))
                 .and(jooqdata.tables.Order.ORDER.STATUS.eq(true))
+                .and(ORDER_CANCELLED_AT.isNull())
                 .groupBy(DISH.DISHID, DISH.DISHNAME, DISH.PRICE,
                         DISH.FIRSTCOST, DISH.CATEGORY)
                 .orderBy(org.jooq.impl.DSL.sum(jooqdata.tables.Orderdish.ORDERDISH.QTY).desc())

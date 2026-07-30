@@ -3,6 +3,9 @@ package com.shakur.cafehelp.Controller;
 import com.shakur.cafehelp.DTO.DishDTO;
 import com.shakur.cafehelp.DTO.ShiftDTO;
 import com.shakur.cafehelp.Service.ShiftService;
+import com.shakur.cafehelp.exception.InvalidShiftRequestException;
+import com.shakur.cafehelp.exception.ShiftNotFoundException;
+import com.shakur.cafehelp.exception.ShiftStateConflictException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -32,12 +35,8 @@ public class ShiftController {
     }
 
     @PostMapping("/create")
-    public ResponseEntity<?> createShift(@RequestBody ShiftDTO shiftDTO) {
-        try {
-            return ResponseEntity.ok(shiftService.createShift(shiftDTO));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
-        }
+    public ShiftDTO createShift(@RequestBody ShiftDTO shiftDTO) {
+        return shiftService.createShift(shiftDTO);
     }
 
     @PostMapping("/{id}/update")
@@ -75,6 +74,32 @@ public class ShiftController {
     @GetMapping("/{id}/z-report")
     public Map<String, Object> getZReport(@PathVariable int id) {
         return shiftService.buildZReport(id);
+    }
+
+    @ExceptionHandler(InvalidShiftRequestException.class)
+    public ResponseEntity<Map<String, String>> invalidShift(InvalidShiftRequestException exception) {
+        return shiftError(HttpStatus.BAD_REQUEST, "INVALID_SHIFT", exception.getMessage());
+    }
+
+    @ExceptionHandler(ShiftNotFoundException.class)
+    public ResponseEntity<Map<String, String>> shiftNotFound(ShiftNotFoundException exception) {
+        return shiftError(HttpStatus.NOT_FOUND, "SHIFT_NOT_FOUND", exception.getMessage());
+    }
+
+    @ExceptionHandler(ShiftStateConflictException.class)
+    public ResponseEntity<Map<String, String>> shiftConflict(ShiftStateConflictException exception) {
+        return shiftError(HttpStatus.CONFLICT, "SHIFT_STATE_CONFLICT", exception.getMessage());
+    }
+
+    private ResponseEntity<Map<String, String>> shiftError(
+            HttpStatus status,
+            String code,
+            String message
+    ) {
+        return ResponseEntity.status(status).body(Map.of(
+                "code", code,
+                "message", message != null ? message : status.getReasonPhrase()
+        ));
     }
 
 }

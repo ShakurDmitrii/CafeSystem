@@ -22,6 +22,7 @@ import LoginPage from "./pages/Auth/LoginPage";
 import ProductsPage from "./pages/Products/ProductsPage";
 import HomePage from "./pages/Home/HomePage";
 import KitchenDisplayPage from "./pages/SuppliersPage/CashierPages/KitchenDisplayPage";
+import TaxPage from "./pages/Tax/TaxPage";
 
 function ProtectedRoute({ auth, roles, element }) {
     if (!auth) return <Navigate to="/login" replace />;
@@ -57,6 +58,7 @@ function AppLayout({ auth, setAuth }) {
                     <Route path="/preparations" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<PreparationsPage />} />} />
                     <Route path="/movements" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<MovementPage />} />} />
                     <Route path="/ml" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<MlPage />} />} />
+                    <Route path="/tax" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<TaxPage />} />} />
                     <Route path="/" element={<ProtectedRoute auth={auth} element={<HomePage auth={auth} />} />} />
                     <Route path="*" element={<Navigate to={auth ? "/" : "/login"} replace />} />
         </Routes>

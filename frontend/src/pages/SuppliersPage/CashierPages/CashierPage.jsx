@@ -1,8 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "../../../auth";
 import styles from "./CashierPage.module.css";
 import DishPickerModal from "./DishPickerModal";
-import OrderCard from "./OrderCard";
+import InventoryShiftReport from "../../Warehouse/InventoryShiftReport";
+import CashierHeader from "./cashier-page/CashierHeader";
+import CashierModal from "./cashier-page/CashierModal";
+import DebtNotification from "./cashier-page/DebtNotification";
+import OrderComposer from "./cashier-page/OrderComposer";
+import OrdersBoard from "./cashier-page/OrdersBoard";
+import ShiftLobby from "./cashier-page/ShiftLobby";
+import ShiftReportModal from "./cashier-page/ShiftReportModal";
 
 const API_ORDERS = `${API_BASE_URL}/api/orders`;
 const API_SHIFTS = `${API_BASE_URL}/api/shifts`;
@@ -10,6 +17,7 @@ const API_PERSONS = `${API_BASE_URL}/api/persons`;
 const API_DISHES = `${API_BASE_URL}/api/dishes`;
 const API_DISH_SETS = `${API_BASE_URL}/api/dish-sets`;
 const API_CLIENTS = `${API_BASE_URL}/api/clients`;
+const API_WAREHOUSES = `${API_BASE_URL}/warehouses`;
 const API_TODAY_DEBTS = `${API_BASE_URL}/api/clients/today-debts`;
 const API_OVERDUE_DEBTS = `${API_BASE_URL}/api/clients/overdue-debts`;
 const API_DISH_CATEGORIES = `${API_BASE_URL}/api/dish-categories`;
@@ -70,6 +78,7 @@ const expandOrderItemsForApi = (items = []) => {
 };
 
 export default function CashierPage() {
+    const loadOrdersRef = useRef(null);
     const [orders, setOrders] = useState([]);
     const [currentOrderItems, setCurrentOrderItems] = useState([]);
     const [shiftOpen, setShiftOpen] = useState(false);
@@ -107,11 +116,29 @@ export default function CashierPage() {
     const [shiftReportLoading, setShiftReportLoading] = useState(false);
     const [shiftReport, setShiftReport] = useState(null);
     const [showIssuedOrders, setShowIssuedOrders] = useState(false);
+    const [warehouses, setWarehouses] = useState([]);
+    const [inventoryReportOpen, setInventoryReportOpen] = useState(false);
+    const [inventoryReportShiftId, setInventoryReportShiftId] = useState("");
 
     // === ДОБАВЛЕНО: Состояния для долгов ===
     const [todayDebts, setTodayDebts] = useState([]);
     const [overdueDebts, setOverdueDebts] = useState([]);
     const [showDebtNotification, setShowDebtNotification] = useState(false);
+
+    const loadWarehouses = async () => {
+        try {
+            const res = await fetch(API_WAREHOUSES);
+            const data = res.ok ? await res.json().catch(() => []) : [];
+            setWarehouses(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error("Warehouse loading error:", err);
+            setWarehouses([]);
+        }
+    };
+
+    useEffect(() => {
+        loadWarehouses();
+    }, []);
 
     // При загрузке компонента восстанавливаем состояние смены из localStorage
     useEffect(() => {
@@ -240,9 +267,6 @@ export default function CashierPage() {
         if (!query) return true;
         return String(person.name || "").toLowerCase().includes(query);
     });
-    const selectedShiftPersonsLabel = selectedShiftPersons.length > 0
-        ? selectedShiftPersons.map((person) => person.name || `Сотр. #${person.personID}`).join(", ")
-        : "Сотрудники не выбраны";
     const currentShiftWorkersLabel = getShiftWorkersLabel(currentShift, persons);
 
     const toggleShiftPersonSelection = (person) => {
@@ -390,18 +414,19 @@ export default function CashierPage() {
             loadOrdersForShift(currentShift.shiftId);
         }
     };
+    loadOrdersRef.current = loadOrders;
 
     // Периодическая загрузка заказов при открытой смене
     useEffect(() => {
         if (shiftOpen && currentShift) {
             // Сразу загружаем заказы
-            loadOrders();
+            loadOrdersRef.current?.();
 
             // Устанавливаем интервал обновления каждые 5 секунд
-            const interval = setInterval(loadOrders, 5000);
+            const interval = setInterval(() => loadOrdersRef.current?.(), 5000);
 
             // Загружаем заказы при фокусировке окна
-            const handleFocus = () => loadOrders();
+            const handleFocus = () => loadOrdersRef.current?.();
             window.addEventListener('focus', handleFocus);
 
             return () => {
@@ -475,35 +500,28 @@ export default function CashierPage() {
     };
 
     const closeShift = () => {
+        if (!currentShift?.shiftId) return;
+        setInventoryReportShiftId(String(currentShift.shiftId));
+        setInventoryReportOpen(true);
+    };
+
+    const finalizeCloseShift = () => {
         if (!currentShift) return;
-
-        const shiftOrders = orders.filter(o => o.shiftId === currentShift.shiftId);
-
-        // Orders from API usually don't contain nested items; use order.amount as source of truth.
-        const income = shiftOrders.reduce(
-            (sum, o) => sum + Number(o.amount || 0),
-            0
-        );
-
-        const totalCost = shiftOrders.reduce(
-            (sum, o) => sum + (o.items || []).reduce((s, i) => s + (i.firstCost || 0) * (i.qty || 1), 0),
-            0
-        );
-
-        const profit = income - totalCost - (currentShift.expenses || 0);
 
         setIsLoading(true);
 
-        fetch(`${API_SHIFTS}/${currentShift.shiftId}/update`, {
+        const expenses = Number(currentShift.expenses || 0);
+        fetch(`${API_SHIFTS}/${currentShift.shiftId}/close?expenses=${encodeURIComponent(expenses)}`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                ...currentShift,
-                endTime: new Date().toTimeString().slice(0, 8),
-                income,
-                profit
-            })
         })
+            .then(async (response) => {
+                const text = await response.text();
+                const body = text ? JSON.parse(text) : null;
+                if (!response.ok) {
+                    throw new Error(body?.message || `Ошибка закрытия смены (${response.status})`);
+                }
+                return body;
+            })
             .then(() => {
                 // Очищаем localStorage при закрытии смены
                 localStorage.removeItem('currentShiftId');
@@ -521,9 +539,14 @@ export default function CashierPage() {
                 setSelectedClient(null);
                 setIsDebt(false);
                 setShowDatePicker(false);
+                setInventoryReportOpen(false);
+                setInventoryReportShiftId("");
                 fetchShifts();
             })
-            .catch(e => console.error("Ошибка закрытия смены:", e))
+            .catch(e => {
+                console.error("Ошибка закрытия смены:", e);
+                alert(e.message || "Не удалось закрыть смену");
+            })
             .finally(() => setIsLoading(false));
     };
 
@@ -572,10 +595,16 @@ export default function CashierPage() {
 
             lines.push("ИТОГИ:");
             lines.push(`Заказов: ${report.totals?.ordersCount ?? 0}`);
+            lines.push(`Оплачено: ${report.totals?.paidOrdersCount ?? 0}`);
+            lines.push(`Не оплачено: ${report.totals?.unpaidOrdersCount ?? 0}`);
             lines.push(`Позиции блюд (шт): ${report.totals?.dishesCount ?? 0}`);
             lines.push(`Сумма по блюдам: ${Number(report.totals?.itemsAmount || 0).toFixed(2)} ₽`);
             lines.push(`Траты на доставку: ${Number(report.totals?.deliveryExpense || 0).toFixed(2)} ₽`);
             lines.push(`Общая выручка: ${Number(report.totals?.revenue || 0).toFixed(2)} ₽`);
+            lines.push(`Неоплаченная сумма: ${Number(report.totals?.unpaidAmount || 0).toFixed(2)} ₽`);
+            lines.push(`Себестоимость: ${Number(report.totals?.cost || 0).toFixed(2)} ₽`);
+            lines.push(`Расходы смены: ${Number(report.totals?.expenses || 0).toFixed(2)} ₽`);
+            lines.push(`Прибыль: ${Number(report.totals?.profit || 0).toFixed(2)} ₽`);
 
             const reportText = lines.join("\n");
 
@@ -900,91 +929,6 @@ ${reportText}
         ""
     ]);
 
-    const getOrderClientName = (order) => (
-        order.clientName ||
-        order.clientFullName ||
-        order.client_name ||
-        order.client ||
-        ""
-    );
-
-    const buildKitchenTicketLines = (order, items) => {
-        const lines = [];
-        lines.push({
-            text: `ЗАКАЗ НА КУХНЮ №${order.orderId}`,
-            fontSize: 22,
-            fontWeight: 800,
-            align: "center"
-        });
-        const clientName = getOrderClientName(order);
-        if (clientName) {
-            lines.push({
-                text: `КЛИЕНТ: ${clientName}`,
-                fontSize: 22,
-                fontWeight: 800,
-                align: "center"
-            });
-        }
-        if (order.created_at || order.createdAt) {
-            lines.push(`Время: ${String(order.created_at || order.createdAt)}`);
-        }
-        lines.push("-".repeat(32));
-
-        const normalizedItems = normalizeTicketItems(items);
-        const itemsTotal = normalizedItems.reduce((sum, item) => sum + Number(item.sum || 0), 0);
-        normalizedItems.forEach((item) => {
-            const qty = Number(item.qty || 0);
-            const price = Number(item.price || 0);
-            const sum = Number(item.sum || 0);
-            lines.push(String(item.dishName || "Позиция"));
-            lines.push(`${qty} x ${formatTicketMoney(price)} = ${formatTicketMoney(sum || qty * price)} ₽`);
-        });
-
-        lines.push("-".repeat(32));
-        lines.push(`ИТОГО: ${formatTicketMoney(order.amount)} ₽`);
-        lines.push(order.type ? "ТИП: ДОСТАВКА" : "ТИП: В ЗАЛЕ");
-        if (order.type) {
-            let deliveryCost = Number(
-                order.deliveryCost ??
-                order.delivery_cost ??
-                order.deliveryExpense ??
-                order.delivery_expense ??
-                0
-            );
-            if (!Number.isFinite(deliveryCost) || deliveryCost <= 0) {
-                const amount = Number(order.amount || 0);
-                if (Number.isFinite(amount) && amount > 0) {
-                    deliveryCost = Math.max(0, amount - itemsTotal);
-                }
-            }
-            lines.push(`ДОСТАВКА: ${formatTicketMoney(deliveryCost)} ₽`);
-        }
-        const contactPhone = order.deliveryPhone || order.clientPhone || order.client_number || order.clientNumber;
-        const contactAddress = order.deliveryAddress || order.delivery_address || order.clientAddress || order.client_address;
-        if (contactPhone) {
-            lines.push({
-                text: `ТЕЛЕФОН: ${contactPhone}`,
-                fontSize: 26,
-                fontWeight: 800
-            });
-        }
-        if (contactAddress) {
-            lines.push({
-                text: `АДРЕС: ${contactAddress}`,
-                fontSize: 26,
-                fontWeight: 800
-            });
-        }
-        const paymentRaw = (order.paymentType || "").toLowerCase();
-        const paymentLabel = paymentRaw === "cash"
-            ? "НАЛИЧКА"
-            : paymentRaw === "transfer"
-                ? "ПЕРЕВОД"
-                : "НЕ ОПЛАЧЕНО";
-        lines.push(`ОПЛАТА: ${paymentLabel}`);
-        return lines;
-    };
-
     const printLinesInWindow = (title, lines, style = {}) => {
         const fontSize = style.fontSize || 18;
         const fontWeight = style.fontWeight || 700;
@@ -1243,15 +1187,6 @@ ${reportText}
     const totalOrderAmount = orderItemsTotal + (orderType ? Number(deliveryCost || 0) : 0);
     const orderItemsForApi = expandOrderItemsForApi(currentOrderItems);
 
-    const formatDate = (dateString) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('ru-RU', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-        });
-    };
-
     // Функция для разделения заказов на группы
     const getSortedOrders = () => {
         // Разделяем заказы на группы
@@ -1279,943 +1214,350 @@ ${reportText}
         return { cookingOrders, readyOrders, issuedOrders };
     };
 
-    // === ДОБАВЛЕНО: Компонент уведомления о долгах ===
-    const DebtNotification = () => {
-        if (!showDebtNotification || (todayDebts.length === 0 && overdueDebts.length === 0)) {
-            return null;
-        }
+    const sortedShifts = [...allShifts].sort((a, b) => (b.shiftId || 0) - (a.shiftId || 0));
 
-        const totalAmount = [...todayDebts, ...overdueDebts]
-            .reduce((sum, debt) => sum + (debt.amount || 0), 0);
-
-        return (
-            <div className={styles.notificationOverlay}>
-                <div className={styles.notificationModal}>
-                    <div className={styles.notificationHeader}>
-                        <h2>📋 Уведомление о долгах</h2>
-                        <button
-                            className={styles.closeBtn}
-                            onClick={() => setShowDebtNotification(false)}
-                        >
-                            ✕
-                        </button>
-                    </div>
-
-                    <div className={styles.notificationContent}>
-                        {/* ПРОСРОЧЕННЫЕ ДОЛГИ */}
-                        {overdueDebts.length > 0 && (
-                            <div className={styles.debtSection}>
-                                <h3 className={styles.overdueTitle}>
-                                    ⚠️ ПРОСРОЧЕННЫЕ ДОЛГИ ({overdueDebts.length})
-                                </h3>
-                                {overdueDebts.map(debt => (
-                                    <div key={debt.orderId} className={styles.debtItem}>
-                                        <div className={styles.debtInfo}>
-                                            <strong>Заказ #{debt.orderId}</strong>
-                                            <div>Сумма: {debt.amount} ₽</div>
-                                            {debt.debt_payment_date && (
-                                                <div className={styles.overdueBadge}>
-                                                    Просрочено с: {formatDate(debt.debt_payment_date)}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* ДОЛГИ НА СЕГОДНЯ */}
-                        {todayDebts.length > 0 && (
-                            <div className={styles.debtSection}>
-                                <h3 className={styles.todayTitle}>
-                                    📅 ДОЛГИ НА СЕГОДНЯ ({todayDebts.length})
-                                </h3>
-                                {todayDebts.map(debt => (
-                                    <div key={debt.orderId} className={styles.debtItem}>
-                                        <div className={styles.debtInfo}>
-                                            <strong>Заказ #{debt.orderId}</strong>
-                                            <div>Сумма: {debt.amount} ₽</div>
-                                            {debt.debt_payment_date && (
-                                                <div className={styles.todayBadge}>
-                                                    Дата погашения: {formatDate(debt.debt_payment_date)}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className={styles.notificationFooter}>
-                        <button
-                            className={`${styles.btn} ${styles.primary}`}
-                            onClick={() => setShowDebtNotification(false)}
-                        >
-                            Понятно
-                        </button>
-                        <small>
-                            Всего долгов: {todayDebts.length + overdueDebts.length} на сумму {
-                            totalAmount.toFixed(2)
-                        } ₽
-                        </small>
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
-    // Показываем индикатор загрузки
     if (isLoading) {
         return (
             <div className={styles.page}>
-                <header className={styles.header}>
-                    <div className={styles.brand}>🍣 СушиСакура</div>
-                </header>
+                <CashierHeader
+                    shiftOpen={false}
+                    currentShift={null}
+                    workersLabel=""
+                    debtsCount={0}
+                    isLoading
+                />
                 <div className={styles.loadingContainer}>
-                    <div className={styles.spinner}></div>
-                    <div>Загрузка данных...</div>
+                    <div className={styles.spinner} aria-hidden="true" />
+                    <div role="status">Подготавливаем кассу…</div>
                 </div>
             </div>
         );
     }
 
     const { cookingOrders, readyOrders, issuedOrders } = getSortedOrders();
-    const sortedShifts = [...allShifts].sort((a, b) => (b.shiftId || 0) - (a.shiftId || 0));
 
     return (
         <div className={styles.page}>
-            <header className={styles.header}>
-                <div className={styles.brand}>🍣 СушиСакура</div>
-                <span className={shiftOpen ? styles.shiftOpen : styles.shiftClosed}>
-                    {shiftOpen ? `Смена открыта | ID: ${currentShift?.shiftId || ''}` : "Смена закрыта"}
-                </span>
-                {shiftOpen && (
-                    <div className={styles.shiftWorkersMeta}>
-                        Работники: {currentShiftWorkersLabel}
-                    </div>
-                )}
-
-                {shiftOpen && (
-                    <div className={styles.headerActions}>
-                        {/* === ДОБАВЛЕНО: Индикатор долгов в хедере === */}
-                        {(todayDebts.length > 0 || overdueDebts.length > 0) && (
-                            <button
-                                className={styles.debtAlertBtn}
-                                onClick={() => setShowDebtNotification(true)}
-                                title="Показать уведомления о долгах"
-                            >
-                                ⚠️ Долги: {todayDebts.length + overdueDebts.length}
-                            </button>
-                        )}
-                        <button
-                            className={styles.zReportBtn}
-                            onClick={printZReport}
-                            disabled={!currentShift || isLoading}
-                            title="Печать Z-отчета по смене"
-                        >
-                            🧾 Z-отчет
-                        </button>
-                        <button
-                            className={`${styles.btn} ${styles.secondary}`}
-                            onClick={() => {
-                                if (!currentShift?.shiftId) return;
-                                window.open(
-                                    `${window.location.origin}/kitchen-display/${currentShift.shiftId}`,
-                                    "_blank",
-                                    "noopener,noreferrer"
-                                );
-                            }}
-                            disabled={!currentShift || isLoading}
-                            title="Открыть отдельный экран кухни"
-                        >
-                            Экран кухни
-                        </button>
-                    </div>
-                )}
-            </header>
+            <CashierHeader
+                shiftOpen={shiftOpen}
+                currentShift={currentShift}
+                workersLabel={currentShiftWorkersLabel}
+                debtsCount={todayDebts.length + overdueDebts.length}
+                isLoading={isLoading}
+                onShowDebts={() => setShowDebtNotification(true)}
+                onPrintReport={printZReport}
+                onOpenKitchen={() => {
+                    if (!currentShift?.shiftId) return;
+                    window.open(
+                        `${window.location.origin}/kitchen-display/${currentShift.shiftId}`,
+                        "_blank",
+                        "noopener,noreferrer"
+                    );
+                }}
+            />
 
             {!shiftOpen ? (
-                <div className={styles.closedMessage}>
-                    <div className={styles.selectEmployeeWrapper}>
-                        <h3>Открыть новую смену</h3>
-                        <button
-                            type="button"
-                            className={styles.selectEmployeeBtn}
-                            onClick={() => setShowShiftPersonModal(true)}
-                            disabled={isLoading}
-                        >
-                            {selectedShiftPersons.length > 0
-                                ? `Выбрано сотрудников: ${selectedShiftPersons.length}`
-                                : "Выбрать работников"}
-                        </button>
-
-                        {selectedShiftPersons.length > 0 && (
-                            <>
-                                <div className={styles.selectedPerson}>
-                                    На смене: <b>{selectedShiftPersonsLabel}</b>
-                                </div>
-                                <div className={styles.selectedPeopleList}>
-                                    {selectedShiftPersons.map((person) => (
-                                        <span key={person.personID} className={styles.selectedPersonChip}>
-                                            <span>{person.name}</span>
-                                            <button
-                                                type="button"
-                                                className={styles.selectedPersonChipRemove}
-                                                onClick={() => toggleShiftPersonSelection(person)}
-                                                disabled={isLoading}
-                                                aria-label={`Убрать ${person.name}`}
-                                            >
-                                                ×
-                                            </button>
-                                        </span>
-                                    ))}
-                                </div>
-                            </>
-                        )}
-
-                        {selectedShiftPersons.length === 0 && (
-                            <div className={styles.selectedPersonHint}>
-                                Можно выбрать сразу несколько работников на одну смену.
-                            </div>
-                        )}
-
-                        <button
-                            className={`${styles.btn} ${styles.primary}`}
-                            disabled={selectedShiftPersons.length === 0 || isLoading}
-                            onClick={createShift}
-                        >
-                            {isLoading ? "Открывается..." : "Открыть новую смену"}
-                        </button>
-                    </div>
-
-                    <h2>Смены</h2>
-                    {allShifts.length === 0 ? (
-                        <div className={styles.empty}>Нет доступных смен</div>
-                    ) : (
-                        sortedShifts.map(s => (
-                            <div key={s.shiftId} className={styles.orderCard}>
-                                <div>
-                                    <b>Смена #{s.shiftId}</b>
-                                    <div>Дата: {s.data || 'Не указана'}</div>
-                                    <div>Время: {s.startTime || 'Не указано'}</div>
-                                    <div>Статус: {!s.endTime ? "🟢 Открыта" : "🔴 Закрыта"}</div>
-                                    <div>Сумма заказов: {Number(s.income || 0).toFixed(2)} ₽</div>
-                                    <div>Работники: {getShiftWorkersLabel(s, persons)}</div>
-                                </div>
-                                {!s.endTime && (
-                                    <button
-                                        className={`${styles.btn} ${styles.primary}`}
-                                        onClick={() => openExistingShift(s)}
-                                    >
-                                        Войти
-                                    </button>
-                                )}
-                                {s.endTime && (
-                                    <button
-                                        className={`${styles.btn} ${styles.secondary}`}
-                                        onClick={() => openShiftReport(s.shiftId)}
-                                    >
-                                        Отчет
-                                    </button>
-                                )}
-                            </div>
-                        ))
-                    )}
-                </div>
+                <ShiftLobby
+                    selectedPeople={selectedShiftPersons}
+                    shifts={sortedShifts}
+                    isLoading={isLoading}
+                    getWorkersLabel={(shift) => getShiftWorkersLabel(shift, persons)}
+                    onChoosePeople={() => setShowShiftPersonModal(true)}
+                    onRemovePerson={toggleShiftPersonSelection}
+                    onCreateShift={createShift}
+                    onOpenShift={openExistingShift}
+                    onOpenReport={openShiftReport}
+                />
             ) : (
-                <div className={styles.body}>
-                    <section className={styles.orderPanel}>
-                        <h2>Новый заказ</h2>
-
-                        {/* ВЫБОР КЛИЕНТА */}
-                        <div className={styles.clientSection}>
-                            <h3>👤 Клиент</h3>
-
-                            {selectedClient ? (
-                                <div className={styles.selectedClientCard}>
-                                    <div>
-                                        <strong>{selectedClient.fullName}</strong>
-                                        {selectedClient.number && (
-                                            <div>📞 {selectedClient.number}</div>
-                                        )}
-                                        <div>ID: {selectedClient.clientId}</div>
-                                    </div>
-                                    <button
-                                        className={`${styles.btn} ${styles.danger}`}
-                                        onClick={() => {
-                                            setSelectedClient(null);
-                                            setIsDebt(false);
-                                            setShowDatePicker(false);
-                                        }}
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className={styles.clientSearch}>
-                                    <input
-                                        type="text"
-                                        placeholder="Поиск клиента по имени или телефону..."
-                                        value={clientSearch}
-                                        onChange={(e) => setClientSearch(e.target.value)}
-                                        disabled={isLoading}
-                                    />
-
-                                    {clientSearch.trim() && (
-                                        <div className={styles.clientResults}>
-                                            {filteredClients.length === 0 ? (
-                                                <div className={styles.noResults}>
-                                                    Клиент не найден
-                                                    <button
-                                                        className={styles.createClientBtn}
-                                                        onClick={() => setShowClientModal(true)}
-                                                        disabled={isLoading}
-                                                    >
-                                                        ➕ Создать нового
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                filteredClients.map(client => (
-                                                    <div
-                                                        key={client.clientId}
-                                                        className={styles.clientOption}
-                                                        onClick={() => {
-                                                            setSelectedClient(client);
-                                                            setClientSearch("");
-                                                        }}
-                                                    >
-                                                        <div>
-                                                            <strong>{client.fullName}</strong>
-                                                            {client.number && <div>📞 {client.number}</div>}
-                                                        </div>
-                                                        <span>→</span>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    )}
-
-                                    <button
-                                        className={`${styles.btn} ${styles.secondary}`}
-                                        onClick={() => setShowClientModal(true)}
-                                        disabled={isLoading}
-                                    >
-                                        ➕ Новый клиент
-                                    </button>
-
-                                    <button
-                                        className={`${styles.btn} ${styles.secondary}`}
-                                        onClick={() => {
-                                            setClientPickerSearch("");
-                                            setShowClientPickerModal(true);
-                                        }}
-                                        disabled={isLoading}
-                                    >
-                                        📋 Выбрать из списка
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* СПИСОК БЛЮД */}
-                        {currentOrderItems.length === 0 ? (
-                            <div className={styles.emptyItems}>
-                                Добавьте блюда в заказ
-                            </div>
-                        ) : (
-                            currentOrderItems.map((item, idx) => (
-                                <div key={idx} className={styles.item}>
-                                    <span>{item.itemType === "set" ? `Набор: ${item.dishName}` : item.dishName}</span>
-
-                                    <div className={styles.qtyControls}>
-                                        <button
-                                            onClick={() =>
-                                                setCurrentOrderItems(prev =>
-                                                    prev.map((it, i) => i === idx ? { ...it, qty: Math.max(1, it.qty - 1) } : it)
-                                                )
-                                            }
-                                            disabled={isLoading}
-                                        >−</button>
-                                        <span>{item.qty}</span>
-                                        <button
-                                            onClick={() =>
-                                                setCurrentOrderItems(prev =>
-                                                    prev.map((it, i) => i === idx ? { ...it, qty: it.qty + 1 } : it)
-                                                )
-                                            }
-                                            disabled={isLoading}
-                                        >+</button>
-                                    </div>
-
-                                    <span>{(item.qty || 1) * item.price} ₽</span>
-
-                                    <button
-                                        className={`${styles.btn} ${styles.danger}`}
-                                        onClick={() => setCurrentOrderItems(currentOrderItems.filter((_, i) => i !== idx))}
-                                        disabled={isLoading}
-                                    >
-                                        ❌
-                                    </button>
-                                </div>
-                            ))
-                        )}
-
-                        <button
-                            className={`${styles.btn} ${styles.secondary}`}
-                            onClick={() => setModalOpen(true)}
-                            disabled={isLoading}
-                        >
-                            Добавить позицию
-                        </button>
-
-                        {/* ТИП ЗАКАЗА */}
-                        <div className={styles.switchWrapper}>
-                            <label className={styles.switch}>
-                                <input
-                                    type="checkbox"
-                                    checked={orderType}
-                                    onChange={() => {
-                                        const next = !orderType;
-                                        setOrderType(next);
-                                        if (!next) {
-                                            setDeliveryCost(0);
-                                            if (paymentType !== "transfer") {
-                                                setDeliveryPhone("");
-                                                setDeliveryAddress("");
-                                            }
-                                        }
-                                    }}
-                                    disabled={isLoading}
-                                />
-                                <span className={styles.slider}></span>
-                            </label>
-                            <span>{orderType ? "Доставка" : "По месту"}</span>
-                        </div>
-
-                        {orderType && (
-                            <div className={styles.timeInput}>
-                                <label>Стоимость доставки (₽):</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="10"
-                                    value={deliveryCost}
-                                    onChange={(e) => setDeliveryCost(Math.max(0, Number(e.target.value || 0)))}
-                                    disabled={isLoading}
-                                />
-                            </div>
-                        )}
-
-                        {orderType && (
-                            <div className={styles.timeInput}>
-                                <label>Телефон доставки:</label>
-                                <input
-                                    type="text"
-                                    placeholder="+7..."
-                                    value={deliveryPhone}
-                                    onChange={(e) => setDeliveryPhone(e.target.value)}
-                                    disabled={isLoading}
-                                />
-                            </div>
-                        )}
-
-                        {orderType && (
-                            <div className={styles.timeInput}>
-                                <label>Адрес доставки:</label>
-                                <input
-                                    type="text"
-                                    placeholder="Улица, дом, квартира"
-                                    value={deliveryAddress}
-                                    onChange={(e) => setDeliveryAddress(e.target.value)}
-                                    disabled={isLoading}
-                                />
-                            </div>
-                        )}
-
-                        <div className={styles.timeInput}>
-                            <label>Тип оплаты:</label>
-                            <div className={styles.paymentOptions}>
-                                <label className={`${styles.paymentOption} ${paymentType === "cash" ? styles.paymentOptionActive : ""}`}>
-                                    <input
-                                        type="checkbox"
-                                        checked={paymentType === "cash"}
-                                        onChange={() => setPaymentType("cash")}
-                                        disabled={isLoading}
-                                    />
-                                    Наличка
-                                </label>
-                                <label className={`${styles.paymentOption} ${paymentType === "transfer" ? styles.paymentOptionActive : ""}`}>
-                                    <input
-                                        type="checkbox"
-                                        checked={paymentType === "transfer"}
-                                        onChange={() => setPaymentType("transfer")}
-                                        disabled={isLoading}
-                                    />
-                                    Перевод
-                                </label>
-                                <label className={`${styles.paymentOption} ${paymentType === "unpaid" ? styles.paymentOptionWarning : ""}`}>
-                                    <input
-                                        type="checkbox"
-                                        checked={paymentType === "unpaid"}
-                                        onChange={() => setPaymentType("unpaid")}
-                                        disabled={isLoading}
-                                    />
-                                    Не оплачен
-                                </label>
-                            </div>
-                        </div>
-
-                        {/* ДОЛГ С ВЫБОРОМ ДАТЫ ПОГАШЕНИЯ */}
-                        <div className={styles.debtSection}>
-                            <div className={styles.debtCheckbox}>
-                                <label>
-                                    <input
-                                        type="checkbox"
-                                        checked={isDebt}
-                                        onChange={handleDebtCheckboxChange}
-                                        disabled={!selectedClient || isLoading}
-                                    />
-                                    <span style={{ color: !selectedClient ? '#999' : 'inherit' }}>
-                                        {isDebt ? '✅ Долг' : 'Долг'} {!selectedClient && '(выберите клиента)'}
-                                    </span>
-                                </label>
-                            </div>
-
-                            {showDatePicker && isDebt && selectedClient && (
-                                <div className={styles.debtDatePicker}>
-                                    <label htmlFor="debtPaymentDate">
-                                        📅 Дата погашения долга:
-                                    </label>
-                                    <input
-                                        type="date"
-                                        id="debtPaymentDate"
-                                        value={debtPaymentDate}
-                                        onChange={(e) => setDebtPaymentDate(e.target.value)}
-                                        min={new Date().toISOString().split('T')[0]}
-                                        className={styles.dateInput}
-                                        disabled={isLoading}
-                                    />
-                                    <div className={styles.dateInfo}>
-                                        <small>
-                                            Обещанная дата: <strong>{formatDate(debtPaymentDate)}</strong>
-                                        </small>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* ВРЕМЯ ПРИГОТОВЛЕНИЯ */}
-                        <div className={styles.timeInput}>
-                            <label>Время приготовления (минут):</label>
-                            <input
-                                type="number"
-                                min="1"
-                                max="600"
-                                value={preparationTime}
-                                onChange={(e) => setPreparationTime(Math.max(1, parseInt(e.target.value) || 30))}
-                                disabled={isLoading}
-                            />
-                        </div>
-
-                        {/* ИТОГО */}
-                        <div className={styles.total}>
-                            <span>ИТОГО</span>
-                            <span>{totalOrderAmount} ₽</span>
-                        </div>
-                        {orderType && (
-                            <div style={{ marginTop: "-4px", marginBottom: "10px", color: "#4b5563", fontSize: "13px" }}>
-                                Блюда: {orderItemsTotal} ₽ + Доставка: {Number(deliveryCost || 0)} ₽
-                            </div>
-                        )}
-
-                        {/* КНОПКИ */}
-                        <button
-                            className={`${styles.btn} ${styles.primary}`}
-                            onClick={createOrder}
-                            disabled={
-                                currentOrderItems.length === 0 ||
-                                isLoading ||
-                                (requiresContactDetails && (!effectivePhone || !effectiveAddress))
+                <div className={styles.cashierWorkspace}>
+                    <OrderComposer
+                        selectedClient={selectedClient}
+                        clientSearch={clientSearch}
+                        filteredClients={filteredClients}
+                        items={currentOrderItems}
+                        orderType={orderType}
+                        deliveryCost={deliveryCost}
+                        deliveryPhone={deliveryPhone}
+                        deliveryAddress={deliveryAddress}
+                        paymentType={paymentType}
+                        isDebt={isDebt}
+                        showDatePicker={showDatePicker}
+                        debtPaymentDate={debtPaymentDate}
+                        preparationTime={preparationTime}
+                        itemsTotal={orderItemsTotal}
+                        total={totalOrderAmount}
+                        isLoading={isLoading}
+                        requiresContactDetails={requiresContactDetails}
+                        effectivePhone={effectivePhone}
+                        effectiveAddress={effectiveAddress}
+                        onClientSearch={setClientSearch}
+                        onSelectClient={(client) => {
+                            setSelectedClient(client);
+                            setClientSearch("");
+                        }}
+                        onClearClient={() => {
+                            setSelectedClient(null);
+                            setIsDebt(false);
+                            setShowDatePicker(false);
+                        }}
+                        onCreateClient={() => setShowClientModal(true)}
+                        onOpenClientPicker={() => {
+                            setClientPickerSearch("");
+                            setShowClientPickerModal(true);
+                        }}
+                        onQuantityChange={(index, delta) => {
+                            setCurrentOrderItems((current) => current.map((item, itemIndex) => (
+                                itemIndex === index
+                                    ? { ...item, qty: Math.max(1, Number(item.qty || 1) + delta) }
+                                    : item
+                            )));
+                        }}
+                        onRemoveItem={(index) => {
+                            setCurrentOrderItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+                        }}
+                        onOpenDishPicker={() => setModalOpen(true)}
+                        onOrderTypeChange={(next) => {
+                            setOrderType(next);
+                            if (!next) {
+                                setDeliveryCost(0);
+                                if (paymentType !== "transfer") {
+                                    setDeliveryPhone("");
+                                    setDeliveryAddress("");
+                                }
                             }
-                        >
-                            Создать заказ
-                        </button>
-
-                        <button
-                            className={`${styles.btn} ${styles.danger}`}
-                            onClick={closeShift}
-                            disabled={isLoading}
-                        >
-                            {isLoading ? "Закрывается..." : "Закрыть смену"}
-                        </button>
-                    </section>
-
-                    <section className={styles.ordersPanel}>
-                        <div className={styles.ordersHeader}>
-                            <h2>Заказы ({orders.length})</h2>
-                            <div className={styles.orderStats}>
-                                <span className={styles.cookingCount}>
-                                    👨‍🍳 {cookingOrders.length}
-                                </span>
-                                <span className={styles.readyCount}>
-                                    ✅ {readyOrders.length}
-                                </span>
-                                {issuedOrders.length > 0 && (
-                                    <span className={styles.issuedCount}>
-                                        📦 {issuedOrders.length}
-                                    </span>
-                                )}
-                            </div>
-                            <button
-                                className={`${styles.btn} ${styles.secondary}`}
-                                onClick={loadOrders}
-                                disabled={isLoading}
-                            >
-                                Обновить
-                            </button>
-                        </div>
-
-                        {orders.length === 0 ? (
-                            <div className={styles.empty}>
-                                Нет заказов в текущей смене
-                            </div>
-                        ) : (
-                            // Получаем отсортированные группы заказов
-                            <>
-                                {/* Группа неготовых заказов */}
-                                {cookingOrders.length > 0 && (
-                                    <div className={styles.orderGroup}>
-                                        <div className={styles.groupHeader}>
-                                            <h3>👨‍🍳 Готовятся ({cookingOrders.length})</h3>
-                                        </div>
-                                        {cookingOrders.map(o => (
-                                            <OrderCard
-                                                key={o.orderId}
-                                                order={o}
-                                                markOrderReady={markOrderReady}
-                                                onPrintOrderNumber={printOrderNumberTicket}
-                                                onPrintOrderDetails={printOrderDetailsTicket}
-                                                onUpdatePayment={updateOrderPayment}
-                                                onIssueOrder={issueOrder}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Группа готовых заказов */}
-                                {readyOrders.length > 0 && (
-                                    <div className={styles.orderGroup}>
-                                        <div className={styles.groupHeader}>
-                                            <h3>✅ Готовы ({readyOrders.length})</h3>
-                                        </div>
-                                        {readyOrders.map(o => (
-                                            <OrderCard
-                                                key={o.orderId}
-                                                order={o}
-                                                markOrderReady={markOrderReady}
-                                                onPrintOrderNumber={printOrderNumberTicket}
-                                                onPrintOrderDetails={printOrderDetailsTicket}
-                                                onUpdatePayment={updateOrderPayment}
-                                                onIssueOrder={issueOrder}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
-
-                                {issuedOrders.length > 0 && (
-                                    <div className={styles.orderGroup}>
-                                        <div className={styles.groupHeader}>
-                                            <h3>📦 Выданные ({issuedOrders.length})</h3>
-                                            <button
-                                                type="button"
-                                                className={styles.groupToggle}
-                                                onClick={() => setShowIssuedOrders((prev) => !prev)}
-                                            >
-                                                {showIssuedOrders ? "Свернуть" : "Развернуть"}
-                                            </button>
-                                        </div>
-                                        {showIssuedOrders && issuedOrders.map(o => (
-                                            <OrderCard
-                                                key={o.orderId}
-                                                order={o}
-                                                markOrderReady={markOrderReady}
-                                                onPrintOrderNumber={printOrderNumberTicket}
-                                                onPrintOrderDetails={printOrderDetailsTicket}
-                                                onUpdatePayment={updateOrderPayment}
-                                                onIssueOrder={issueOrder}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </section>
+                        }}
+                        onDeliveryCostChange={(value) => setDeliveryCost(Math.max(0, Number(value || 0)))}
+                        onDeliveryPhoneChange={setDeliveryPhone}
+                        onDeliveryAddressChange={setDeliveryAddress}
+                        onPaymentTypeChange={setPaymentType}
+                        onDebtChange={handleDebtCheckboxChange}
+                        onDebtDateChange={setDebtPaymentDate}
+                        onPreparationTimeChange={(value) => setPreparationTime(Math.max(1, parseInt(value, 10) || 30))}
+                        onCreateOrder={createOrder}
+                        onCloseShift={closeShift}
+                    />
+                    <OrdersBoard
+                        orders={orders}
+                        cookingOrders={cookingOrders}
+                        readyOrders={readyOrders}
+                        issuedOrders={issuedOrders}
+                        showIssuedOrders={showIssuedOrders}
+                        isLoading={isLoading}
+                        onReload={loadOrders}
+                        onToggleIssued={() => setShowIssuedOrders((current) => !current)}
+                        cardProps={{
+                            markOrderReady,
+                            onPrintOrderNumber: printOrderNumberTicket,
+                            onPrintOrderDetails: printOrderDetailsTicket,
+                            onUpdatePayment: updateOrderPayment,
+                            onIssueOrder: issueOrder
+                        }}
+                    />
                 </div>
             )}
 
             {showShiftPersonModal && !shiftOpen && (
-                <div className={styles.modalOverlay}>
-                    <div className={styles.modal}>
-                        <h3>Работники на смене</h3>
-                        <div className={styles.modalContent}>
-                            <input
-                                type="text"
-                                placeholder="Поиск сотрудника..."
-                                value={shiftPersonSearch}
-                                onChange={(e) => setShiftPersonSearch(e.target.value)}
-                                className={styles.modalInput}
-                                disabled={isLoading}
-                            />
-
-                            <div className={styles.clientPickerList}>
-                                {filteredShiftPersons.length === 0 ? (
-                                    <div className={styles.noResults}>Сотрудники не найдены</div>
-                                ) : (
-                                    filteredShiftPersons.map((person) => {
-                                        const isSelected = selectedShiftPersonIds.has(Number(person.personID));
-                                        return (
-                                            <button
-                                                key={person.personID}
-                                                type="button"
-                                                className={`${styles.clientPickerItem} ${isSelected ? styles.shiftWorkerItemActive : ""}`}
-                                                onClick={() => toggleShiftPersonSelection(person)}
-                                                disabled={isLoading}
-                                            >
-                                                <span>
-                                                    <strong>{person.name}</strong>
-                                                </span>
-                                                <span>{isSelected ? "Выбран" : "Добавить"}</span>
-                                            </button>
-                                        );
-                                    })
-                                )}
-                            </div>
-                        </div>
-
-                        <div className={styles.modalActions}>
-                            <button
-                                className={`${styles.btn} ${styles.secondary}`}
-                                onClick={() => {
-                                    setShowShiftPersonModal(false);
-                                    setShiftPersonSearch("");
-                                }}
-                                disabled={isLoading}
-                            >
+                <CashierModal
+                    title="Команда смены"
+                    description="Выберите всех сотрудников, которые работают сегодня."
+                    onClose={() => {
+                        setShowShiftPersonModal(false);
+                        setShiftPersonSearch("");
+                    }}
+                    actions={(
+                        <>
+                            <button className={styles.secondaryButton} type="button" onClick={() => setShowShiftPersonModal(false)}>
                                 Закрыть
                             </button>
                             <button
-                                className={`${styles.btn} ${styles.primary}`}
+                                className={styles.primaryButton}
+                                type="button"
                                 onClick={() => setShowShiftPersonModal(false)}
                                 disabled={selectedShiftPersons.length === 0 || isLoading}
                             >
-                                Готово
+                                Сохранить состав
                             </button>
-                        </div>
+                        </>
+                    )}
+                >
+                    <label className={styles.modalField} htmlFor="shift-person-search">
+                        Поиск сотрудника
+                        <input
+                            id="shift-person-search"
+                            name="shiftPersonSearch"
+                            type="search"
+                            autoComplete="off"
+                            placeholder="Имя сотрудника…"
+                            value={shiftPersonSearch}
+                            onChange={(event) => setShiftPersonSearch(event.target.value)}
+                        />
+                    </label>
+                    <div className={styles.pickerList}>
+                        {filteredShiftPersons.length === 0 ? (
+                            <div className={styles.compactEmpty}>Сотрудники не найдены.</div>
+                        ) : filteredShiftPersons.map((person) => {
+                            const selected = selectedShiftPersonIds.has(Number(person.personID));
+                            return (
+                                <button
+                                    key={person.personID}
+                                    type="button"
+                                    className={selected ? styles.pickerItemActive : ""}
+                                    onClick={() => toggleShiftPersonSelection(person)}
+                                >
+                                    <strong>{person.name}</strong>
+                                    <span>{selected ? "Выбран" : "Добавить"}</span>
+                                </button>
+                            );
+                        })}
                     </div>
-                </div>
+                </CashierModal>
             )}
 
-            {/* МОДАЛЬНОЕ ОКНО ДЛЯ СОЗДАНИЯ КЛИЕНТА */}
             {showClientModal && (
-                <div className={styles.modalOverlay}>
-                    <div className={styles.modal}>
-                        <h3>
-                            {isDebt ? "➕ Создать клиента для долга" : "➕ Создать нового клиента"}
-                        </h3>
-                        <div className={styles.modalContent}>
-                            <input
-                                type="text"
-                                placeholder="ФИО клиента *"
-                                value={newClient.fullName}
-                                onChange={(e) => setNewClient({...newClient, fullName: e.target.value})}
-                                className={styles.modalInput}
-                                disabled={isLoading}
-                            />
-                            <input
-                                type="text"
-                                placeholder="Телефон (необязательно)"
-                                value={newClient.number}
-                                onChange={(e) => setNewClient({...newClient, number: e.target.value})}
-                                className={styles.modalInput}
-                                disabled={isLoading}
-                            />
-                        </div>
-                        <div className={styles.modalActions}>
-                            <button
-                                className={`${styles.btn} ${styles.secondary}`}
-                                onClick={() => {
-                                    setShowClientModal(false);
-                                    setNewClient({ fullName: "", number: "" });
-                                }}
-                                disabled={isLoading}
-                            >
+                <CashierModal
+                    title="Новый гость"
+                    description="Карточка сразу прикрепится к текущему чеку."
+                    onClose={() => {
+                        setShowClientModal(false);
+                        setNewClient({ fullName: "", number: "" });
+                    }}
+                    actions={(
+                        <>
+                            <button className={styles.secondaryButton} type="button" onClick={() => setShowClientModal(false)}>
                                 Отмена
                             </button>
                             <button
-                                className={`${styles.btn} ${styles.primary}`}
+                                className={styles.primaryButton}
+                                type="button"
                                 onClick={createNewClient}
                                 disabled={!newClient.fullName.trim() || isLoading}
                             >
-                                {isLoading ? "Создание..." : (isDebt ? "Создать и отметить как долг" : "Создать")}
+                                {isLoading ? "Создаём гостя…" : "Создать гостя"}
                             </button>
-                        </div>
+                        </>
+                    )}
+                >
+                    <div className={styles.modalForm}>
+                        <label htmlFor="new-client-name">
+                            Имя гостя
+                            <input
+                                id="new-client-name"
+                                name="fullName"
+                                type="text"
+                                autoComplete="name"
+                                value={newClient.fullName}
+                                onChange={(event) => setNewClient((current) => ({ ...current, fullName: event.target.value }))}
+                                placeholder="Например, Анна Петрова"
+                            />
+                        </label>
+                        <label htmlFor="new-client-phone">
+                            Телефон
+                            <input
+                                id="new-client-phone"
+                                name="phone"
+                                type="tel"
+                                inputMode="tel"
+                                autoComplete="tel"
+                                value={newClient.number}
+                                onChange={(event) => setNewClient((current) => ({ ...current, number: event.target.value }))}
+                                placeholder="+7 900 000-00-00"
+                            />
+                        </label>
                     </div>
-                </div>
+                </CashierModal>
             )}
 
-            {/* МОДАЛЬНОЕ ОКНО ВЫБОРА КЛИЕНТА ИЗ ПОЛНОГО СПИСКА */}
             {showClientPickerModal && (
-                <div className={styles.modalOverlay}>
-                    <div className={styles.modal}>
-                        <h3>📋 Выбор клиента</h3>
-
-                        <div className={styles.modalContent}>
-                            <input
-                                type="text"
-                                placeholder="Поиск по имени или телефону..."
-                                value={clientPickerSearch}
-                                onChange={(e) => setClientPickerSearch(e.target.value)}
-                                className={styles.modalInput}
-                                disabled={isLoading}
-                            />
-
-                            <div className={styles.clientPickerList}>
-                                {filteredPickerClients.length === 0 ? (
-                                    <div className={styles.noResults}>Клиенты не найдены</div>
-                                ) : (
-                                    filteredPickerClients.map(client => (
-                                        <button
-                                            key={client.clientId}
-                                            type="button"
-                                            className={styles.clientPickerItem}
-                                            onClick={() => {
-                                                setSelectedClient(client);
-                                                setClientSearch("");
-                                                setShowClientPickerModal(false);
-                                            }}
-                                            disabled={isLoading}
-                                        >
-                                            <span>
-                                                <strong>{client.fullName}</strong>
-                                                {client.number ? ` · ${client.number}` : ""}
-                                            </span>
-                                            <span>Выбрать</span>
-                                        </button>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-
-                        <div className={styles.modalActions}>
+                <CashierModal
+                    title="Выбрать гостя"
+                    description="Поиск работает по имени и телефону."
+                    onClose={() => setShowClientPickerModal(false)}
+                    actions={(
+                        <button className={styles.secondaryButton} type="button" onClick={() => setShowClientPickerModal(false)}>
+                            Закрыть
+                        </button>
+                    )}
+                >
+                    <label className={styles.modalField} htmlFor="client-picker-search">
+                        Поиск гостя
+                        <input
+                            id="client-picker-search"
+                            name="clientPickerSearch"
+                            type="search"
+                            autoComplete="off"
+                            value={clientPickerSearch}
+                            onChange={(event) => setClientPickerSearch(event.target.value)}
+                            placeholder="Имя или телефон…"
+                        />
+                    </label>
+                    <div className={styles.pickerList}>
+                        {filteredPickerClients.length === 0 ? (
+                            <div className={styles.compactEmpty}>Гости не найдены.</div>
+                        ) : filteredPickerClients.map((client) => (
                             <button
-                                className={`${styles.btn} ${styles.secondary}`}
-                                onClick={() => setShowClientPickerModal(false)}
-                                disabled={isLoading}
+                                key={client.clientId}
+                                type="button"
+                                onClick={() => {
+                                    setSelectedClient(client);
+                                    setClientSearch("");
+                                    setShowClientPickerModal(false);
+                                }}
                             >
-                                Закрыть
+                                <span>
+                                    <strong>{client.fullName}</strong>
+                                    <small>{client.number || `Гость #${client.clientId}`}</small>
+                                </span>
+                                <span>Выбрать</span>
                             </button>
-                        </div>
+                        ))}
                     </div>
-                </div>
+                </CashierModal>
             )}
 
             {shiftReportOpen && (
-                <div className={styles.modalOverlay}>
-                    <div className={styles.modal} style={{ maxWidth: "900px" }}>
-                        <h3>Отчет по смене</h3>
-                        {shiftReportLoading && <div style={{ marginTop: "10px" }}>Загрузка отчета...</div>}
-                        {!shiftReportLoading && shiftReport?.error && (
-                            <div style={{ marginTop: "10px", color: "#a43e1f" }}>{shiftReport.error}</div>
-                        )}
-                        {!shiftReportLoading && shiftReport && !shiftReport.error && (
-                            <div style={{ marginTop: "10px", display: "grid", gap: "10px" }}>
-                                <div style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "10px" }}>
-                                    <div><b>Смена №{shiftReport.shiftId}</b></div>
-                                    <div>Дата: {shiftReport.date || "-"}</div>
-                                    <div>Открытие: {shiftReport.startTime || "-"}</div>
-                                    <div>Закрытие: {shiftReport.endTime || "-"}</div>
-                                    <div>Работники: {(shiftReport.workers || []).join(", ") || "Не указаны"}</div>
-                                </div>
-
-                                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "10px" }}>
-                                    <div><b>Итоги</b></div>
-                                    <div>Заказов: {shiftReport.totals?.ordersCount ?? 0}</div>
-                                    <div>Сумма заказов: {Number(shiftReport.totals?.revenue || 0).toFixed(2)} ₽</div>
-                                    <div style={{ color: "#92400e", fontWeight: 700 }}>
-                                        Сумма доставок: {Number(shiftReport.totals?.deliveryExpense || 0).toFixed(2)} ₽
-                                    </div>
-                                    <div style={{ color: "#b91c1c", fontWeight: 700 }}>
-                                        Заказов с задержкой: {shiftReport.totals?.delayedOrdersCount ?? 0}
-                                    </div>
-                                </div>
-
-                                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "10px" }}>
-                                    <div><b>Популярные позиции за смену</b></div>
-                                    {(shiftReport.topPositions || []).length === 0 ? (
-                                        <div style={{ color: "#6b7280" }}>Нет данных</div>
-                                    ) : (
-                                        (shiftReport.topPositions || []).slice(0, 10).map((p, idx) => (
-                                            <div key={`${p.dishName}-${idx}`}>
-                                                {idx + 1}. {p.dishName} — {p.qty} шт, {Number(p.amount || 0).toFixed(2)} ₽
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-
-                                <div style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "10px", maxHeight: "300px", overflowY: "auto" }}>
-                                    <div><b>Все заказы</b></div>
-                                    {(shiftReport.orders || []).length === 0 ? (
-                                        <div style={{ color: "#6b7280" }}>Нет заказов</div>
-                                    ) : (
-                                        (shiftReport.orders || []).map((o) => (
-                                            <div
-                                                key={o.orderId}
-                                                style={{
-                                                    marginTop: "10px",
-                                                    padding: "8px",
-                                                    borderTop: "1px dashed #d1d5db",
-                                                    borderRadius: "8px",
-                                                    background: Number(o.delayMinutes || 0) > 0 ? "#fffbeb" : "#ffffff",
-                                                    border: Number(o.delayMinutes || 0) > 0 ? "1px solid #fcd34d" : "1px solid #e5e7eb"
-                                                }}
-                                            >
-                                                <div>
-                                                    <b>Заказ #{o.orderId}</b> · {o.isDelivery ? "Доставка" : "По месту"} · Сумма: {Number(o.orderAmount || 0).toFixed(2)} ₽
-                                                </div>
-                                                <div>Клиент: {o.clientName || "—"} {o.clientPhone ? `(${o.clientPhone})` : ""}</div>
-                                                <div style={{ color: Number(o.delayMinutes || 0) > 0 ? "#b45309" : "#374151", fontWeight: Number(o.delayMinutes || 0) > 0 ? 700 : 500 }}>
-                                                    Задержка: {Number(o.delayMinutes || 0).toFixed(0)} мин
-                                                </div>
-                                                {(o.items || []).map((it, idx) => (
-                                                    <div key={`${o.orderId}-${idx}`} style={{ marginLeft: "12px", color: "#374151" }}>
-                                                        • {it.dishName} × {it.qty} = {Number(it.sum || 0).toFixed(2)} ₽
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        <div className={styles.modalActions}>
-                            <button
-                                className={`${styles.btn} ${styles.secondary}`}
-                                onClick={() => {
-                                    setShiftReportOpen(false);
-                                    setShiftReport(null);
-                                }}
-                            >
-                                Закрыть
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <ShiftReportModal
+                    report={shiftReport}
+                    loading={shiftReportLoading}
+                    onClose={() => {
+                        setShiftReportOpen(false);
+                        setShiftReport(null);
+                    }}
+                />
             )}
 
-            {/* === ДОБАВЛЕНО: Модальное окно уведомления о долгах === */}
-            <DebtNotification />
+            {inventoryReportOpen && (
+                <CashierModal
+                    title="Инвентаризация перед закрытием"
+                    description="Сверьте расчётный и фактический остаток, затем закройте смену."
+                    onClose={() => setInventoryReportOpen(false)}
+                    extraWide
+                    actions={(
+                        <>
+                            <button className={styles.secondaryButton} type="button" onClick={() => setInventoryReportOpen(false)}>
+                                Продолжить смену
+                            </button>
+                            <button className={styles.closeShiftButton} type="button" onClick={finalizeCloseShift} disabled={isLoading}>
+                                {isLoading ? "Закрываем смену…" : "Закрыть смену"}
+                            </button>
+                        </>
+                    )}
+                >
+                    <InventoryShiftReport
+                        warehouses={warehouses}
+                        onApplied={loadWarehouses}
+                        initialShiftId={inventoryReportShiftId}
+                        lockShiftSelection
+                    />
+                </CashierModal>
+            )}
+
+            {showDebtNotification && (todayDebts.length > 0 || overdueDebts.length > 0) && (
+                <DebtNotification
+                    todayDebts={todayDebts}
+                    overdueDebts={overdueDebts}
+                    onClose={() => setShowDebtNotification(false)}
+                />
+            )}
             <DishPickerModal
                 isOpen={modalOpen}
                 onClose={() => setModalOpen(false)}

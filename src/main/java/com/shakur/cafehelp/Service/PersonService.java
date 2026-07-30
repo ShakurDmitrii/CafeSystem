@@ -7,8 +7,6 @@ import jooqdata.tables.records.PersonRecord;
 
 import org.jooq.DSLContext;
 import org.jooq.Field;
-import org.jooq.Record1;
-import org.jooq.Select;
 import org.jooq.impl.DSL;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -144,19 +142,34 @@ public class PersonService {
         response.salaryPerDay = personRecord.getSalaryperday();
         return response;
     }
-    public PersonDTO update(PersonDTO personId, PersonDTO dto) {
-    PersonRecord record =dsl.fetchOne(jooqdata.tables.Person.PERSON,
-    jooqdata.tables.Person.PERSON.PERSONID.eq((Select<? extends Record1<Integer>>) personId));
-    if (record == null) {
-        throw new RuntimeException("No record found for id " + personId);
-    }
-    record.setName(dto.name);
-    record.setPersonid(dto.personID);
-    record.setSalary(dto.salary);
-    record.setNumdays(dto.numDays);
-    record.setSalaryperday(dto.salaryPerDay);
-    record.store();
-    return dto;
+    @Transactional
+    public PersonDTO update(int personId, PersonDTO dto) {
+        if (dto == null || isBlank(dto.name)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Имя сотрудника обязательно");
+        }
+        if (isNegative(dto.salaryPerDay)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Зарплата не может быть отрицательной");
+        }
+
+        PersonRecord record = dsl.selectFrom(Person.PERSON)
+                .where(Person.PERSON.PERSONID.eq(personId))
+                .and(PERSON_ARCHIVED.eq(false))
+                .fetchOne();
+        if (record == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Сотрудник не найден");
+        }
+
+        record.setName(dto.name.trim());
+        record.setSalaryperday(dto.salaryPerDay != null ? dto.salaryPerDay : BigDecimal.ZERO);
+        record.store();
+
+        PersonDTO response = new PersonDTO();
+        response.personID = record.getPersonid();
+        response.name = record.getName();
+        response.salary = record.getSalary();
+        response.numDays = record.getNumdays() != null ? record.getNumdays() : 0;
+        response.salaryPerDay = record.getSalaryperday();
+        return response;
     }
 
 
@@ -185,5 +198,9 @@ public class PersonService {
 
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private boolean isNegative(BigDecimal value) {
+        return value != null && value.signum() < 0;
     }
 }

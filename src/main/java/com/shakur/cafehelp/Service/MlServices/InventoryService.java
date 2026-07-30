@@ -4,9 +4,12 @@ import com.shakur.cafehelp.DTO.MlDTO.IngredientDTO;
 import jooqdata.tables.records.ProductRecord;
 import lombok.RequiredArgsConstructor;
 import org.jooq.DSLContext;
+import org.jooq.Field;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -15,6 +18,8 @@ import static jooqdata.tables.Product.PRODUCT;
 @Service
 @RequiredArgsConstructor
 public class InventoryService {
+    private static final Field<LocalDateTime> ORDER_CANCELLED_AT =
+            DSL.field(DSL.name("cancelled_at"), LocalDateTime.class);
 
     private final DSLContext dsl;
 
@@ -186,6 +191,7 @@ public class InventoryService {
                         .eq(jooqdata.tables.Order.ORDER.ORDERID))
                 .where(jooqdata.tables.Order.ORDER.DATE.greaterOrEqual(sinceDate))
                 .and(jooqdata.tables.Order.ORDER.STATUS.eq(true))
+                .and(ORDER_CANCELLED_AT.isNull())
                 .groupBy(PRODUCT.PRODUCTID, PRODUCT.PRODUCTNAME)
                 .orderBy(org.jooq.impl.DSL.sum(jooqdata.tables.Orderdish.ORDERDISH.QTY).desc())
                 .fetch()
