@@ -2,6 +2,8 @@ package com.shakur.cafehelp;
 
 import com.shakur.cafehelp.DTO.InventoryShiftReportDTO;
 import com.shakur.cafehelp.DTO.InventoryShiftReportRowDTO;
+import com.shakur.cafehelp.DTO.ClientDTO;
+import com.shakur.cafehelp.DTO.DebtPaymentRequestDTO;
 import com.shakur.cafehelp.DTO.MovementDTO;
 import com.shakur.cafehelp.DTO.MovementRequestDTO;
 import com.shakur.cafehelp.DTO.OrderDTO;
@@ -9,13 +11,17 @@ import com.shakur.cafehelp.DTO.OrderDishDTO;
 import com.shakur.cafehelp.DTO.OrderEditRequestDTO;
 import com.shakur.cafehelp.DTO.ProductWarehouseDTO;
 import com.shakur.cafehelp.DTO.ShiftDTO;
+import com.shakur.cafehelp.DTO.VkBotLinkConfirmRequestDTO;
+import com.shakur.cafehelp.Service.ClientService;
 import com.shakur.cafehelp.Service.InventoryShiftReportService;
 import com.shakur.cafehelp.Service.MovementService;
 import com.shakur.cafehelp.Service.OrderService;
 import com.shakur.cafehelp.Service.ShiftService;
 import com.shakur.cafehelp.Service.ShiftInventorySnapshotService;
 import com.shakur.cafehelp.Service.WareHouseService;
+import com.shakur.cafehelp.Service.VkClientLinkService;
 import com.shakur.cafehelp.exception.OrderStateConflictException;
+import com.shakur.cafehelp.config.BusinessTimeProvider;
 import com.shakur.cafehelp.security.JwtService;
 import jooqdata.tables.records.ShiftRecord;
 import org.jooq.DSLContext;
@@ -36,6 +42,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.List;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -96,6 +103,15 @@ class CafehelpApplicationTests {
     @Autowired
     private ShiftService shiftService;
 
+    @Autowired
+    private ClientService clientService;
+
+    @Autowired
+    private VkClientLinkService vkClientLinkService;
+
+    @Autowired
+    private BusinessTimeProvider businessTime;
+
     @DynamicPropertySource
     static void configureDatabases(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", MAIN_DATABASE::getJdbcUrl);
@@ -110,6 +126,11 @@ class CafehelpApplicationTests {
     void resetBusinessData() {
         dsl.execute("""
                 TRUNCATE TABLE
+                    sales.client_vk_link_event,
+                    sales.client_vk_link_attempt,
+                    sales.client_vk_link_code,
+                    sales.client_vk_link,
+                    sales.debt_payment,
                     sales.inventory_shift_report_line,
                     sales.inventory_shift_report,
                     sales.shift_inventory_snapshot,
@@ -130,9 +151,302 @@ class CafehelpApplicationTests {
                     sales.shiftperson,
                     sales.user_account,
                     sales.person,
-                    sales.shift
+                    sales.shift,
+                    sales.client
                 RESTART IDENTITY CASCADE
                 """);
+    }
+
+    @Test
+    void clientPhoneIsNormalizedAndCannotBeDuplicated() {
+        ClientDTO first = new ClientDTO();
+        first.setFullName("  Иван   Петров  ");
+        first.setNumber("8 (999) 123-45-67");
+
+        ClientDTO created = clientService.createClient(first);
+        assertThat(created.getFullName()).isEqualTo("Иван Петров");
+        assertThat(created.getNumber()).isEqualTo("+7 999 123-45-67");
+
+        ClientDTO duplicate = new ClientDTO();
+        duplicate.setFullName("Другой Иван");
+        duplicate.setNumber("+7 999 123 45 67");
+
+        assertThatThrownBy(() -> clientService.createClient(duplicate))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("телефон");
+    }
+
+    @Test
+    void clientSearchFindsNameAndFormattedPhoneCaseInsensitively() {
+        int clientId = createClient("Иван Петров", "+7 999 123-45-67");
+        createClient("Анна Сидорова", "+7 999 765-43-21");
+
+        assertThat(clientService.searchClients("иван"))
+                .extracting(ClientDTO::getClientId)
+                .containsExactly(clientId);
+        assertThat(clientService.searchClients("123-45"))
+                .extracting(ClientDTO::getClientId)
+                .containsExactly(clientId);
+    }
+
+    @Test
+    void debtRequiresExistingClientAndDueDate() {
+        OrderFixture fixture = createOrderFixture(10.0, 2.0);
+        OrderDTO debt = orderRequest(fixture.shiftId(), fixture.dishId(), false);
+        debt.setDuty(true);
+
+        assertThatThrownBy(() -> orderService.createOrder(debt))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("клиент");
+
+        debt.setClientId(999_999);
+        debt.setDebt_payment_date(businessTime.today().plusDays(1));
+        assertThatThrownBy(() -> orderService.createOrder(debt))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("не найден");
+
+        debt.setClientId(createClient("Должник", "+7 999 000-00-01"));
+        debt.setDebt_payment_date(null);
+        assertThatThrownBy(() -> orderService.createOrder(debt))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("дат");
+    }
+
+    @Test
+    void debtConsumesAvailableStockWhenOrderIsCreated() {
+        OrderFixture fixture = createOrderFixture(10.0, 3.0);
+        OrderDTO debt = orderRequest(fixture.shiftId(), fixture.dishId(), false);
+        debt.setDuty(true);
+        debt.setClientId(createClient("Должник", "+7 999 000-00-02"));
+        debt.setDebt_payment_date(businessTime.today().plusDays(1));
+
+        OrderDTO created = orderService.createOrder(debt);
+
+        assertThat(created.getDuty()).isTrue();
+        assertThat(wareHouseService.getAvailableQuantity(fixture.warehouseId(), fixture.productId()))
+                .isEqualTo(7.0);
+    }
+
+    @Test
+    void readyOrderRemainsVisibleInOverdueDebts() {
+        OrderFixture fixture = createOrderFixture(10.0, 1.0);
+        OrderDTO debt = orderRequest(fixture.shiftId(), fixture.dishId(), false);
+        debt.setDuty(true);
+        debt.setStatus(true);
+        debt.setClientId(createClient("Просроченный гость", "+7 999 000-00-03"));
+        debt.setDebt_payment_date(businessTime.today().minusDays(1));
+
+        OrderDTO created = orderService.createOrder(debt);
+
+        assertThat(clientService.getOverdueDebts())
+                .extracting(OrderDTO::getOrderId)
+                .containsExactly(created.getOrderId());
+    }
+
+    @Test
+    void vkLinkCodeIsBlockedAfterRepeatedInvalidAttempts() {
+        int clientId = createClient("VK гость", "+7 999 000-00-04");
+        var linkCode = vkClientLinkService.createLinkCode(clientId);
+        VkBotLinkConfirmRequestDTO request = new VkBotLinkConfirmRequestDTO();
+        request.setVkUserId(7_001L);
+        request.setVkDomain("guest");
+
+        for (int attempt = 0; attempt < 5; attempt++) {
+            request.setCode("000000".equals(linkCode.code()) ? "000001" : "000000");
+            assertThatThrownBy(() -> vkClientLinkService.confirmLink(request))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        request.setCode(linkCode.code());
+        assertThatThrownBy(() -> vkClientLinkService.confirmLink(request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("попыток");
+    }
+
+    @Test
+    void debtSupportsPartialFullAndIdempotentPaymentsWithoutSecondStockWriteoff() {
+        OrderFixture fixture = createOrderFixture(10.0, 3.0);
+        OrderDTO debt = orderRequest(fixture.shiftId(), fixture.dishId(), false);
+        debt.setDuty(true);
+        debt.setClientId(createClient("Частичная оплата", "+7 999 000-00-05"));
+        debt.setDebt_payment_date(businessTime.today().plusDays(1));
+        OrderDTO created = orderService.createOrder(debt);
+
+        DebtPaymentRequestDTO firstRequest = debtPayment("10.00", "cash", "partial-payment-1");
+        var first = clientService.payDebt(created.getOrderId(), firstRequest);
+        var repeated = clientService.payDebt(created.getOrderId(), firstRequest);
+
+        assertThat(first.paymentId()).isEqualTo(repeated.paymentId());
+        assertThat(first.remainingAmount()).isEqualByComparingTo("10.00");
+        assertThat(clientService.getDebtPaymentHistory(created.getOrderId())).hasSize(1);
+
+        var completed = clientService.payDebt(
+                created.getOrderId(),
+                debtPayment("10.00", "transfer", "partial-payment-2")
+        );
+        assertThat(completed.fullyPaid()).isTrue();
+        assertThat(completed.remainingAmount()).isZero();
+        assertThat(orderService.getOrderById(created.getOrderId()).getDuty()).isFalse();
+        assertThat(orderService.getOrderById(created.getOrderId()).getPaid()).isTrue();
+        assertThat(clientService.getDebtPaymentHistory(created.getOrderId())).hasSize(2);
+        assertThat(clientService.payDebt(created.getOrderId(), firstRequest).remainingAmount())
+                .isEqualByComparingTo("10.00");
+        assertThat(wareHouseService.getAvailableQuantity(fixture.warehouseId(), fixture.productId()))
+                .isEqualTo(7.0);
+
+        assertThatThrownBy(() -> clientService.payDebt(
+                created.getOrderId(),
+                debtPayment("1.00", "cash", "partial-payment-3")
+        )).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("погашен");
+    }
+
+    @Test
+    void concurrentDebtPaymentsCannotOverpayOrder() throws Exception {
+        OrderFixture fixture = createOrderFixture(10.0, 1.0);
+        OrderDTO debt = orderRequest(fixture.shiftId(), fixture.dishId(), false);
+        debt.setDuty(true);
+        debt.setClientId(createClient("Конкурентный долг", "+7 999 000-00-06"));
+        debt.setDebt_payment_date(businessTime.today().plusDays(1));
+        int orderId = orderService.createOrder(debt).getOrderId();
+        AtomicInteger requestNumber = new AtomicInteger();
+
+        List<Boolean> results = runConcurrently(2, () -> {
+            int number = requestNumber.incrementAndGet();
+            try {
+                clientService.payDebt(orderId, debtPayment("20.00", "cash", "concurrent-debt-" + number));
+                return true;
+            } catch (IllegalArgumentException | IllegalStateException expected) {
+                return false;
+            }
+        });
+
+        assertThat(results).containsExactlyInAnyOrder(true, false);
+        assertThat(clientService.getDebtPaymentHistory(orderId)).hasSize(1);
+        assertThat(orderService.getOrderById(orderId).getDebtRemainingAmount()).isZero();
+    }
+
+    @Test
+    void concurrentDebtRetriesWithSameIdempotencyKeyReturnOnePayment() throws Exception {
+        OrderFixture fixture = createOrderFixture(10.0, 1.0);
+        OrderDTO debt = orderRequest(fixture.shiftId(), fixture.dishId(), false);
+        debt.setDuty(true);
+        debt.setClientId(createClient("Идемпотентный долг", "+7 999 000-00-12"));
+        debt.setDebt_payment_date(businessTime.today().plusDays(1));
+        int orderId = orderService.createOrder(debt).getOrderId();
+        DebtPaymentRequestDTO request = debtPayment("10.00", "cash", "same-concurrent-key");
+
+        List<Boolean> results = runConcurrently(2, () -> {
+            var payment = clientService.payDebt(orderId, request);
+            return payment.remainingAmount().compareTo(new BigDecimal("10.00")) == 0;
+        });
+
+        assertThat(results).containsExactly(true, true);
+        assertThat(clientService.getDebtPaymentHistory(orderId)).hasSize(1);
+        assertThat(orderService.getOrderById(orderId).getDebtRemainingAmount())
+                .isEqualByComparingTo("10.00");
+    }
+
+    @Test
+    void debtDateQueriesUseConfiguredBusinessDate() {
+        OrderFixture fixture = createOrderFixture(10.0, 1.0);
+        int clientId = createClient("Граница даты", "+7 999 000-00-07");
+        OrderDTO dueToday = orderRequest(fixture.shiftId(), fixture.dishId(), false);
+        dueToday.setDuty(true);
+        dueToday.setStatus(true);
+        dueToday.setClientId(clientId);
+        dueToday.setDebt_payment_date(businessTime.today());
+        int todayOrderId = orderService.createOrder(dueToday).getOrderId();
+
+        assertThat(businessTime.zoneId().getId()).isEqualTo("Europe/Moscow");
+        assertThat(clientService.getDebtsDueToday())
+                .extracting(OrderDTO::getOrderId)
+                .containsExactly(todayOrderId);
+        assertThat(clientService.getOverdueDebts()).isEmpty();
+    }
+
+    @Test
+    void debtPaidAfterShiftCloseDoesNotRewriteHistoricalShiftRevenue() {
+        OrderFixture fixture = createOrderFixture(10.0, 1.0);
+        OrderDTO debt = orderRequest(fixture.shiftId(), fixture.dishId(), false);
+        debt.setDuty(true);
+        debt.setClientId(createClient("После закрытия", "+7 999 000-00-11"));
+        debt.setDebt_payment_date(businessTime.today().plusDays(1));
+        int orderId = orderService.createOrder(debt).getOrderId();
+        shiftService.closeShift(fixture.shiftId(), BigDecimal.ZERO);
+
+        clientService.payDebt(orderId, debtPayment("20.00", "cash", "after-close-debt"));
+
+        @SuppressWarnings("unchecked")
+        var totals = (java.util.Map<String, Object>) shiftService.buildZReport(fixture.shiftId()).get("totals");
+        assertThat((Double) totals.get("revenue")).isZero();
+        assertThat((Double) totals.get("unpaidAmount")).isEqualTo(20.0);
+        assertThat((Integer) totals.get("paidOrdersCount")).isZero();
+        assertThat((Integer) totals.get("unpaidOrdersCount")).isEqualTo(1);
+    }
+
+    @Test
+    void vkCodeExpiresCannotBeReusedAndCanOnlyBeClaimedOnceConcurrently() throws Exception {
+        int clientId = createClient("VK одноразовый", "+7 999 000-00-08");
+        var expired = vkClientLinkService.createLinkCode(clientId);
+        dsl.execute(
+                "update sales.client_vk_link_code set expires_at = localtimestamp - interval '1 minute' where id = ?",
+                expired.codeId()
+        );
+        assertThatThrownBy(() -> confirmVk(expired.code(), 8_001L))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        var active = vkClientLinkService.createLinkCode(clientId);
+        AtomicInteger userNumber = new AtomicInteger();
+        List<Boolean> results = runConcurrently(2, () -> {
+            try {
+                confirmVk(active.code(), 8_100L + userNumber.incrementAndGet());
+                return true;
+            } catch (RuntimeException expected) {
+                return false;
+            }
+        });
+
+        assertThat(results).containsExactlyInAnyOrder(true, false);
+        assertThat(dsl.fetchCount(DSL.table(DSL.name("sales", "client_vk_link")))).isEqualTo(1);
+        assertThatThrownBy(() -> confirmVk(active.code(), 8_999L))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void vkRelinkAndUnlinkKeepOneToOneMappingAndIsolateClientHistory() {
+        OrderFixture fixture = createOrderFixture(10.0, 1.0);
+        int firstClient = createClient("Первый VK", "+7 999 000-00-09");
+        int secondClient = createClient("Второй VK", "+7 999 000-00-10");
+
+        OrderDTO firstOrder = orderRequest(fixture.shiftId(), fixture.dishId(), false);
+        firstOrder.setClientId(firstClient);
+        int firstOrderId = orderService.createOrder(firstOrder).getOrderId();
+        OrderDTO secondOrder = orderRequest(fixture.shiftId(), fixture.dishId(), false);
+        secondOrder.setClientId(secondClient);
+        int secondOrderId = orderService.createOrder(secondOrder).getOrderId();
+
+        long vkUserId = 9_001L;
+        confirmVk(vkClientLinkService.createLinkCode(firstClient).code(), vkUserId);
+        assertThat(vkClientLinkService.getOrderHistory(vkUserId, 20))
+                .extracting(OrderDTO::getOrderId)
+                .containsExactly(firstOrderId);
+
+        confirmVk(vkClientLinkService.createLinkCode(secondClient).code(), vkUserId);
+        assertThat(vkClientLinkService.getOrderHistory(vkUserId, 20))
+                .extracting(OrderDTO::getOrderId)
+                .containsExactly(secondOrderId);
+        assertThat(dsl.fetchCount(DSL.table(DSL.name("sales", "client_vk_link")))).isEqualTo(1);
+
+        assertThat(vkClientLinkService.unlink(vkUserId)).isTrue();
+        assertThatThrownBy(() -> vkClientLinkService.getOrderHistory(vkUserId, 20))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("not linked");
+        confirmVk(vkClientLinkService.createLinkCode(firstClient).code(), vkUserId);
+        assertThat(vkClientLinkService.getOrderHistory(vkUserId, 20))
+                .extracting(OrderDTO::getOrderId)
+                .containsExactly(firstOrderId);
+        assertThat(dsl.fetchCount(DSL.table(DSL.name("sales", "client_vk_link_event")))).isGreaterThanOrEqualTo(5);
     }
 
     @Test
@@ -1065,6 +1379,29 @@ class CafehelpApplicationTests {
                 """,
                 name
         );
+    }
+
+    private int createClient(String fullName, String number) {
+        ClientDTO client = new ClientDTO();
+        client.setFullName(fullName);
+        client.setNumber(number);
+        return clientService.createClient(client).getClientId();
+    }
+
+    private DebtPaymentRequestDTO debtPayment(String amount, String paymentType, String idempotencyKey) {
+        DebtPaymentRequestDTO request = new DebtPaymentRequestDTO();
+        request.setAmount(new BigDecimal(amount));
+        request.setPaymentType(paymentType);
+        request.setIdempotencyKey(idempotencyKey);
+        return request;
+    }
+
+    private void confirmVk(String code, long vkUserId) {
+        VkBotLinkConfirmRequestDTO request = new VkBotLinkConfirmRequestDTO();
+        request.setVkUserId(vkUserId);
+        request.setVkDomain("id" + vkUserId);
+        request.setCode(code);
+        vkClientLinkService.confirmLink(request);
     }
 
     private ShiftDTO shiftRequest(int mainPersonId, List<Integer> personIds) {

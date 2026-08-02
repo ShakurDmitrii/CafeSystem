@@ -3,6 +3,7 @@ package com.shakur.cafehelp.Service;
 import com.shakur.cafehelp.DTO.OrderDTO;
 import com.shakur.cafehelp.DTO.OrderDishDTO;
 import com.shakur.cafehelp.DTO.OrderEditRequestDTO;
+import com.shakur.cafehelp.config.BusinessTimeProvider;
 import com.shakur.cafehelp.exception.InvalidOrderRequestException;
 import com.shakur.cafehelp.exception.OrderNotFoundException;
 import com.shakur.cafehelp.exception.OrderStateConflictException;
@@ -39,6 +40,10 @@ public class OrderService {
     private static final Field<LocalDateTime> CANCELLED_AT_FIELD = DSL.field(DSL.name("cancelled_at"), LocalDateTime.class);
     private static final Field<String> CANCEL_REASON_FIELD = DSL.field(DSL.name("cancel_reason"), String.class);
     private static final Field<Integer> VERSION_FIELD = DSL.field(DSL.name("version"), Integer.class);
+    private static final Field<BigDecimal> DEBT_ORIGINAL_AMOUNT_FIELD = DSL.field(DSL.name("debt_original_amount"), BigDecimal.class);
+    private static final Field<BigDecimal> DEBT_REMAINING_AMOUNT_FIELD = DSL.field(DSL.name("debt_remaining_amount"), BigDecimal.class);
+    private static final Field<Boolean> INVENTORY_CONSUMED_FIELD = DSL.field(DSL.name("inventory_consumed"), Boolean.class);
+    private static final Field<LocalDateTime> PAID_AT_FIELD = DSL.field(DSL.name("paid_at"), LocalDateTime.class);
     private static final Field<Integer> ORDERDISH_SET_ID = DSL.field(DSL.name("set_id"), Integer.class);
     private static final Field<Double> ORDERDISH_UNIT_PRICE = DSL.field(DSL.name("unit_price"), Double.class);
     private static final Field<Double> ORDERDISH_UNIT_COST = DSL.field(DSL.name("unit_cost"), Double.class);
@@ -55,16 +60,23 @@ public class OrderService {
     private final DSLContext dsl;
     private final WareHouseService wareHouseService;
     private final RecipeRequirementService recipeRequirementService;
+    private final BusinessTimeProvider businessTime;
 
-    public OrderService(DSLContext dsl, WareHouseService wareHouseService, RecipeRequirementService recipeRequirementService) {
+    public OrderService(
+            DSLContext dsl,
+            WareHouseService wareHouseService,
+            RecipeRequirementService recipeRequirementService,
+            BusinessTimeProvider businessTime
+    ) {
         this.dsl = dsl;
         this.wareHouseService = wareHouseService;
         this.recipeRequirementService = recipeRequirementService;
+        this.businessTime = businessTime;
     }
 
     @Transactional
     public OrderDTO createOrder(OrderDTO orderDTO) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = businessTime.now();
         try {
             // Проверяем обязательные поля
             if (orderDTO.getShiftId() == 0) {
@@ -91,27 +103,36 @@ public class OrderService {
             String normalizedPaymentType = normalizePaymentType(orderDTO.getPaymentType());
             boolean paid = orderDTO.getPaid() != null ? orderDTO.getPaid() : false;
             String storedPaymentType = paid ? normalizedPaymentType : "unpaid";
+            boolean debt = Boolean.TRUE.equals(orderDTO.getDuty());
 
             Integer clientId = orderDTO.getClientId();
             if (clientId != null && clientId == 0) {
                 clientId = null;
             }
+            if (debt) {
+                validateDebtOrder(clientId, orderDTO.getDebt_payment_date(), paid);
+            }
+            BigDecimal debtAmount = debt ? BigDecimal.valueOf(serverTotal).setScale(2, RoundingMode.HALF_UP) : null;
             var result = dsl.insertInto(ORDER)
                     .set(ORDER.CLIENTID, clientId)
                     .set(ORDER.SHIFTID, orderDTO.getShiftId())
-                    .set(ORDER.DATE, orderDTO.getDate() != null ? orderDTO.getDate() : LocalDate.now())
+                    .set(ORDER.DATE, orderDTO.getDate() != null ? orderDTO.getDate() : businessTime.today())
                     .set(ORDER.CREATED_AT, now)
                     .set(ORDER.AMOUNT, serverTotal)
                     .set(ORDER.STATUS, orderDTO.getStatus() != null ? orderDTO.getStatus() : false)
                     .set(ORDER.TYPE, delivery)
                     .set(ORDER.TIME, orderDTO.getTime() != null ? orderDTO.getTime() : 30.0) // время по умолчанию 30 мин
                     .set(ORDER.TIMEDELAY, orderDTO.getTimeDelay()) // может быть null
-                    .set(ORDER.DUTY, orderDTO.getDuty())
+                    .set(ORDER.DUTY, debt)
                     .set(ORDER.DEBT_PAYMENT_DATE, orderDTO.getDebt_payment_date())
                     .set(DELIVERY_PHONE_FIELD, orderDTO.getDeliveryPhone())
                     .set(DELIVERY_ADDRESS_FIELD, orderDTO.getDeliveryAddress())
                     .set(PAYMENT_TYPE_FIELD, storedPaymentType)
                     .set(IS_PAID_FIELD, paid)
+                    .set(DEBT_ORIGINAL_AMOUNT_FIELD, debtAmount)
+                    .set(DEBT_REMAINING_AMOUNT_FIELD, debtAmount)
+                    .set(INVENTORY_CONSUMED_FIELD, false)
+                    .set(PAID_AT_FIELD, paid ? now : null)
                     .returningResult(ORDER.ORDERID)
                     .fetchOne();
 
@@ -138,8 +159,12 @@ public class OrderService {
 
                     insert.execute();
                 }
-                if (paid) {
+                if (paid || debt) {
                     applyWarehouseWriteoffForOrder(orderId);
+                    dsl.update(ORDER)
+                            .set(INVENTORY_CONSUMED_FIELD, true)
+                            .where(ORDER.ORDERID.eq(orderId))
+                            .execute();
                 }
             }
 
@@ -176,7 +201,9 @@ public class OrderService {
                         IS_PAID_FIELD,
                         CANCELLED_AT_FIELD,
                         CANCEL_REASON_FIELD,
-                        VERSION_FIELD
+                        VERSION_FIELD,
+                        DEBT_ORIGINAL_AMOUNT_FIELD,
+                        DEBT_REMAINING_AMOUNT_FIELD
                 )
                 .from(ORDER)
                 .where(ORDER.ORDERID.eq(id))
@@ -197,6 +224,10 @@ public class OrderService {
                     order.deliveryAddress = record.get(DELIVERY_ADDRESS_FIELD);
                     order.paymentType = record.get(PAYMENT_TYPE_FIELD);
                     order.paid = record.get(IS_PAID_FIELD);
+                    order.duty = record.get(ORDER.DUTY);
+                    order.debt_payment_date = record.get(ORDER.DEBT_PAYMENT_DATE);
+                    order.debtOriginalAmount = record.get(DEBT_ORIGINAL_AMOUNT_FIELD);
+                    order.debtRemainingAmount = record.get(DEBT_REMAINING_AMOUNT_FIELD);
                     order.cancelledAt = record.get(CANCELLED_AT_FIELD);
                     order.cancelReason = record.get(CANCEL_REASON_FIELD);
                     order.version = record.get(VERSION_FIELD);
@@ -208,7 +239,7 @@ public class OrderService {
 
     public List<OrderDTO> getOrdersByClientId(int clientId) {
         return dsl.select(ORDER.fields())
-                .select(PAYMENT_TYPE_FIELD, IS_PAID_FIELD)
+                .select(PAYMENT_TYPE_FIELD, IS_PAID_FIELD, DEBT_ORIGINAL_AMOUNT_FIELD, DEBT_REMAINING_AMOUNT_FIELD)
                 .from(ORDER)
                 .where(ORDER.CLIENTID.eq(clientId))
                 .and(CANCELLED_AT_FIELD.isNull())
@@ -227,6 +258,10 @@ public class OrderService {
                     order.setDate_issue(record.get(ORDER.DATE_ISSUE));
                     order.setPaymentType(record.get(PAYMENT_TYPE_FIELD));
                     order.setPaid(record.get(IS_PAID_FIELD));
+                    order.setDuty(record.get(ORDER.DUTY));
+                    order.setDebt_payment_date(record.get(ORDER.DEBT_PAYMENT_DATE));
+                    order.setDebtOriginalAmount(record.get(DEBT_ORIGINAL_AMOUNT_FIELD));
+                    order.setDebtRemainingAmount(record.get(DEBT_REMAINING_AMOUNT_FIELD));
                     return order;
                 });
     }
@@ -459,7 +494,7 @@ public List<OrderDTO> getOrders() {
 
         int currentVersion = currentOrderVersion(orderId);
         dsl.update(ORDER)
-                .set(CANCELLED_AT_FIELD, LocalDateTime.now())
+                .set(CANCELLED_AT_FIELD, businessTime.now())
                 .set(CANCEL_REASON_FIELD, normalizedReason != null ? normalizedReason : "Отменён пользователем")
                 .set(VERSION_FIELD, currentVersion + 1)
                 .where(ORDER.ORDERID.eq(orderId))
@@ -472,7 +507,7 @@ public List<OrderDTO> getOrders() {
         lockOrderForMutation(orderId);
         ensureOrderActive(orderId);
         int updated = dsl.update(ORDER)
-                .set(ORDER.DATE_ISSUE, LocalDate.now())
+                .set(ORDER.DATE_ISSUE, businessTime.today())
                 .where(ORDER.ORDERID.eq(orderId))
                 .execute();
         if (updated != 1) {
@@ -486,18 +521,38 @@ public List<OrderDTO> getOrders() {
         OrderRecord record = lockOrderForMutation(orderId);
         ensureOrderActive(orderId);
 
+        if (Boolean.TRUE.equals(record.getDuty())) {
+            throw new OrderStateConflictException("Долг погашается через операцию платежа по долгу");
+        }
+
         String normalizedPaymentType = normalizePaymentType(paymentType);
         boolean nextPaid = paid != null ? paid : !"unpaid".equals(normalizedPaymentType);
         boolean wasPaid = Boolean.TRUE.equals(record.get(IS_PAID_FIELD));
+        LocalDateTime previousPaidAt = dsl.select(PAID_AT_FIELD)
+                .from(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .fetchOne(PAID_AT_FIELD);
+        LocalDateTime nextPaidAt = nextPaid
+                ? (wasPaid && previousPaidAt != null ? previousPaidAt : businessTime.now())
+                : null;
 
         dsl.update(ORDER)
                 .set(PAYMENT_TYPE_FIELD, nextPaid ? normalizedPaymentType : "unpaid")
                 .set(IS_PAID_FIELD, nextPaid)
+                .set(PAID_AT_FIELD, nextPaidAt)
                 .where(ORDER.ORDERID.eq(orderId))
                 .execute();
 
-        if (!wasPaid && nextPaid) {
+        Boolean inventoryConsumed = dsl.select(INVENTORY_CONSUMED_FIELD)
+                .from(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .fetchOne(INVENTORY_CONSUMED_FIELD);
+        if (!wasPaid && nextPaid && !Boolean.TRUE.equals(inventoryConsumed)) {
             applyWarehouseWriteoffForOrder(orderId);
+            dsl.update(ORDER)
+                    .set(INVENTORY_CONSUMED_FIELD, true)
+                    .where(ORDER.ORDERID.eq(orderId))
+                    .execute();
         }
 
         return getOrderById(orderId);
@@ -891,6 +946,15 @@ public List<OrderDTO> getOrders() {
                     "Оплаченный заказ нельзя редактировать или отменять без оформления возврата"
             );
         }
+        Boolean inventoryConsumed = dsl.select(INVENTORY_CONSUMED_FIELD)
+                .from(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .fetchOne(INVENTORY_CONSUMED_FIELD);
+        if (Boolean.TRUE.equals(inventoryConsumed)) {
+            throw new OrderStateConflictException(
+                    "Заказ уже списал продукты; изменение требует отдельной складской корректировки"
+            );
+        }
         if (order.getDateIssue() != null) {
             throw new OrderStateConflictException("Выданный заказ нельзя редактировать или отменять");
         }
@@ -921,6 +985,26 @@ public List<OrderDTO> getOrders() {
                 .fetchOne(CANCELLED_AT_FIELD);
         if (cancelledAt != null) {
             throw new OrderStateConflictException("Заказ уже отменён");
+        }
+    }
+
+    private void validateDebtOrder(Integer clientId, LocalDate dueDate, boolean paid) {
+        if (clientId == null) {
+            throw new IllegalArgumentException("Для долга обязателен клиент");
+        }
+        boolean clientExists = dsl.fetchExists(
+                dsl.selectOne()
+                        .from(DSL.table(DSL.name("sales", "client")))
+                        .where(DSL.field(DSL.name("clientid"), Integer.class).eq(clientId))
+        );
+        if (!clientExists) {
+            throw new IllegalArgumentException("Клиент для долга не найден");
+        }
+        if (dueDate == null) {
+            throw new IllegalArgumentException("Для долга обязательна дата погашения");
+        }
+        if (paid) {
+            throw new IllegalArgumentException("Оплаченный заказ нельзя одновременно оформить как долг");
         }
     }
 

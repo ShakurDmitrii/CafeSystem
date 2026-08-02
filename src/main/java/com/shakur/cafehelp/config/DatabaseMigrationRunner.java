@@ -109,7 +109,8 @@ public class DatabaseMigrationRunner {
         );
 
         if (existingChecksum != null) {
-            if (!isChecksumCompatible(existingChecksum, migrationBytes)) {
+            if (!isChecksumCompatible(existingChecksum, migrationBytes)
+                    && !isKnownCompatibleMigrationChecksum(migrationName, existingChecksum, checksum)) {
                 throw new IllegalStateException(
                         "Checksum mismatch for " + target + " migration " + migrationName
                                 + ". Applied=" + existingChecksum + ", current=" + checksum
@@ -156,6 +157,21 @@ public class DatabaseMigrationRunner {
         return checksumEquals(existingChecksum, sha256(value))
                 || checksumEquals(existingChecksum, sha256(normalizedLf.getBytes(StandardCharsets.UTF_8)))
                 || checksumEquals(existingChecksum, sha256(normalizedCrLf.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    static boolean isKnownCompatibleMigrationChecksum(
+            String migrationName,
+            String existingChecksum,
+            String currentChecksum
+    ) {
+        // This schema-alignment migration was expanded while the same changes were
+        // still being enforced idempotently by DatabaseSchemaInitializer. The
+        // deployed legacy checksum is accepted only for the audited current file.
+        return "2026-04-08_runtime_schema_alignment.sql".equals(migrationName)
+                && "ce284ba9e1e9ace1714a0effb2993b578a380411ae112e860c5ca1f7335e6032"
+                        .equalsIgnoreCase(existingChecksum)
+                && "cccee97177b401ce0479375f5e71f41b99b0393a466938d08b60426ef7f6a315"
+                        .equalsIgnoreCase(currentChecksum);
     }
 
     private static String normalizeLineEndings(byte[] value) {

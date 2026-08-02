@@ -45,6 +45,8 @@ public class VkBotController {
 
         try {
             return ResponseEntity.ok(vkClientLinkService.confirmLink(request));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("message", e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }

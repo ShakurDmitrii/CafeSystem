@@ -2,15 +2,21 @@ package com.shakur.cafehelp.Service;
 
 import com.shakur.cafehelp.DTO.OrderDTO;
 import com.shakur.cafehelp.DTO.VkBotLinkConfirmRequestDTO;
+import com.shakur.cafehelp.config.BusinessTimeProvider;
 import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.nio.charset.StandardCharsets;
+import java.util.HexFormat;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -38,16 +44,37 @@ public class VkClientLinkService {
     private static final Field<LocalDateTime> VK_CODE_EXPIRES_AT = DSL.field(DSL.name("expires_at"), LocalDateTime.class);
     private static final Field<LocalDateTime> VK_CODE_USED_AT = DSL.field(DSL.name("used_at"), LocalDateTime.class);
     private static final Field<LocalDateTime> VK_CODE_CREATED_AT = DSL.field(DSL.name("created_at"), LocalDateTime.class);
+    private static final Field<String> VK_CODE_FINGERPRINT = DSL.field(DSL.name("code_fingerprint"), String.class);
+
+    private static final Table<?> VK_EVENT = DSL.table(DSL.name("sales", "client_vk_link_event"));
+    private static final Field<Integer> VK_EVENT_CLIENT_ID = DSL.field(DSL.name("client_id"), Integer.class);
+    private static final Field<Long> VK_EVENT_USER_ID = DSL.field(DSL.name("vk_user_id"), Long.class);
+    private static final Field<String> VK_EVENT_TYPE = DSL.field(DSL.name("event_type"), String.class);
+    private static final Field<String> VK_EVENT_DOMAIN = DSL.field(DSL.name("vk_domain"), String.class);
+    private static final Field<LocalDateTime> VK_EVENT_CREATED_AT = DSL.field(DSL.name("created_at"), LocalDateTime.class);
 
     private final DSLContext dsl;
     private final BCryptPasswordEncoder passwordEncoder;
     private final OrderService orderService;
+    private final BusinessTimeProvider businessTime;
+    private final VkLinkAttemptService attemptService;
+    private final byte[] codePepper;
     private final SecureRandom random = new SecureRandom();
 
-    public VkClientLinkService(DSLContext dsl, BCryptPasswordEncoder passwordEncoder, OrderService orderService) {
+    public VkClientLinkService(
+            DSLContext dsl,
+            BCryptPasswordEncoder passwordEncoder,
+            OrderService orderService,
+            BusinessTimeProvider businessTime,
+            VkLinkAttemptService attemptService,
+            @Value("${security.jwt.secret}") String codePepper
+    ) {
         this.dsl = dsl;
         this.passwordEncoder = passwordEncoder;
         this.orderService = orderService;
+        this.businessTime = businessTime;
+        this.attemptService = attemptService;
+        this.codePepper = codePepper.getBytes(StandardCharsets.UTF_8);
     }
 
     @Transactional
@@ -56,7 +83,7 @@ public class VkClientLinkService {
             throw new IllegalArgumentException("Client not found");
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = businessTime.now();
         dsl.update(VK_CODE)
                 .set(VK_CODE_USED_AT, now)
                 .where(VK_CODE_CLIENT_ID.eq(clientId))
@@ -66,8 +93,8 @@ public class VkClientLinkService {
         String code = generateCode();
         LocalDateTime expiresAt = now.plusMinutes(15);
         Long codeId = dsl.insertInto(VK_CODE)
-                .columns(VK_CODE_CLIENT_ID, VK_CODE_HASH, VK_CODE_EXPIRES_AT, VK_CODE_CREATED_AT)
-                .values(clientId, passwordEncoder.encode(code), expiresAt, now)
+                .columns(VK_CODE_CLIENT_ID, VK_CODE_HASH, VK_CODE_FINGERPRINT, VK_CODE_EXPIRES_AT, VK_CODE_CREATED_AT)
+                .values(clientId, passwordEncoder.encode(code), fingerprint(code), expiresAt, now)
                 .returningResult(VK_CODE_ID)
                 .fetchOne(VK_CODE_ID);
 
@@ -84,29 +111,38 @@ public class VkClientLinkService {
             throw new IllegalArgumentException("code is required");
         }
 
-        LocalDateTime now = LocalDateTime.now();
-        var candidates = dsl.select(VK_CODE_ID, VK_CODE_CLIENT_ID, VK_CODE_HASH, VK_CODE_EXPIRES_AT)
+        long vkUserId = request.getVkUserId();
+        attemptService.ensureAllowed(vkUserId);
+        LocalDateTime now = businessTime.now();
+        var candidate = dsl.select(VK_CODE_ID, VK_CODE_CLIENT_ID, VK_CODE_HASH, VK_CODE_EXPIRES_AT)
                 .from(VK_CODE)
                 .where(VK_CODE_USED_AT.isNull())
                 .and(VK_CODE_EXPIRES_AT.gt(now))
-                .orderBy(VK_CODE_CREATED_AT.desc())
-                .limit(50)
-                .fetch();
+                .and(VK_CODE_FINGERPRINT.eq(fingerprint(code)))
+                .forUpdate()
+                .fetchOne();
 
-        for (var candidate : candidates) {
-            String hash = candidate.get(VK_CODE_HASH);
-            if (hash != null && passwordEncoder.matches(code, hash)) {
-                Integer clientId = candidate.get(VK_CODE_CLIENT_ID);
-                upsertLink(clientId, request.getVkUserId(), request.getVkDomain(), now);
-                dsl.update(VK_CODE)
-                        .set(VK_CODE_USED_AT, now)
-                        .where(VK_CODE_ID.eq(candidate.get(VK_CODE_ID)))
-                        .execute();
-                return new LinkConfirmResult(true, clientId, request.getVkUserId(), findClientName(clientId));
-            }
+        String hash = candidate != null ? candidate.get(VK_CODE_HASH) : null;
+        if (candidate == null || hash == null || !passwordEncoder.matches(code, hash)) {
+            attemptService.registerFailure(vkUserId);
+            throw new IllegalArgumentException("Invalid or expired code");
         }
 
-        throw new IllegalArgumentException("Invalid or expired code");
+        int claimed = dsl.update(VK_CODE)
+                .set(VK_CODE_USED_AT, now)
+                .where(VK_CODE_ID.eq(candidate.get(VK_CODE_ID)))
+                .and(VK_CODE_USED_AT.isNull())
+                .and(VK_CODE_EXPIRES_AT.gt(now))
+                .execute();
+        if (claimed != 1) {
+            attemptService.registerFailure(vkUserId);
+            throw new IllegalArgumentException("Invalid or expired code");
+        }
+
+        Integer clientId = candidate.get(VK_CODE_CLIENT_ID);
+        upsertLink(clientId, vkUserId, request.getVkDomain(), now);
+        attemptService.clear(vkUserId);
+        return new LinkConfirmResult(true, clientId, vkUserId, findClientName(clientId));
     }
 
     @Transactional
@@ -114,9 +150,21 @@ public class VkClientLinkService {
         if (vkUserId == null || vkUserId <= 0) {
             return false;
         }
-        return dsl.deleteFrom(VK_LINK)
+        var current = dsl.select(VK_LINK_CLIENT_ID, VK_LINK_DOMAIN)
+                .from(VK_LINK)
+                .where(VK_LINK_USER_ID.eq(vkUserId))
+                .forUpdate()
+                .fetchOne();
+        if (current == null) {
+            return false;
+        }
+        boolean deleted = dsl.deleteFrom(VK_LINK)
                 .where(VK_LINK_USER_ID.eq(vkUserId))
                 .execute() > 0;
+        if (deleted) {
+            recordLinkEvent(current.get(VK_LINK_CLIENT_ID), vkUserId, "UNLINKED", current.get(VK_LINK_DOMAIN), businessTime.now());
+        }
+        return deleted;
     }
 
     public List<OrderDTO> getOrderHistory(Long vkUserId, Integer limit) {
@@ -166,6 +214,20 @@ public class VkClientLinkService {
     }
 
     private void upsertLink(Integer clientId, Long vkUserId, String vkDomain, LocalDateTime now) {
+        var previous = dsl.select(VK_LINK_CLIENT_ID, VK_LINK_USER_ID, VK_LINK_DOMAIN)
+                .from(VK_LINK)
+                .where(VK_LINK_CLIENT_ID.eq(clientId).or(VK_LINK_USER_ID.eq(vkUserId)))
+                .forUpdate()
+                .fetch();
+        for (var oldLink : previous) {
+            recordLinkEvent(
+                    oldLink.get(VK_LINK_CLIENT_ID),
+                    oldLink.get(VK_LINK_USER_ID),
+                    "UNLINKED",
+                    oldLink.get(VK_LINK_DOMAIN),
+                    now
+            );
+        }
         dsl.deleteFrom(VK_LINK)
                 .where(VK_LINK_CLIENT_ID.eq(clientId).or(VK_LINK_USER_ID.eq(vkUserId)))
                 .execute();
@@ -174,6 +236,7 @@ public class VkClientLinkService {
                 .columns(VK_LINK_CLIENT_ID, VK_LINK_USER_ID, VK_LINK_DOMAIN, VK_LINK_VERIFIED_AT, VK_LINK_CREATED_AT)
                 .values(clientId, vkUserId, normalizeDomain(vkDomain), now, now)
                 .execute();
+        recordLinkEvent(clientId, vkUserId, previous.isEmpty() ? "LINKED" : "RELINKED", normalizeDomain(vkDomain), now);
     }
 
     private Integer resolveClientId(Long vkUserId) {
@@ -219,8 +282,8 @@ public class VkClientLinkService {
         if (code == null) {
             return null;
         }
-        String normalized = code.replaceAll("\\D", "");
-        return normalized.length() == 6 ? normalized : null;
+        String normalized = code.trim();
+        return normalized.matches("\\d{6}") ? normalized : null;
     }
 
     private String normalizeDomain(String vkDomain) {
@@ -228,6 +291,29 @@ public class VkClientLinkService {
             return null;
         }
         return vkDomain.trim();
+    }
+
+    private String fingerprint(String code) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(codePepper, "HmacSHA256"));
+            return HexFormat.of().formatHex(mac.doFinal(code.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception e) {
+            throw new IllegalStateException("VK code fingerprint is unavailable", e);
+        }
+    }
+
+    private void recordLinkEvent(
+            Integer clientId,
+            Long vkUserId,
+            String eventType,
+            String domain,
+            LocalDateTime createdAt
+    ) {
+        dsl.insertInto(VK_EVENT)
+                .columns(VK_EVENT_CLIENT_ID, VK_EVENT_USER_ID, VK_EVENT_TYPE, VK_EVENT_DOMAIN, VK_EVENT_CREATED_AT)
+                .values(clientId, vkUserId, eventType, domain, createdAt)
+                .execute();
     }
 
     public record LinkCodeResult(Long codeId, int clientId, String code, LocalDateTime expiresAt) {

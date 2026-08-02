@@ -709,6 +709,9 @@ ${reportText}
             });
 
             const order = await orderResponse.json();
+            if (!orderResponse.ok) {
+                throw new Error(order?.message || order?.error || `Ошибка создания заказа (${orderResponse.status})`);
+            }
             console.log("Создан заказ с orderId:", order.orderId);
             order.paymentType = paymentType;
             order.paid = paymentType !== "unpaid";
@@ -788,12 +791,16 @@ ${reportText}
         const checked = e.target.checked;
 
         if (checked && !selectedClient) {
+            setIsDebt(true);
+            setPaymentType("unpaid");
             setShowClientModal(true);
         } else if (checked && selectedClient) {
             setIsDebt(true);
+            setPaymentType("unpaid");
             setShowDatePicker(true);
         } else {
             setIsDebt(false);
+            setPaymentType("cash");
             setShowDatePicker(false);
         }
     };
@@ -1329,7 +1336,13 @@ ${reportText}
                         onDeliveryCostChange={(value) => setDeliveryCost(Math.max(0, Number(value || 0)))}
                         onDeliveryPhoneChange={setDeliveryPhone}
                         onDeliveryAddressChange={setDeliveryAddress}
-                        onPaymentTypeChange={setPaymentType}
+                        onPaymentTypeChange={(value) => {
+                            setPaymentType(value);
+                            if (value !== "unpaid" && isDebt) {
+                                setIsDebt(false);
+                                setShowDatePicker(false);
+                            }
+                        }}
                         onDebtChange={handleDebtCheckboxChange}
                         onDebtDateChange={setDebtPaymentDate}
                         onPreparationTimeChange={(value) => setPreparationTime(Math.max(1, parseInt(value, 10) || 30))}

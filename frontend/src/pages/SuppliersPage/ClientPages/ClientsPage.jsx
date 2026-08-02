@@ -203,17 +203,28 @@ export default function ClientsPage() {
         }
     };
 
-    const markSingleOrderAsPaid = async (orderId, clientId, orderAmount) => {
-        if (!window.confirm(`Закрыть долг по заказу #${orderId} на ${formatMoney(orderAmount)}?`)) return;
+    const markSingleOrderAsPaid = async (orderId, clientId, paymentAmount, paymentType = "cash") => {
+        const amount = Number(paymentAmount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            setMessage({ type: "error", text: "Введите сумму платежа больше нуля." });
+            return;
+        }
         setMessage(null);
         try {
-            const data = await readJson(await fetch(`${API_CLIENTS}/${orderId}/One-duty`, {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" }
+            const idempotencyKey = window.crypto?.randomUUID?.()
+                || `debt-${orderId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            const data = await readJson(await fetch(`${API_CLIENTS}/debts/${orderId}/payments`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ amount, paymentType, idempotencyKey })
             }));
-            if (data?.success === false) throw new Error(data.error || "Операция отклонена");
             await refreshDebtData(clientId);
-            setMessage({ type: "success", text: data?.message || `Заказ #${orderId} оплачен.` });
+            setMessage({
+                type: "success",
+                text: data?.fullyPaid
+                    ? `Долг по заказу #${orderId} погашен.`
+                    : `Платёж ${formatMoney(data?.amount)} принят. Остаток: ${formatMoney(data?.remainingAmount)}.`
+            });
         } catch (error) {
             console.error("Ошибка списания заказа:", error);
             setMessage({ type: "error", text: `Не удалось закрыть заказ: ${error.message}` });

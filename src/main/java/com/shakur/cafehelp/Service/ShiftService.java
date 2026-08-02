@@ -5,6 +5,7 @@ import com.shakur.cafehelp.DTO.ShiftDTO;
 import com.shakur.cafehelp.exception.InvalidShiftRequestException;
 import com.shakur.cafehelp.exception.ShiftNotFoundException;
 import com.shakur.cafehelp.exception.ShiftStateConflictException;
+import com.shakur.cafehelp.config.BusinessTimeProvider;
 import jooqdata.tables.Client;
 import jooqdata.tables.Dish;
 import jooqdata.tables.Order;
@@ -41,6 +42,8 @@ public class ShiftService {
             DSL.field(DSL.name("cancelled_at"), LocalDateTime.class);
     private static final Field<String> PAYMENT_TYPE_FIELD = DSL.field(DSL.name("payment_type"), String.class);
     private static final Field<Boolean> IS_PAID_FIELD = DSL.field(DSL.name("is_paid"), Boolean.class);
+    private static final Field<LocalDateTime> PAID_AT_FIELD = DSL.field(DSL.name("paid_at"), LocalDateTime.class);
+    private static final Field<LocalDateTime> SHIFT_CLOSED_AT_FIELD = DSL.field(DSL.name("closed_at"), LocalDateTime.class);
     private static final Field<Integer> ORDERDISH_SET_ID = DSL.field(DSL.name("set_id"), Integer.class);
     private static final Field<Double> ORDERDISH_UNIT_PRICE = DSL.field(DSL.name("unit_price"), Double.class);
     private static final Field<Double> ORDERDISH_UNIT_COST = DSL.field(DSL.name("unit_cost"), Double.class);
@@ -52,10 +55,16 @@ public class ShiftService {
 
     private final DSLContext dsl;
     private final ShiftInventorySnapshotService shiftInventorySnapshotService;
+    private final BusinessTimeProvider businessTime;
 
-    public ShiftService(DSLContext dsl, ShiftInventorySnapshotService shiftInventorySnapshotService) {
+    public ShiftService(
+            DSLContext dsl,
+            ShiftInventorySnapshotService shiftInventorySnapshotService,
+            BusinessTimeProvider businessTime
+    ) {
         this.dsl = dsl;
         this.shiftInventorySnapshotService = shiftInventorySnapshotService;
+        this.businessTime = businessTime;
     }
 
     // Получить все смены
@@ -78,11 +87,11 @@ public class ShiftService {
         validateWorkersAvailable(workerIds, null);
 
         ShiftRecord record = dsl.newRecord(Shift.SHIFT);
-        record.setData(dto.data != null ? dto.data : LocalDate.now());
+        record.setData(dto.data != null ? dto.data : businessTime.today());
         record.setExpenses(BigDecimal.ZERO);
         record.setProfit(BigDecimal.ZERO);
         record.setIncome(0.0);
-        record.setStarttime(dto.startTime != null ? dto.startTime : LocalTime.now());
+        record.setStarttime(dto.startTime != null ? dto.startTime : businessTime.now().toLocalTime());
         record.setEndtime(null);
         record.setPersoncode(workerIds.iterator().next());
         record.store();
@@ -144,9 +153,9 @@ public class ShiftService {
         validateWorkersAvailable(workerIds, null);
 
         ShiftRecord shift = dsl.newRecord(Shift.SHIFT);
-        shift.setData(LocalDate.now());
+        shift.setData(businessTime.today());
         shift.setPersoncode(personCode);
-        shift.setStarttime(LocalTime.now());
+        shift.setStarttime(businessTime.now().toLocalTime());
         shift.setIncome(0.0);
         shift.setExpenses(BigDecimal.ZERO);
         shift.setProfit(BigDecimal.ZERO);
@@ -259,11 +268,16 @@ public class ShiftService {
                 .subtract(BigDecimal.valueOf(totalCost))
                 .subtract(expenses);
 
-        shift.setEndtime(LocalTime.now());
+        LocalDateTime closedAt = businessTime.now();
+        shift.setEndtime(closedAt.toLocalTime());
         shift.setIncome(income);
         shift.setExpenses(expenses);
         shift.setProfit(profit);
         shift.store();
+        dsl.update(Shift.SHIFT)
+                .set(SHIFT_CLOSED_AT_FIELD, closedAt)
+                .where(Shift.SHIFT.ID.eq(shiftId))
+                .execute();
         shift.refresh();
         return shift;
     }
@@ -323,7 +337,8 @@ public class ShiftService {
                         Order.ORDER.TIMEDELAY,
                         Order.ORDER.CLIENTID,
                         PAYMENT_TYPE_FIELD,
-                        IS_PAID_FIELD
+                        IS_PAID_FIELD,
+                        PAID_AT_FIELD
                 )
                 .from(Order.ORDER)
                 .where(Order.ORDER.SHIFTID.eq(shiftId))
@@ -341,6 +356,10 @@ public class ShiftService {
         int paidOrdersCount = 0;
         int unpaidOrdersCount = 0;
         Map<String, Map<String, Object>> positionStats = new HashMap<>();
+        LocalDateTime financialCutoff = dsl.select(SHIFT_CLOSED_AT_FIELD)
+                .from(Shift.SHIFT)
+                .where(Shift.SHIFT.ID.eq(shiftId))
+                .fetchOne(SHIFT_CLOSED_AT_FIELD);
 
         for (Record orderRow : orderRows) {
             Integer orderId = orderRow.get(Order.ORDER.ORDERID);
@@ -387,7 +406,13 @@ public class ShiftService {
             Double orderAmount = orderRow.get(Order.ORDER.AMOUNT) != null ? orderRow.get(Order.ORDER.AMOUNT) : itemsTotal;
             boolean isDelivery = Boolean.TRUE.equals(orderRow.get(Order.ORDER.TYPE));
             double deliveryExpense = isDelivery ? Math.max(0.0, orderAmount - itemsTotal) : 0.0;
-            boolean isPaid = Boolean.TRUE.equals(orderRow.get(IS_PAID_FIELD));
+            boolean currentlyPaid = Boolean.TRUE.equals(orderRow.get(IS_PAID_FIELD));
+            LocalDateTime paidAt = orderRow.get(PAID_AT_FIELD);
+            boolean isPaid = currentlyPaid && (
+                    financialCutoff == null
+                            || paidAt == null
+                            || !paidAt.isAfter(financialCutoff)
+            );
 
             if (isPaid) {
                 paidOrdersCount++;
@@ -407,6 +432,8 @@ public class ShiftService {
             orderData.put("isDelivery", isDelivery);
             orderData.put("paymentType", orderRow.get(PAYMENT_TYPE_FIELD));
             orderData.put("isPaid", isPaid);
+            orderData.put("currentlyPaid", currentlyPaid);
+            orderData.put("paidAt", paidAt != null ? paidAt.toString() : null);
             orderData.put("itemsTotal", itemsTotal);
             orderData.put("deliveryExpense", deliveryExpense);
             orderData.put("orderAmount", orderAmount);

@@ -46,6 +46,20 @@ class DatabaseMigrationRunnerChecksumTest {
                 .isEqualTo("select 1;\n");
     }
 
+    @Test
+    void acceptsOnlyPinnedLegacyRuntimeAlignmentRevision() {
+        assertThat(DatabaseMigrationRunner.isKnownCompatibleMigrationChecksum(
+                "2026-04-08_runtime_schema_alignment.sql",
+                "ce284ba9e1e9ace1714a0effb2993b578a380411ae112e860c5ca1f7335e6032",
+                "cccee97177b401ce0479375f5e71f41b99b0393a466938d08b60426ef7f6a315"
+        )).isTrue();
+        assertThat(DatabaseMigrationRunner.isKnownCompatibleMigrationChecksum(
+                "2026-04-08_runtime_schema_alignment.sql",
+                "ce284ba9e1e9ace1714a0effb2993b578a380411ae112e860c5ca1f7335e6032",
+                "different-current-checksum"
+        )).isFalse();
+    }
+
     private String sha256(byte[] value) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         return HexFormat.of().formatHex(digest.digest(value));

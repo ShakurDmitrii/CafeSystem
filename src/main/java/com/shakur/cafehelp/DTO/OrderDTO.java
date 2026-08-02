@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.List;
 
 public class OrderDTO {
@@ -28,6 +29,8 @@ public class OrderDTO {
     public String deliveryAddress;
     public String paymentType;
     public Boolean paid;
+    public BigDecimal debtOriginalAmount;
+    public BigDecimal debtRemainingAmount;
     public LocalDateTime cancelledAt;
     public String cancelReason;
     public Integer version;
@@ -168,6 +171,11 @@ public class OrderDTO {
     public void setPaid(Boolean paid) {
         this.paid = paid;
     }
+
+    public BigDecimal getDebtOriginalAmount() { return debtOriginalAmount; }
+    public void setDebtOriginalAmount(BigDecimal debtOriginalAmount) { this.debtOriginalAmount = debtOriginalAmount; }
+    public BigDecimal getDebtRemainingAmount() { return debtRemainingAmount; }
+    public void setDebtRemainingAmount(BigDecimal debtRemainingAmount) { this.debtRemainingAmount = debtRemainingAmount; }
 
     public LocalDateTime getCancelledAt() {
         return cancelledAt;

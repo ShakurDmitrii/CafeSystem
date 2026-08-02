@@ -4,6 +4,8 @@ import com.shakur.cafehelp.DTO.ClientDTO;
 import com.shakur.cafehelp.DTO.ClientDishDTO;
 import com.shakur.cafehelp.DTO.ClientWithDutyDTO;
 import com.shakur.cafehelp.DTO.OrderDTO;
+import com.shakur.cafehelp.DTO.DebtPaymentDTO;
+import com.shakur.cafehelp.DTO.DebtPaymentRequestDTO;
 import com.shakur.cafehelp.Service.ClientService;
 import com.shakur.cafehelp.Service.VkClientLinkService;
 import org.springframework.http.HttpStatus;
@@ -41,7 +43,7 @@ public class ClientController {
 
     // 2. Создать нового клиента
     @PostMapping
-    public ResponseEntity<ClientDTO> createClient(@RequestBody ClientDTO clientDTO) {
+    public ResponseEntity<?> createClient(@RequestBody ClientDTO clientDTO) {
         try {
             if (clientDTO.getFullName() == null || clientDTO.getFullName().trim().isEmpty()) {
                 return ResponseEntity.badRequest()
@@ -51,9 +53,11 @@ public class ClientController {
             ClientDTO createdClient = clientService.createClient(clientDTO);
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(createdClient);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(null);
+                    .body(Map.of("message", "Не удалось создать клиента"));
         }
     }
 
@@ -87,11 +91,7 @@ public class ClientController {
     @GetMapping("/{clientId}")
     public ResponseEntity<ClientDTO> getClientById(@PathVariable int clientId) {
         try {
-            List<ClientDTO> allClients = clientService.getAllClients();
-            ClientDTO client = allClients.stream()
-                    .filter(c -> c.getClientId() == clientId)
-                    .findFirst()
-                    .orElse(null);
+            ClientDTO client = clientService.getClientById(clientId);
 
             if (client == null) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -130,12 +130,8 @@ public class ClientController {
                 return ResponseEntity.badRequest().body(result);
             }
 
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of(
-                            "error", "Failed to delete duty",
-                            "message", e.getMessage()
-                    ));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
     @DeleteMapping("/{orderId}/One-duty")
@@ -148,23 +144,35 @@ public class ClientController {
             } else {
                 return ResponseEntity.badRequest().body(result);
             }
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", e.getMessage()));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
+    }
+
+    @PostMapping("/debts/{orderId}/payments")
+    public ResponseEntity<?> payDebt(
+            @PathVariable int orderId,
+            @RequestBody DebtPaymentRequestDTO request
+    ) {
+        try {
+            return ResponseEntity.ok(clientService.payDebt(orderId, request));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/debts/{orderId}/payments")
+    public ResponseEntity<List<DebtPaymentDTO>> getDebtPaymentHistory(@PathVariable int orderId) {
+        return ResponseEntity.ok(clientService.getDebtPaymentHistory(orderId));
     }
 
     // 7. Поиск клиентов по имени
     @GetMapping("/search")
     public ResponseEntity<List<ClientDTO>> searchClients(@RequestParam String name) {
         try {
-            List<ClientDTO> allClients = clientService.getAllClients();
-            List<ClientDTO> filteredClients = allClients.stream()
-                    .filter(client -> client.getFullName() != null &&
-                            client.getFullName().toLowerCase().contains(name.toLowerCase()))
-                    .toList();
-
-            return ResponseEntity.ok(filteredClients);
+            return ResponseEntity.ok(clientService.searchClients(name));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(null);
