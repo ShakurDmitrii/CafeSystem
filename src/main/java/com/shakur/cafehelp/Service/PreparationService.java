@@ -136,6 +136,27 @@ public class PreparationService {
 
     @Transactional
     public boolean delete(int id) {
+        boolean exists = dsl.fetchExists(
+                dsl.selectOne().from(RecipeSchema.PREPARATION)
+                        .where(RecipeSchema.PREPARATION_ID.eq(id))
+        );
+        if (!exists) return false;
+
+        boolean usedAsIngredient = dsl.fetchExists(
+                dsl.selectOne().from(RecipeSchema.TECHPRODUCT)
+                        .where(RecipeSchema.TECH_INGREDIENT_PREPARATION_ID.eq(id))
+        );
+        boolean hasWarehouseRows = dsl.fetchExists(
+                dsl.selectOne().from(DSL.table(DSL.name("sales", "preparationwarehouse")))
+                        .where(DSL.field(DSL.name("preparationid"), Integer.class).eq(id))
+        );
+        if (usedAsIngredient || hasWarehouseRows) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Заготовка используется в другой рецептуре или складском учёте"
+            );
+        }
+
         int deleted = dsl.deleteFrom(RecipeSchema.PREPARATION)
                 .where(RecipeSchema.PREPARATION_ID.eq(id))
                 .execute();
@@ -156,7 +177,7 @@ public class PreparationService {
 
     private double normalizeOutputWeight(Double value) {
         double normalized = safeWeight(value);
-        if (normalized <= 0) {
+        if (!Double.isFinite(normalized) || normalized <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Выход заготовки должен быть больше 0");
         }
         return normalized;

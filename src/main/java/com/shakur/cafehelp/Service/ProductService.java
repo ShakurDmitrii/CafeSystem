@@ -7,6 +7,7 @@ import org.jooq.Record;
 import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
@@ -15,6 +16,7 @@ import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class ProductService {
@@ -291,15 +293,22 @@ public class ProductService {
         dto.setAverageStockPrice(loadAverageStockPriceMap().get(dto.getProductId()));
         return dto;
     }
+    @Transactional
     public ProductDTO createProduct(ProductDTO dto) {
+        if (dto == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Данные продукта обязательны");
+        }
         String unit = dto.unit != null && !dto.unit.isBlank() ? dto.unit.trim().toLowerCase() : "g";
-        String baseUnit = dto.baseUnit != null && !dto.baseUnit.isBlank() ? dto.baseUnit.trim().toLowerCase() : unit;
-        BigDecimal unitFactor = dto.unitFactor != null && dto.unitFactor.compareTo(BigDecimal.ZERO) > 0
-                ? dto.unitFactor
-                : BigDecimal.ONE;
+        String baseUnit = dto.baseUnit != null && !dto.baseUnit.isBlank()
+                ? dto.baseUnit.trim().toLowerCase()
+                : defaultBaseUnit(unit);
+        BigDecimal unitFactor = dto.unitFactor != null ? dto.unitFactor : BigDecimal.ONE;
 
         Integer supplierId = dto.supplierId != null && dto.supplierId > 0 ? dto.supplierId : null;
         String normalizedName = dto.productName != null ? dto.productName.trim() : "";
+        BigDecimal productPrice = dto.productPrice;
+        Double waste = dto.waste != null ? dto.waste : 0.0;
+        validateProduct(normalizedName, productPrice, waste, unit, baseUnit, unitFactor, supplierId);
         if (!normalizedName.isEmpty()) {
             Integer existingId = dsl.select(Product.PRODUCT.PRODUCTID)
                     .from(Product.PRODUCT)
@@ -323,9 +332,9 @@ public class ProductService {
             var insert = dsl.insertInto(Product.PRODUCT)
                     .set(Product.PRODUCT.SUPPLIERID, supplierId)
                     .set(Product.PRODUCT.PRODUCTNAME, normalizedName.isEmpty() ? dto.productName : normalizedName)
-                    .set(Product.PRODUCT.PRODUCTPRICE, dto.productPrice)
-                    .set(Product.PRODUCT.WASTE, dto.waste)
-                    .set(Product.PRODUCT.ISFAVOURITE, dto.isFavorite)
+                    .set(Product.PRODUCT.PRODUCTPRICE, productPrice)
+                    .set(Product.PRODUCT.WASTE, waste)
+                    .set(Product.PRODUCT.ISFAVOURITE, Boolean.TRUE.equals(dto.isFavorite))
                     .set(PRODUCT_UNIT, unit)
                     .set(PRODUCT_BASE_UNIT, baseUnit)
                     .set(PRODUCT_UNIT_FACTOR, unitFactor);
@@ -338,9 +347,9 @@ public class ProductService {
             id = dsl.insertInto(Product.PRODUCT)
                     .set(Product.PRODUCT.SUPPLIERID, supplierId)
                     .set(Product.PRODUCT.PRODUCTNAME, normalizedName.isEmpty() ? dto.productName : normalizedName)
-                    .set(Product.PRODUCT.PRODUCTPRICE, dto.productPrice)
-                    .set(Product.PRODUCT.WASTE, dto.waste)
-                    .set(Product.PRODUCT.ISFAVOURITE, dto.isFavorite)
+                    .set(Product.PRODUCT.PRODUCTPRICE, productPrice)
+                    .set(Product.PRODUCT.WASTE, waste)
+                    .set(Product.PRODUCT.ISFAVOURITE, Boolean.TRUE.equals(dto.isFavorite))
                     .returning(Product.PRODUCT.PRODUCTID)
                     .fetchOne(Product.PRODUCT.PRODUCTID);
         }
@@ -349,6 +358,10 @@ public class ProductService {
         dto.unit = unit;
         dto.baseUnit = baseUnit;
         dto.unitFactor = unitFactor;
+        dto.productName = normalizedName;
+        dto.productPrice = productPrice;
+        dto.waste = waste;
+        dto.isFavorite = Boolean.TRUE.equals(dto.isFavorite);
         if (!hasImageColumn()) dto.imageUrl = null;
         if (supplierId != null && dto.productId != 0) {
             linkProductToSupplier(dto.productId, supplierId);
@@ -356,7 +369,11 @@ public class ProductService {
         return dto;
     }
 
+    @Transactional
     public ProductDTO updateProduct(int id, ProductDTO dto) {
+        if (dto == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Данные продукта обязательны");
+        }
         Field<String> unitField = hasUnitColumns() ? PRODUCT_UNIT : DSL.inline("g").as("unit");
         Field<String> baseUnitField = hasUnitColumns() ? PRODUCT_BASE_UNIT : DSL.inline("g").as("base_unit");
         Field<BigDecimal> unitFactorField = hasUnitColumns() ? PRODUCT_UNIT_FACTOR : DSL.inline(BigDecimal.ONE).as("unit_factor");
@@ -385,7 +402,7 @@ public class ProductService {
         Integer supplierId = dto.supplierId != null && dto.supplierId > 0
                 ? dto.supplierId
                 : existingRecord.get(Product.PRODUCT.SUPPLIERID);
-        String productName = dto.productName != null && !dto.productName.isBlank()
+        String productName = dto.productName != null
                 ? dto.productName.trim()
                 : existingRecord.get(Product.PRODUCT.PRODUCTNAME);
         BigDecimal productPrice = dto.productPrice != null
@@ -397,18 +414,18 @@ public class ProductService {
         Boolean isFavorite = dto.isFavorite != null
                 ? dto.isFavorite
                 : existingRecord.get(Product.PRODUCT.ISFAVOURITE);
-        String unit = dto.unit != null && !dto.unit.isBlank()
+        String unit = dto.unit != null
                 ? dto.unit.trim().toLowerCase()
-                : String.valueOf(existingRecord.get(unitField));
-        String baseUnit = dto.baseUnit != null && !dto.baseUnit.isBlank()
+                : existingRecord.get(unitField);
+        String baseUnit = dto.baseUnit != null
                 ? dto.baseUnit.trim().toLowerCase()
-                : String.valueOf(existingRecord.get(baseUnitField));
-        BigDecimal unitFactor = dto.unitFactor != null && dto.unitFactor.compareTo(BigDecimal.ZERO) > 0
-                ? dto.unitFactor
-                : existingRecord.get(unitFactorField);
+                : existingRecord.get(baseUnitField);
+        BigDecimal unitFactor = dto.unitFactor != null ? dto.unitFactor : existingRecord.get(unitFactorField);
         String imageUrl = dto.imageUrl != null
                 ? dto.imageUrl
                 : existingRecord.get(imageField);
+
+        validateProduct(productName, productPrice, waste, unit, baseUnit, unitFactor, supplierId);
 
         var update = dsl.update(Product.PRODUCT)
                 .set(Product.PRODUCT.SUPPLIERID, supplierId)
@@ -453,6 +470,47 @@ public class ProductService {
                 .where(PS_PRODUCT_ID.eq(productId))
                 .execute();
         linkProductToSupplier(productId, supplierId);
+    }
+
+    private void validateProduct(
+            String name,
+            BigDecimal price,
+            Double waste,
+            String unit,
+            String baseUnit,
+            BigDecimal unitFactor,
+            Integer supplierId
+    ) {
+        if (name == null || name.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Название продукта обязательно");
+        }
+        if (price == null || price.compareTo(BigDecimal.ZERO) < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Цена продукта не может быть отрицательной");
+        }
+        if (waste == null || !Double.isFinite(waste) || waste < 0 || waste > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Процент отхода должен быть от 0 до 100");
+        }
+        Set<String> units = Set.of("g", "kg", "ml", "l", "pcs");
+        Set<String> baseUnits = Set.of("g", "ml", "pcs");
+        if (!units.contains(unit) || !baseUnits.contains(baseUnit) || !defaultBaseUnit(unit).equals(baseUnit)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Несовместимая пара единиц измерения");
+        }
+        if (unitFactor == null || unitFactor.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Коэффициент единиц должен быть больше 0");
+        }
+        if (supplierId != null && !dsl.fetchExists(
+                dsl.selectOne().from(DSL.table(DSL.name("sales", "supplier")))
+                        .where(DSL.field(DSL.name("supplierid"), Integer.class).eq(supplierId))
+        )) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Поставщик не найден");
+        }
+    }
+
+    private String defaultBaseUnit(String unit) {
+        if ("g".equals(unit) || "kg".equals(unit)) return "g";
+        if ("ml".equals(unit) || "l".equals(unit)) return "ml";
+        if ("pcs".equals(unit)) return "pcs";
+        return "";
     }
 
     private boolean hasUnitColumns() {

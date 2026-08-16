@@ -51,7 +51,11 @@ public class DishService {
     }
 
     // Создание блюда
+    @Transactional
     public DishDTO createDish(DishDTO dto) {
+        validateDish(dto);
+        dto.setDishName(dto.getDishName().trim());
+        dto.setFirstCost(0.0);
         Integer categoryId = resolveCategoryId(dto);
         String categoryName = resolveCategoryName(dto, categoryId);
         if (hasImageColumn()) {
@@ -219,6 +223,17 @@ public class DishService {
     @Transactional
     // Обновление блюда
     public DishDTO updateDish(int id, DishDTO dto) {
+        Double storedFirstCost = dsl.select(DISH.FIRSTCOST)
+                .from(DISH)
+                .where(DISH.DISHID.eq(id))
+                .fetchOne(DISH.FIRSTCOST);
+        if (storedFirstCost == null && !dsl.fetchExists(
+                dsl.selectOne().from(DISH).where(DISH.DISHID.eq(id))
+        )) return null;
+
+        validateDish(dto);
+        dto.setDishName(dto.getDishName().trim());
+        dto.setFirstCost(storedFirstCost != null ? storedFirstCost : 0.0);
         Integer categoryId = resolveCategoryId(dto);
         String categoryName = resolveCategoryName(dto, categoryId);
         if (hasImageColumn()) {
@@ -341,7 +356,15 @@ public class DishService {
 
     private Integer resolveCategoryId(DishDTO dto) {
         Integer id = dto.getCategoryId();
-        if (id != null && id > 0) return id;
+        if (id != null && id > 0) {
+            boolean exists = hasCategoryTable() && dsl.fetchExists(
+                    dsl.selectOne().from(DISH_CATEGORY).where(DC_ID.eq(id))
+            );
+            if (!exists) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Категория блюда не найдена");
+            }
+            return id;
+        }
         String name = firstNonBlank(dto.getCategoryName(), dto.getCategory());
         if (name == null || !hasCategoryTable()) return null;
         return getOrCreateCategoryId(name.trim());
@@ -385,6 +408,23 @@ public class DishService {
         if (a != null && !a.trim().isEmpty()) return a;
         if (b != null && !b.trim().isEmpty()) return b;
         return null;
+    }
+
+    private void validateDish(DishDTO dto) {
+        if (dto == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Данные блюда обязательны");
+        }
+        if (dto.getDishName() == null || dto.getDishName().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Название блюда обязательно");
+        }
+        Double price = dto.getPrice();
+        if (price == null || !Double.isFinite(price) || price <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Цена блюда должна быть больше 0");
+        }
+        Double weight = dto.getWeight();
+        if (weight == null || !Double.isFinite(weight) || weight <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Вес блюда должен быть больше 0");
+        }
     }
 
     private DishDTO toDishDto(Record record) {

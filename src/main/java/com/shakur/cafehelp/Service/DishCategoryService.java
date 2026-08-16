@@ -5,9 +5,12 @@ import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class DishCategoryService {
@@ -37,7 +40,7 @@ public class DishCategoryService {
     public DishCategoryDTO create(DishCategoryDTO dto) {
         String name = normalizeName(dto != null ? dto.getName() : null);
         if (name == null) {
-            throw new IllegalArgumentException("Название категории обязательно");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Название категории обязательно");
         }
 
         Integer id = dsl.insertInto(DISH_CATEGORY)
@@ -61,7 +64,16 @@ public class DishCategoryService {
     public DishCategoryDTO update(int id, DishCategoryDTO dto) {
         String name = normalizeName(dto != null ? dto.getName() : null);
         if (name == null) {
-            throw new IllegalArgumentException("Название категории обязательно");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Название категории обязательно");
+        }
+
+        Integer conflictingId = dsl.select(CATEGORY_ID)
+                .from(DISH_CATEGORY)
+                .where(DSL.lower(CATEGORY_NAME).eq(name.toLowerCase(Locale.ROOT)))
+                .and(CATEGORY_ID.ne(id))
+                .fetchOne(CATEGORY_ID);
+        if (conflictingId != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Категория с таким названием уже существует");
         }
 
         int updated = dsl.update(DISH_CATEGORY)
@@ -77,6 +89,18 @@ public class DishCategoryService {
     }
 
     public boolean delete(int id) {
+        boolean exists = dsl.fetchExists(
+                dsl.selectOne().from(DISH_CATEGORY).where(CATEGORY_ID.eq(id))
+        );
+        if (!exists) return false;
+
+        boolean used = dsl.fetchExists(
+                dsl.selectOne().from(DSL.table(DSL.name("sales", "dish")))
+                        .where(DSL.field(DSL.name("category_id"), Integer.class).eq(id))
+        );
+        if (used) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Категория используется в блюдах");
+        }
         return dsl.deleteFrom(DISH_CATEGORY)
                 .where(CATEGORY_ID.eq(id))
                 .execute() > 0;

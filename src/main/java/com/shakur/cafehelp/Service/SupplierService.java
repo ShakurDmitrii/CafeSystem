@@ -3,12 +3,16 @@ package com.shakur.cafehelp.Service;
 import com.shakur.cafehelp.DTO.SupplierDTO;
 import jooqdata.tables.Product;
 import jooqdata.tables.Supplier;
-import jooqdata.tables.records.ProductRecord;
 import jooqdata.tables.records.SupplierRecord;
 import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class SupplierService {
@@ -25,7 +29,7 @@ public class SupplierService {
                     supplierDTO.supplierName = supplierRecord.getSuppliername();
                     supplierDTO.communication = supplierRecord.getCommunication();
                 return supplierDTO;
-                }).orElseThrow(() -> new RuntimeException("Supplier Not Found"));
+                }).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Поставщик не найден"));
     }
     public List<SupplierDTO> getAllSuppliers() {
         return dsl.selectFrom(Supplier.SUPPLIER)
@@ -40,34 +44,33 @@ public class SupplierService {
                 }).toList();
     }
 
+    @Transactional
     public SupplierDTO create(SupplierDTO supplierDTO) {
+        String name = requireName(supplierDTO != null ? supplierDTO.getSupplierName() : null);
+        ensureNameIsUnique(name, null);
         SupplierRecord record = dsl.newRecord(Supplier.SUPPLIER);
-
-        // Устанавливаем ТОЛЬКО поля, которые вводит пользователь
-        record.setSuppliername(supplierDTO.getSupplierName());
-        record.setCommunication(supplierDTO.getCommunication());
-
-
-        // Сохраняем запись
+        record.setSuppliername(name);
+        record.setCommunication(normalizeCommunication(supplierDTO.getCommunication()));
         record.store();
-
-        // Возвращаем DTO с сгенерированным ID
         SupplierDTO responseDTO = new SupplierDTO();
-        responseDTO.setSupplierID(record.getSupplierid()); // Получаем сгенерированный ID
+        responseDTO.setSupplierID(record.getSupplierid());
         responseDTO.setSupplierName(record.getSuppliername());
         responseDTO.setCommunication(record.getCommunication());
 
         return responseDTO;
     }
 
+    @Transactional
     public SupplierDTO update(int id, SupplierDTO supplierDTO) {
         SupplierRecord record = dsl.selectFrom(Supplier.SUPPLIER)
                 .where(Supplier.SUPPLIER.SUPPLIERID.eq(id))
                 .fetchOptional()
-                .orElseThrow(() -> new RuntimeException("Supplier Not Found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Поставщик не найден"));
 
-        record.setSuppliername(supplierDTO.getSupplierName());
-        record.setCommunication(supplierDTO.getCommunication());
+        String name = requireName(supplierDTO != null ? supplierDTO.getSupplierName() : null);
+        ensureNameIsUnique(name, id);
+        record.setSuppliername(name);
+        record.setCommunication(normalizeCommunication(supplierDTO.getCommunication()));
         record.store();
 
         SupplierDTO responseDTO = new SupplierDTO();
@@ -77,19 +80,8 @@ public class SupplierService {
         return responseDTO;
     }
 
+    @Transactional
     public SupplierDTO delete(int id) {
-        // Проверяем существование поставщика
-        boolean exists = dsl.fetchExists(
-                dsl.selectOne()
-                        .from(Supplier.SUPPLIER)
-                        .where(Supplier.SUPPLIER.SUPPLIERID.eq(id))
-        );
-
-        if (!exists) {
-            throw new RuntimeException("Supplier not Found");
-        }
-
-        // Получаем данные перед удалением
         SupplierDTO deletedSupplier = dsl.selectFrom(Supplier.SUPPLIER)
                 .where(Supplier.SUPPLIER.SUPPLIERID.eq(id))
                 .fetchOne(record -> {
@@ -99,12 +91,58 @@ public class SupplierService {
                     dto.communication = record.getCommunication();
                     return dto;
                 });
+        if (deletedSupplier == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Поставщик не найден");
+        }
 
-        // Выполняем удаление
+        boolean usedByProduct = dsl.fetchExists(
+                dsl.selectOne().from(Product.PRODUCT)
+                        .where(Product.PRODUCT.SUPPLIERID.eq(id))
+        );
+        boolean usedByProductLink = dsl.fetchExists(
+                dsl.selectOne().from(DSL.table(DSL.name("sales", "product_supplier")))
+                        .where(DSL.field(DSL.name("supplier_id"), Integer.class).eq(id))
+        );
+        boolean usedByDocument = dsl.fetchExists(
+                dsl.selectOne().from(DSL.table(DSL.name("sales", "consignmentnote")))
+                        .where(DSL.field(DSL.name("supplierid"), Integer.class).eq(id))
+        );
+        if (usedByProduct || usedByProductLink || usedByDocument) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Поставщик используется в товарах или приходных документах"
+            );
+        }
+
         dsl.deleteFrom(Supplier.SUPPLIER)
                 .where(Supplier.SUPPLIER.SUPPLIERID.eq(id))
                 .execute();
 
         return deletedSupplier;
+    }
+
+    private String requireName(String raw) {
+        String name = raw == null ? "" : raw.trim();
+        if (name.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Название поставщика обязательно");
+        }
+        return name;
+    }
+
+    private String normalizeCommunication(String raw) {
+        if (raw == null) return null;
+        String value = raw.trim();
+        return value.isEmpty() ? null : value;
+    }
+
+    private void ensureNameIsUnique(String name, Integer currentId) {
+        var condition = DSL.lower(Supplier.SUPPLIER.SUPPLIERNAME)
+                .eq(name.toLowerCase(Locale.ROOT));
+        if (currentId != null) {
+            condition = condition.and(Supplier.SUPPLIER.SUPPLIERID.ne(currentId));
+        }
+        if (dsl.fetchExists(dsl.selectOne().from(Supplier.SUPPLIER).where(condition))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Поставщик с таким названием уже существует");
+        }
     }
 }

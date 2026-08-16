@@ -36,6 +36,8 @@ public class DishSetService {
     private static final org.jooq.Field<Integer> ITEM_SET_ID = DSL.field(DSL.name("set_id"), Integer.class);
     private static final org.jooq.Field<Integer> ITEM_DISH_ID = DSL.field(DSL.name("dish_id"), Integer.class);
     private static final org.jooq.Field<Integer> ITEM_QTY = DSL.field(DSL.name("qty"), Integer.class);
+    private static final org.jooq.Table<?> ORDER_DISH = DSL.table(DSL.name("sales", "orderdish"));
+    private static final org.jooq.Field<Integer> ORDER_DISH_SET_ID = DSL.field(DSL.name("set_id"), Integer.class);
 
     private final DSLContext dsl;
     private final RecipeCostService recipeCostService;
@@ -129,6 +131,12 @@ public class DishSetService {
 
     @Transactional
     public boolean delete(int id) {
+        boolean usedByOrder = dsl.fetchExists(
+                dsl.selectOne().from(ORDER_DISH).where(ORDER_DISH_SET_ID.eq(id))
+        );
+        if (usedByOrder) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Набор используется в заказах");
+        }
         int deleted = dsl.deleteFrom(DISH_SET)
                 .where(SET_ID.eq(id))
                 .execute();
@@ -313,7 +321,7 @@ public class DishSetService {
 
     private double normalizePrice(Double value) {
         double price = value != null ? value : 0.0;
-        if (price <= 0) {
+        if (!Double.isFinite(price) || price <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Цена набора должна быть больше 0");
         }
         return BigDecimal.valueOf(price).setScale(2, RoundingMode.HALF_UP).doubleValue();
