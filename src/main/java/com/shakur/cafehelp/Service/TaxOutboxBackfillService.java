@@ -1,7 +1,5 @@
 package com.shakur.cafehelp.Service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jooqdata.tables.records.OrderRecord;
 import org.jooq.DSLContext;
 import org.jooq.Field;
@@ -44,12 +42,16 @@ public class TaxOutboxBackfillService {
 
     private final DSLContext dsl;
     private final OrderService orderService;
-    private final ObjectMapper objectMapper;
+    private final TaxOutboxWriterService outboxWriterService;
 
-    public TaxOutboxBackfillService(DSLContext dsl, OrderService orderService, ObjectMapper objectMapper) {
+    public TaxOutboxBackfillService(
+            DSLContext dsl,
+            OrderService orderService,
+            TaxOutboxWriterService outboxWriterService
+    ) {
         this.dsl = dsl;
         this.orderService = orderService;
-        this.objectMapper = objectMapper;
+        this.outboxWriterService = outboxWriterService;
     }
 
     @Transactional
@@ -87,9 +89,15 @@ public class TaxOutboxBackfillService {
 
             String eventKey = buildEventKey(orderId);
             try {
-                Record1<Long> inserted = enqueueOrderInternal(order, "order_paid_backfill", "backfill", false, null);
+                TaxOutboxWriterService.EnqueueResult inserted = enqueueOrderInternal(
+                        order,
+                        "order_paid_backfill",
+                        "backfill",
+                        false,
+                        null
+                );
 
-                if (inserted != null && inserted.get(OUTBOX_ID) != null) {
+                if (inserted.inserted()) {
                     enqueued++;
                 } else {
                     skipped++;
@@ -129,92 +137,45 @@ public class TaxOutboxBackfillService {
             throw new RuntimeException("Заказ " + orderId + " не является оплаченным (cash/transfer)");
         }
 
-        Record1<Long> result = enqueueOrderInternal(
+        TaxOutboxWriterService.EnqueueResult result = enqueueOrderInternal(
                 order,
                 "order_paid_manual_send",
                 "manual-send-one",
                 forcePending,
                 receiptDate
         );
-        if (result == null || result.get(OUTBOX_ID) == null) {
+        if (result == null || result.outboxId() <= 0) {
             throw new RuntimeException("Не удалось подготовить чек " + orderId + " в outbox");
         }
-        LocalDate effectiveDate = receiptDate != null ? receiptDate : order.getDate();
-        return new SingleOrderEnqueueResult(orderId, result.get(OUTBOX_ID), forcePending, effectiveDate);
+        return new SingleOrderEnqueueResult(orderId, result.outboxId(), forcePending, result.receiptDate());
     }
 
     public String buildEventKey(int orderId) {
-        return "order:" + orderId + ":paid";
+        return outboxWriterService.buildEventKey(orderId);
     }
 
-    private Record1<Long> enqueueOrderInternal(
+    private TaxOutboxWriterService.EnqueueResult enqueueOrderInternal(
             OrderRecord order,
             String eventType,
             String payloadSource,
             boolean forcePending,
             LocalDate receiptDate
     ) {
-        Integer orderId = order.getOrderid();
-        String eventKey = buildEventKey(orderId);
-
         Map<String, Object> payload = new LinkedHashMap<>(orderService.getOrderKitchenPrintPayload(
-                orderId,
+                order.getOrderid(),
                 null,
                 null,
                 null,
                 null
         ));
-        LocalDate effectiveOrderDate = receiptDate != null ? receiptDate : order.getDate();
-        payload.put("orderDate", effectiveOrderDate != null ? effectiveOrderDate.toString() : null);
-        if (receiptDate != null) {
-            payload.put("createdAt", receiptDate.atTime(12, 0).toString());
-        }
-        payload.put("shiftId", order.getShiftid());
-        payload.put("source", payloadSource);
-
-        String payloadJson = toJson(payload);
-
-        if (!forcePending) {
-            return dsl.insertInto(TAX_OUTBOX)
-                    .set(OUTBOX_AGGREGATE_TYPE, "order")
-                    .set(OUTBOX_AGGREGATE_ID, orderId)
-                    .set(OUTBOX_EVENT_TYPE, eventType)
-                    .set(OUTBOX_EVENT_KEY, eventKey)
-                    .set(OUTBOX_PAYLOAD_JSON, DSL.field("cast(? as jsonb)", JSONB.class, payloadJson))
-                    .set(OUTBOX_STATUS, "pending")
-                    .onConflict(OUTBOX_EVENT_KEY)
-                    .doNothing()
-                    .returningResult(OUTBOX_ID)
-                    .fetchOne();
-        }
-
-        return dsl.insertInto(TAX_OUTBOX)
-                .set(OUTBOX_AGGREGATE_TYPE, "order")
-                .set(OUTBOX_AGGREGATE_ID, orderId)
-                .set(OUTBOX_EVENT_TYPE, eventType)
-                .set(OUTBOX_EVENT_KEY, eventKey)
-                .set(OUTBOX_PAYLOAD_JSON, DSL.field("cast(? as jsonb)", JSONB.class, payloadJson))
-                .set(OUTBOX_STATUS, "pending")
-                .onConflict(OUTBOX_EVENT_KEY)
-                .doUpdate()
-                .set(OUTBOX_EVENT_TYPE, eventType)
-                .set(OUTBOX_PAYLOAD_JSON, DSL.field("cast(? as jsonb)", JSONB.class, payloadJson))
-                .set(OUTBOX_STATUS, "pending")
-                .set(OUTBOX_AVAILABLE_AT, Timestamp.valueOf(LocalDateTime.now()))
-                .set(OUTBOX_LOCKED_AT, (Timestamp) null)
-                .set(OUTBOX_PROCESSED_AT, (Timestamp) null)
-                .set(OUTBOX_LAST_ERROR, (String) null)
-                .set(OUTBOX_UPDATED_AT, Timestamp.valueOf(LocalDateTime.now()))
-                .returningResult(OUTBOX_ID)
-                .fetchOne();
-    }
-
-    private String toJson(Map<String, Object> payload) {
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to serialize tax payload: " + e.getMessage(), e);
-        }
+        return outboxWriterService.enqueuePaidOrder(
+                order.getOrderid(),
+                payload,
+                eventType,
+                payloadSource,
+                forcePending,
+                receiptDate
+        );
     }
 
     public record BackfillResult(

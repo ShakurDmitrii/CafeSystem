@@ -61,17 +61,20 @@ public class OrderService {
     private final WareHouseService wareHouseService;
     private final RecipeRequirementService recipeRequirementService;
     private final BusinessTimeProvider businessTime;
+    private final TaxOutboxWriterService taxOutboxWriterService;
 
     public OrderService(
             DSLContext dsl,
             WareHouseService wareHouseService,
             RecipeRequirementService recipeRequirementService,
-            BusinessTimeProvider businessTime
+            BusinessTimeProvider businessTime,
+            TaxOutboxWriterService taxOutboxWriterService
     ) {
         this.dsl = dsl;
         this.wareHouseService = wareHouseService;
         this.recipeRequirementService = recipeRequirementService;
         this.businessTime = businessTime;
+        this.taxOutboxWriterService = taxOutboxWriterService;
     }
 
     @Transactional
@@ -166,6 +169,10 @@ public class OrderService {
                             .where(ORDER.ORDERID.eq(orderId))
                             .execute();
                 }
+            }
+
+            if (paid) {
+                enqueuePaidOrderForTax(orderId, "order-service");
             }
 
             // Получаем полный объект заказа
@@ -477,7 +484,7 @@ public List<OrderDTO> getOrders() {
 
     @Transactional
     public OrderDTO cancelOrder(int orderId, String reason, Integer expectedVersion) {
-        OrderRecord order = lockOrderForMutation(orderId);
+        OrderRecord order = lockOrderForCancellation(orderId);
         LocalDateTime cancelledAt = dsl.select(CANCELLED_AT_FIELD)
                 .from(ORDER)
                 .where(ORDER.ORDERID.eq(orderId))
@@ -486,10 +493,20 @@ public List<OrderDTO> getOrders() {
             return getOrderById(orderId);
         }
 
-        ensureEditableOrder(order, expectedVersion);
         String normalizedReason = trimToNull(reason);
         if (normalizedReason != null && normalizedReason.length() > 500) {
             throw new InvalidOrderRequestException("Причина отмены не должна превышать 500 символов");
+        }
+        boolean paid = Boolean.TRUE.equals(order.get(IS_PAID_FIELD));
+        Map<String, Object> refundPayload = null;
+        if (paid) {
+            ensureExpectedVersion(orderId, expectedVersion);
+            if (normalizedReason == null) {
+                throw new InvalidOrderRequestException("Для возврата оплаченного заказа требуется причина");
+            }
+            refundPayload = getOrderKitchenPrintPayload(orderId, null, null, null, null);
+        } else {
+            ensureEditableOrder(order, expectedVersion);
         }
 
         int currentVersion = currentOrderVersion(orderId);
@@ -499,6 +516,9 @@ public List<OrderDTO> getOrders() {
                 .set(VERSION_FIELD, currentVersion + 1)
                 .where(ORDER.ORDERID.eq(orderId))
                 .execute();
+        if (paid) {
+            taxOutboxWriterService.enqueueRefund(orderId, refundPayload, "order-cancellation");
+        }
         return getOrderById(orderId);
     }
 
@@ -554,8 +574,22 @@ public List<OrderDTO> getOrders() {
                     .where(ORDER.ORDERID.eq(orderId))
                     .execute();
         }
+        if (!wasPaid && nextPaid) {
+            enqueuePaidOrderForTax(orderId, "order-payment");
+        }
 
         return getOrderById(orderId);
+    }
+
+    private void enqueuePaidOrderForTax(int orderId, String source) {
+        taxOutboxWriterService.enqueuePaidOrder(
+                orderId,
+                getOrderKitchenPrintPayload(orderId, null, null, null, null),
+                "order_paid",
+                source,
+                false,
+                null
+        );
     }
 
     @Transactional
@@ -922,6 +956,25 @@ public List<OrderDTO> getOrders() {
         return lockOrder(orderId);
     }
 
+    private OrderRecord lockOrderForCancellation(int orderId) {
+        Integer shiftId = dsl.select(ORDER.SHIFTID)
+                .from(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .fetchOne(ORDER.SHIFTID);
+        if (shiftId == null) {
+            throw new OrderNotFoundException(orderId);
+        }
+        var shift = dsl.select(Shift.SHIFT.ID)
+                .from(Shift.SHIFT)
+                .where(Shift.SHIFT.ID.eq(shiftId))
+                .forShare()
+                .fetchOne();
+        if (shift == null) {
+            throw new OrderStateConflictException("Смена заказа не найдена");
+        }
+        return lockOrder(orderId);
+    }
+
     private void lockOpenShift(int shiftId) {
         var shift = dsl.select(Shift.SHIFT.ID, Shift.SHIFT.ENDTIME)
                 .from(Shift.SHIFT)
@@ -970,6 +1023,10 @@ public List<OrderDTO> getOrders() {
             throw new OrderStateConflictException("Заказ закрытой смены нельзя редактировать или отменять");
         }
 
+        ensureExpectedVersion(orderId, expectedVersion);
+    }
+
+    private void ensureExpectedVersion(int orderId, Integer expectedVersion) {
         int currentVersion = currentOrderVersion(orderId);
         if (expectedVersion != null && expectedVersion != currentVersion) {
             throw new OrderStateConflictException(

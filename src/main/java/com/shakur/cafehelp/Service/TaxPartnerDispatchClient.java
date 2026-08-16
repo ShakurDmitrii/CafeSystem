@@ -38,6 +38,7 @@ public class TaxPartnerDispatchClient {
                         normalizeHeaderName(partner.getApiKeyHeader()),
                         partner.getApiKey() != null ? partner.getApiKey() : ""
                 )
+                .header("Idempotency-Key", idempotencyKey(payload))
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build();
 
@@ -80,6 +81,14 @@ public class TaxPartnerDispatchClient {
     private String normalizeHeaderName(String headerName) {
         String normalized = headerName == null ? "" : headerName.trim();
         return normalized.isEmpty() ? "X-API-Key" : normalized;
+    }
+
+    private String idempotencyKey(Map<String, Object> payload) {
+        Object value = payload != null ? payload.get("idempotencyKey") : null;
+        String normalized = value != null ? value.toString().trim() : "";
+        if (!normalized.isEmpty()) return normalized;
+        Object jobId = payload != null ? payload.get("externalJobId") : null;
+        return "cafehelp-tax-job-" + (jobId != null ? jobId : "unknown");
     }
 
     private JsonNode parseJson(String raw) {

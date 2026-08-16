@@ -6,6 +6,8 @@ import com.shakur.cafehelp.config.TaxDispatchProperties;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -22,6 +24,7 @@ import java.util.Map;
 
 @Service
 public class TaxReceiptDispatchService {
+    private static final Logger log = LoggerFactory.getLogger(TaxReceiptDispatchService.class);
 
     private final JdbcTemplate taxJdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -47,6 +50,7 @@ public class TaxReceiptDispatchService {
             return new DispatchResult(0, 0, 0, 0, List.of(), List.of(), availability.message());
         }
 
+        recoverStaleProcessing();
         List<ClaimedJob> claimed = claimPending(effectiveLimit);
         return processClaimedJobs(claimed, availability.mode());
     }
@@ -58,6 +62,7 @@ public class TaxReceiptDispatchService {
             return new DispatchResult(0, 0, 0, 0, List.of(), List.of(), availability.message());
         }
 
+        recoverStaleProcessing();
         List<ClaimedJob> claimed = claimPendingByOrder(orderId, effectiveLimit);
         return processClaimedJobs(claimed, availability.mode());
     }
@@ -79,7 +84,7 @@ public class TaxReceiptDispatchService {
                 ProviderSendResult sendResult = sendToProvider(job, mode);
                 String providerPayload = buildProviderPayload(mode, sendResult);
                 markSent(job.id(), attemptNo, sendResult.providerReceiptId(), sendResult.providerReceiptUrl(), providerPayload);
-                insertAttempt(
+                safeInsertAttempt(
                         job.id(),
                         attemptNo,
                         started,
@@ -95,11 +100,11 @@ public class TaxReceiptDispatchService {
             } catch (Exception e) {
                 Integer httpStatus = resolveHttpStatus(e);
                 boolean retryable = isRetryableError(e, httpStatus, attemptNo, maxAttempts);
-                String nextStatus = retryable ? "failed" : "manual_required";
+                String nextStatus = retryable ? "pending" : "manual_required";
                 String errorCode = resolveErrorCode(httpStatus, e);
                 String errorMessage = shortMessage(e);
                 markFailed(job.id(), attemptNo, nextStatus, errorCode, errorMessage, retryable);
-                insertAttempt(
+                safeInsertAttempt(
                         job.id(),
                         attemptNo,
                         started,
@@ -119,6 +124,20 @@ public class TaxReceiptDispatchService {
         }
 
         return new DispatchResult(claimed.size(), sent, failed, manualRequired, sentJobIds, failedJobIds, null);
+    }
+
+    public int recoverStaleProcessing() {
+        return taxJdbcTemplate.update("""
+                update tax.tax_receipt_job
+                set status = 'pending',
+                    next_attempt_at = now(),
+                    processing_started_at = null,
+                    updated_at = now(),
+                    last_error_code = 'STALE_PROCESSING_RECOVERED',
+                    last_error_message = 'Автоматически восстановлено после истечения processing-lock'
+                where status = 'processing'
+                  and (processing_started_at is null or processing_started_at < now() - interval '15 minutes')
+                """);
     }
 
     private DispatchAvailability resolveDispatchAvailability() {
@@ -142,11 +161,20 @@ public class TaxReceiptDispatchService {
     private List<ClaimedJob> claimPending(int limit) {
         String sql = """
                 with picked as (
-                    select id
-                    from tax.tax_receipt_job
-                    where status = 'pending'
-                      and next_attempt_at <= now()
-                    order by id
+                    select candidate.id
+                    from tax.tax_receipt_job candidate
+                    where candidate.status = 'pending'
+                      and candidate.next_attempt_at <= now()
+                      and (
+                          candidate.operation_type = 'sale'
+                          or exists (
+                              select 1
+                              from tax.tax_receipt_job original
+                              where original.idempotency_key = candidate.original_idempotency_key
+                                and original.status = 'sent'
+                          )
+                      )
+                    order by candidate.id
                     limit ?
                     for update skip locked
                 )
@@ -161,8 +189,17 @@ public class TaxReceiptDispatchService {
                           j.business_date,
                           j.amount,
                           j.payment_type,
+                          j.operation_type,
+                          j.original_idempotency_key,
+                          (select original.provider_receipt_id
+                           from tax.tax_receipt_job original
+                           where original.idempotency_key = j.original_idempotency_key) as original_provider_receipt_id,
+                          (select original.provider_receipt_url
+                           from tax.tax_receipt_job original
+                           where original.idempotency_key = j.original_idempotency_key) as original_provider_receipt_url,
                           j.attempt_count,
                           j.max_attempts,
+                          j.idempotency_key,
                           j.payload_json::text as payload_json
                 """;
         return taxJdbcTemplate.query(sql, (rs, rowNum) -> new ClaimedJob(
@@ -171,8 +208,13 @@ public class TaxReceiptDispatchService {
                 rs.getObject("business_date", LocalDate.class),
                 rs.getBigDecimal("amount"),
                 rs.getString("payment_type"),
+                rs.getString("operation_type"),
+                rs.getString("original_idempotency_key"),
+                rs.getString("original_provider_receipt_id"),
+                rs.getString("original_provider_receipt_url"),
                 rs.getObject("attempt_count", Integer.class),
                 rs.getObject("max_attempts", Integer.class),
+                rs.getString("idempotency_key"),
                 rs.getString("payload_json")
         ), limit);
     }
@@ -180,12 +222,21 @@ public class TaxReceiptDispatchService {
     private List<ClaimedJob> claimPendingByOrder(int orderId, int limit) {
         String sql = """
                 with picked as (
-                    select id
-                    from tax.tax_receipt_job
-                    where status = 'pending'
-                      and next_attempt_at <= now()
-                      and order_id = ?
-                    order by id
+                    select candidate.id
+                    from tax.tax_receipt_job candidate
+                    where candidate.status = 'pending'
+                      and candidate.next_attempt_at <= now()
+                      and candidate.order_id = ?
+                      and (
+                          candidate.operation_type = 'sale'
+                          or exists (
+                              select 1
+                              from tax.tax_receipt_job original
+                              where original.idempotency_key = candidate.original_idempotency_key
+                                and original.status = 'sent'
+                          )
+                      )
+                    order by candidate.id
                     limit ?
                     for update skip locked
                 )
@@ -200,8 +251,17 @@ public class TaxReceiptDispatchService {
                           j.business_date,
                           j.amount,
                           j.payment_type,
+                          j.operation_type,
+                          j.original_idempotency_key,
+                          (select original.provider_receipt_id
+                           from tax.tax_receipt_job original
+                           where original.idempotency_key = j.original_idempotency_key) as original_provider_receipt_id,
+                          (select original.provider_receipt_url
+                           from tax.tax_receipt_job original
+                           where original.idempotency_key = j.original_idempotency_key) as original_provider_receipt_url,
                           j.attempt_count,
                           j.max_attempts,
+                          j.idempotency_key,
                           j.payload_json::text as payload_json
                 """;
         return taxJdbcTemplate.query(sql, (rs, rowNum) -> new ClaimedJob(
@@ -210,8 +270,13 @@ public class TaxReceiptDispatchService {
                 rs.getObject("business_date", LocalDate.class),
                 rs.getBigDecimal("amount"),
                 rs.getString("payment_type"),
+                rs.getString("operation_type"),
+                rs.getString("original_idempotency_key"),
+                rs.getString("original_provider_receipt_id"),
+                rs.getString("original_provider_receipt_url"),
                 rs.getObject("attempt_count", Integer.class),
                 rs.getObject("max_attempts", Integer.class),
+                rs.getString("idempotency_key"),
                 rs.getString("payload_json")
         ), orderId, limit);
     }
@@ -234,9 +299,17 @@ public class TaxReceiptDispatchService {
         request.put("sourceSystem", isBlank(dispatchProperties.getSourceSystem()) ? "cafehelp" : dispatchProperties.getSourceSystem());
         request.put("externalOrderId", String.valueOf(job.orderId()));
         request.put("externalJobId", String.valueOf(job.id()));
+        request.put("idempotencyKey", job.idempotencyKey());
         request.put("businessDate", resolveBusinessDate(job, payload));
         request.put("amount", round2(job.amount() != null ? job.amount().doubleValue() : 0.0));
         request.put("paymentType", job.paymentType());
+        request.put("operationType", job.operationType());
+        if ("refund".equals(job.operationType())) {
+            request.put("originalIdempotencyKey", job.originalIdempotencyKey());
+            request.put("originalReceiptId", job.originalProviderReceiptId());
+            request.put("originalReceiptUrl", job.originalProviderReceiptUrl());
+            request.put("correctionReason", safeText(payload, "correctionReason"));
+        }
         request.put("customerPhone", safeText(payload, "deliveryPhone"));
         request.put("items", items);
         request.put("metadata", safeJson(job.payloadJson()));
@@ -245,6 +318,12 @@ public class TaxReceiptDispatchService {
         if (!response.success()) {
             throw new DispatchException(
                     "Partner API error: HTTP " + response.httpStatus() + ". Body: " + truncate(response.responseBody(), 500),
+                    response.httpStatus()
+            );
+        }
+        if (isBlank(response.receiptId()) && isBlank(response.receiptUrl())) {
+            throw new DispatchException(
+                    "Partner API returned success without receipt identifier or URL",
                     response.httpStatus()
             );
         }
@@ -394,6 +473,39 @@ public class TaxReceiptDispatchService {
         );
     }
 
+    private void safeInsertAttempt(
+            long jobId,
+            int attemptNo,
+            Instant started,
+            Integer httpStatus,
+            String requestJson,
+            String responseJson,
+            String errorCode,
+            String errorMessage,
+            boolean retryable
+    ) {
+        try {
+            insertAttempt(
+                    jobId,
+                    attemptNo,
+                    started,
+                    httpStatus,
+                    requestJson,
+                    responseJson,
+                    errorCode,
+                    errorMessage,
+                    retryable
+            );
+        } catch (Exception exception) {
+            log.error(
+                    "Failed to persist tax receipt attempt metadata: jobId={}, attemptNo={}, errorType={}",
+                    jobId,
+                    attemptNo,
+                    exception.getClass().getSimpleName()
+            );
+        }
+    }
+
     private String buildAttemptRequestJson(ClaimedJob job) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("jobId", job.id());
@@ -401,6 +513,8 @@ public class TaxReceiptDispatchService {
         map.put("businessDate", job.businessDate());
         map.put("amount", job.amount());
         map.put("paymentType", job.paymentType());
+        map.put("operationType", job.operationType());
+        map.put("originalIdempotencyKey", job.originalIdempotencyKey());
         map.put("dispatchMode", dispatchProperties.normalizedMode());
         map.put("payload", safeJson(job.payloadJson()));
         return toJson(map);
@@ -529,8 +643,13 @@ public class TaxReceiptDispatchService {
             LocalDate businessDate,
             BigDecimal amount,
             String paymentType,
+            String operationType,
+            String originalIdempotencyKey,
+            String originalProviderReceiptId,
+            String originalProviderReceiptUrl,
             Integer attemptCount,
             Integer maxAttempts,
+            String idempotencyKey,
             String payloadJson
     ) {
     }

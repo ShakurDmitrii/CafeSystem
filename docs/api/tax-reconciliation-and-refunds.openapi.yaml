@@ -1,0 +1,137 @@
+openapi: 3.1.0
+info:
+  title: CafeHelp Tax Reconciliation and Refund API
+  version: 1.0.0
+  description: Дополнение к API заказов и налогового контура для сверки и мягкой отмены оплаченного заказа.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /api/tax/reconciliations:
+    post:
+      summary: Запустить сверку оплаченных заказов и чеков
+      description: Доступно только OWNER. Восстанавливает отсутствующий outbox и повторно ставит в очередь processed-outbox без tax job.
+      operationId: reconcileTaxReceipts
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconciliationRequest'
+            examples:
+              currentDay:
+                value:
+                  businessDate: '2026-08-11'
+                  limit: 1000
+      responses:
+        '200':
+          description: Сверка завершена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          description: Tax DB недоступна или запуск сверки завершился ошибкой; кассовые данные не изменены за пределами безопасных outbox-repair операций
+  /api/orders/{orderId}:
+    delete:
+      summary: Мягко отменить заказ
+      description: Для оплаченного заказа причина обязательна; отмена и refund-outbox атомарны. Продукты на склад не возвращаются.
+      operationId: cancelOrder
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: reason
+          in: query
+          required: false
+          description: Для оплаченного заказа обязательна, не более 500 символов.
+          schema:
+            type: string
+            maxLength: 500
+        - name: expectedVersion
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Заказ отменён либо уже был отменён
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Для оплаченного заказа отсутствует причина либо она невалидна
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Заказ не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Версия заказа устарела либо неоплаченный заказ уже нельзя отменить
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ReconciliationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        businessDate:
+          type: string
+          format: date
+          description: По умолчанию текущая операционная дата.
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 5000
+          default: 1000
+    ReconciliationResult:
+      type: object
+      required: [runId, businessDate, sourceOrdersCount, scannedOrdersCount, jobsFound, sent, failed, unresolvedGaps, outboxRestored, outboxRequeued, taxJobsMissing, scanTruncated]
+      properties:
+        runId: { type: integer, format: int64 }
+        businessDate: { type: string, format: date }
+        sourceOrdersCount: { type: integer }
+        scannedOrdersCount: { type: integer }
+        jobsFound: { type: integer }
+        sent: { type: integer }
+        failed: { type: integer }
+        unresolvedGaps: { type: integer }
+        outboxRestored: { type: integer }
+        outboxRequeued: { type: integer }
+        taxJobsMissing: { type: integer }
+        scanTruncated: { type: boolean }
+    ApiError:
+      type: object
+      properties:
+        status: { type: integer }
+        code: { type: string }
+        message: { type: string }
+  responses:
+    Unauthorized:
+      description: Требуется JWT
+    Forbidden:
+      description: Недостаточно прав

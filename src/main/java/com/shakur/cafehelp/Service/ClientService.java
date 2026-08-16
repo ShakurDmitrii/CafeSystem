@@ -56,10 +56,19 @@ public class ClientService {
 
     private final DSLContext dsl;
     private final BusinessTimeProvider businessTime;
+    private final OrderService orderService;
+    private final TaxOutboxWriterService taxOutboxWriterService;
 
-    public ClientService(DSLContext dsl, BusinessTimeProvider businessTime) {
+    public ClientService(
+            DSLContext dsl,
+            BusinessTimeProvider businessTime,
+            OrderService orderService,
+            TaxOutboxWriterService taxOutboxWriterService
+    ) {
         this.dsl = dsl;
         this.businessTime = businessTime;
+        this.orderService = orderService;
+        this.taxOutboxWriterService = taxOutboxWriterService;
     }
 
     public List<ClientDTO> getAllClients() {
@@ -387,6 +396,17 @@ public class ClientService {
                 .set(PAID_AT, fullyPaid ? createdAt : null)
                 .where(ORDER.ORDERID.eq(orderId))
                 .execute();
+
+        if (fullyPaid) {
+            taxOutboxWriterService.enqueuePaidOrder(
+                    orderId,
+                    orderService.getOrderKitchenPrintPayload(orderId, null, null, null, null),
+                    "order_paid",
+                    "debt-payment",
+                    false,
+                    null
+            );
+        }
 
         return new DebtPaymentDTO(
                 paymentId,

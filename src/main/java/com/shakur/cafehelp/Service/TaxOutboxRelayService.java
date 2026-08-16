@@ -22,6 +22,7 @@ public class TaxOutboxRelayService {
     private static final org.jooq.Field<Long> OUTBOX_ID = DSL.field(DSL.name("id"), Long.class);
     private static final org.jooq.Field<Integer> OUTBOX_AGGREGATE_ID = DSL.field(DSL.name("aggregate_id"), Integer.class);
     private static final org.jooq.Field<String> OUTBOX_EVENT_KEY = DSL.field(DSL.name("event_key"), String.class);
+    private static final org.jooq.Field<String> OUTBOX_EVENT_TYPE = DSL.field(DSL.name("event_type"), String.class);
     private static final org.jooq.Field<Integer> OUTBOX_ATTEMPT_COUNT = DSL.field(DSL.name("attempt_count"), Integer.class);
     private static final org.jooq.Field<String> OUTBOX_STATUS = DSL.field(DSL.name("status"), String.class);
     private static final org.jooq.Field<String> OUTBOX_LAST_ERROR = DSL.field(DSL.name("last_error"), String.class);
@@ -48,6 +49,7 @@ public class TaxOutboxRelayService {
 
     public RelayResult relayPending(int limit) {
         int effectiveLimit = limit > 0 ? limit : 500;
+        recoverStaleProcessing();
         List<ClaimedOutboxRow> claimed = claimPending(effectiveLimit);
         if (claimed.isEmpty()) {
             return new RelayResult(0, 0, 0, List.of());
@@ -73,6 +75,7 @@ public class TaxOutboxRelayService {
     }
 
     public RelayOneResult relayOutboxById(long outboxId) {
+        recoverStaleProcessing();
         ClaimedOutboxRow row = claimPendingById(outboxId);
         if (row == null) {
             String currentStatus = dsl.select(OUTBOX_STATUS)
@@ -124,6 +127,7 @@ public class TaxOutboxRelayService {
                 where o.id = picked.id
                 returning o.id,
                           o.aggregate_id,
+                          o.event_type,
                           o.event_key,
                           o.payload_json::text as payload_json,
                           o.attempt_count
@@ -134,6 +138,7 @@ public class TaxOutboxRelayService {
             result.add(new ClaimedOutboxRow(
                     r.get("id", Long.class),
                     r.get("aggregate_id", Integer.class),
+                    r.get("event_type", String.class),
                     r.get("event_key", String.class),
                     r.get("payload_json", String.class),
                     r.get("attempt_count", Integer.class)
@@ -153,6 +158,7 @@ public class TaxOutboxRelayService {
                   and o.available_at <= now()
                 returning o.id,
                           o.aggregate_id,
+                          o.event_type,
                           o.event_key,
                           o.payload_json::text as payload_json,
                           o.attempt_count
@@ -165,6 +171,7 @@ public class TaxOutboxRelayService {
         return new ClaimedOutboxRow(
                 row.get("id", Long.class),
                 row.get("aggregate_id", Integer.class),
+                row.get("event_type", String.class),
                 row.get("event_key", String.class),
                 row.get("payload_json", String.class),
                 row.get("attempt_count", Integer.class)
@@ -180,6 +187,17 @@ public class TaxOutboxRelayService {
                 ? null
                 : payload.path("deliveryPhone").asText(null);
         double total = payload.path("total").asDouble(0.0);
+        String operationType = "order_refund".equals(row.eventType())
+                || "refund".equalsIgnoreCase(payload.path("operationType").asText())
+                ? "refund"
+                : "sale";
+        String originalIdempotencyKey = "refund".equals(operationType)
+                ? payload.path("originalEventKey").asText(null)
+                : null;
+        if ("refund".equals(operationType)
+                && (originalIdempotencyKey == null || originalIdempotencyKey.isBlank())) {
+            throw new IllegalArgumentException("Refund event does not reference the original sale event");
+        }
 
         String upsertSql = """
                 insert into tax.tax_receipt_job (
@@ -191,6 +209,8 @@ public class TaxOutboxRelayService {
                     amount,
                     payment_type,
                     customer_phone,
+                    operation_type,
+                    original_idempotency_key,
                     payload_json,
                     status,
                     idempotency_key,
@@ -198,7 +218,7 @@ public class TaxOutboxRelayService {
                     created_at,
                     updated_at
                 ) values (
-                    ?, ?, ?, ?, ?, ?, ?, ?, cast(? as jsonb), ?, ?, now(), now(), now()
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, cast(? as jsonb), ?, ?, now(), now(), now()
                 )
                 on conflict (idempotency_key)
                 do update
@@ -206,6 +226,8 @@ public class TaxOutboxRelayService {
                     amount = excluded.amount,
                     payment_type = excluded.payment_type,
                     customer_phone = excluded.customer_phone,
+                    operation_type = excluded.operation_type,
+                    original_idempotency_key = excluded.original_idempotency_key,
                     updated_at = now()
                 """;
 
@@ -219,6 +241,8 @@ public class TaxOutboxRelayService {
                 total,
                 paymentType,
                 customerPhone,
+                operationType,
+                originalIdempotencyKey,
                 row.payloadJson(),
                 "pending",
                 row.eventKey()
@@ -257,8 +281,22 @@ public class TaxOutboxRelayService {
                 .set(OUTBOX_PROCESSED_AT, Timestamp.valueOf(LocalDateTime.now()))
                 .set(OUTBOX_UPDATED_AT, Timestamp.valueOf(LocalDateTime.now()))
                 .set(OUTBOX_LAST_ERROR, (String) null)
+                .set(OUTBOX_LOCKED_AT, (Timestamp) null)
                 .where(OUTBOX_ID.eq(outboxId))
                 .execute();
+    }
+
+    public int recoverStaleProcessing() {
+        return dsl.execute("""
+                update sales.tax_outbox
+                set status = 'pending',
+                    available_at = now(),
+                    locked_at = null,
+                    updated_at = now(),
+                    last_error = 'Автоматически восстановлено после истечения processing-lock'
+                where status = 'processing'
+                  and (locked_at is null or locked_at < now() - interval '15 minutes')
+                """);
     }
 
     private void markFailed(ClaimedOutboxRow row, Exception error) {
@@ -286,6 +324,7 @@ public class TaxOutboxRelayService {
     private record ClaimedOutboxRow(
             Long id,
             Integer orderId,
+            String eventType,
             String eventKey,
             String payloadJson,
             Integer attemptCount

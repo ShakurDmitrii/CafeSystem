@@ -54,6 +54,8 @@ public class TaxAdminQueryService {
         overview.put("jobStatusCounts", fetchJobStatusCounts());
         overview.put("recentOutbox", fetchRecentOutbox(effectiveLimit));
         overview.put("recentJobs", fetchRecentJobs(effectiveLimit));
+        overview.put("recentReconciliations", fetchRecentReconciliations(Math.min(effectiveLimit, 100)));
+        overview.put("unresolvedReconciliationGaps", fetchUnresolvedReconciliationGaps(Math.min(effectiveLimit, 100)));
         Map<String, Object> integrationStatus = getDispatchIntegrationStatus();
         overview.put("dispatchIntegration", integrationStatus);
         overview.put("myTaxIntegration", integrationStatus);
@@ -256,6 +258,8 @@ public class TaxAdminQueryService {
                        business_date as "businessDate",
                        amount,
                        payment_type as "paymentType",
+                       operation_type as "operationType",
+                       original_idempotency_key as "originalIdempotencyKey",
                        status,
                        attempt_count as "attemptCount",
                        provider_receipt_id as "providerReceiptId",
@@ -278,6 +282,8 @@ public class TaxAdminQueryService {
                        business_date as "businessDate",
                        amount,
                        payment_type as "paymentType",
+                       operation_type as "operationType",
+                       original_idempotency_key as "originalIdempotencyKey",
                        customer_phone as "customerPhone",
                        status,
                        attempt_count as "attemptCount",
@@ -293,6 +299,40 @@ public class TaxAdminQueryService {
                 limit ?
                 """;
         return taxJdbcTemplate.queryForList(sql, orderId, limit);
+    }
+
+    private List<Map<String, Object>> fetchRecentReconciliations(int limit) {
+        return taxJdbcTemplate.queryForList("""
+                select id,
+                       business_date as "businessDate",
+                       started_at as "startedAt",
+                       finished_at as "finishedAt",
+                       source_orders_count as "sourceOrdersCount",
+                       jobs_created_count as "jobsFound",
+                       sent_count as "sentCount",
+                       failed_count as "failedCount",
+                       missing_count as "missingCount",
+                       status,
+                       details_json::text as "detailsJson"
+                from tax.tax_reconcile_run
+                order by id desc
+                limit ?
+                """, limit);
+    }
+
+    private List<Map<String, Object>> fetchUnresolvedReconciliationGaps(int limit) {
+        return taxJdbcTemplate.queryForList("""
+                select id,
+                       reconcile_run_id as "reconcileRunId",
+                       order_id as "orderId",
+                       reason,
+                       snapshot_json::text as "snapshotJson",
+                       created_at as "createdAt"
+                from tax.tax_reconcile_gap
+                where resolved = false
+                order by id desc
+                limit ?
+                """, limit);
     }
 
     private int toInt(Object value) {

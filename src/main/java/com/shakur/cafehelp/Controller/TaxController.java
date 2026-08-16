@@ -4,6 +4,7 @@ import com.shakur.cafehelp.Service.TaxOutboxBackfillService;
 import com.shakur.cafehelp.Service.TaxAdminQueryService;
 import com.shakur.cafehelp.Service.TaxOutboxRelayService;
 import com.shakur.cafehelp.Service.TaxReceiptDispatchService;
+import com.shakur.cafehelp.Service.TaxReconciliationService;
 import com.shakur.cafehelp.Service.TaxRetryService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,19 +22,22 @@ public class TaxController {
     private final TaxAdminQueryService taxAdminQueryService;
     private final TaxRetryService taxRetryService;
     private final TaxReceiptDispatchService taxReceiptDispatchService;
+    private final TaxReconciliationService taxReconciliationService;
 
     public TaxController(
             TaxOutboxBackfillService backfillService,
             TaxOutboxRelayService relayService,
             TaxAdminQueryService taxAdminQueryService,
             TaxRetryService taxRetryService,
-            TaxReceiptDispatchService taxReceiptDispatchService
+            TaxReceiptDispatchService taxReceiptDispatchService,
+            TaxReconciliationService taxReconciliationService
     ) {
         this.backfillService = backfillService;
         this.relayService = relayService;
         this.taxAdminQueryService = taxAdminQueryService;
         this.taxRetryService = taxRetryService;
         this.taxReceiptDispatchService = taxReceiptDispatchService;
+        this.taxReconciliationService = taxReconciliationService;
     }
 
     @GetMapping("/overview")
@@ -119,6 +123,12 @@ public class TaxController {
     public ResponseEntity<?> retryFailed(@RequestBody(required = false) RetryFailedRequest request) {
         RetryFailedRequest req = request != null ? request : new RetryFailedRequest();
         return ResponseEntity.ok(taxRetryService.retryFailedAndDeadLetter(req.getOutboxLimit(), req.getJobsLimit()));
+    }
+
+    @PostMapping("/reconciliations")
+    public ResponseEntity<?> reconcile(@RequestBody(required = false) ReconciliationRequest request) {
+        ReconciliationRequest req = request != null ? request : new ReconciliationRequest();
+        return ResponseEntity.ok(taxReconciliationService.reconcile(req.getBusinessDate(), req.getLimit()));
     }
 
     public static class BackfillRequest {
@@ -280,6 +290,27 @@ public class TaxController {
 
         public void setOrderId(Integer orderId) {
             this.orderId = orderId;
+        }
+    }
+
+    public static class ReconciliationRequest {
+        private LocalDate businessDate;
+        private Integer limit;
+
+        public LocalDate getBusinessDate() {
+            return businessDate;
+        }
+
+        public void setBusinessDate(LocalDate businessDate) {
+            this.businessDate = businessDate;
+        }
+
+        public Integer getLimit() {
+            return limit;
+        }
+
+        public void setLimit(Integer limit) {
+            this.limit = limit;
         }
     }
 }

@@ -133,12 +133,12 @@ public class OrderController {
 
     @Operation(
             summary = "Отменить созданный заказ",
-            description = "Выполняет мягкую отмену. Разрешено только для неоплаченного и невыданного заказа открытой смены; повторный запрос идемпотентен."
+            description = "Выполняет мягкую отмену без возврата продуктов на склад. Для оплаченного заказа атомарно создаёт отдельное событие фискального возврата; причина обязательна. Повторный запрос идемпотентен."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Заказ отменён или уже был отменён"),
             @ApiResponse(responseCode = "404", description = "Заказ не найден"),
-            @ApiResponse(responseCode = "409", description = "Оплаченный, выданный, изменённый или относящийся к закрытой смене заказ")
+            @ApiResponse(responseCode = "409", description = "Заказ уже изменён либо неоплаченный заказ выдан/относится к закрытой смене")
     })
     @DeleteMapping("/{orderId}")
     public ResponseEntity<?> cancelOrder(
