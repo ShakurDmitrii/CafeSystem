@@ -4,8 +4,6 @@ import java.math.BigDecimal;
 
 public class PersonRegistrationRequestDTO {
     public String name;
-    public BigDecimal salary;
-    public Integer numDays;
     public BigDecimal salaryPerDay;
 
     public String username;
@@ -13,4 +11,3 @@ public class PersonRegistrationRequestDTO {
     public String role;
     public Boolean isActive;
 }
-

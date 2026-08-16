@@ -505,12 +505,13 @@
 
 .personSecondaryActions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 7px;
 }
 
 .payButton,
 .fillSalaryButton,
+.historyButton,
 .editButton,
 .archiveButton {
     min-height: 42px;
@@ -525,6 +526,17 @@
         color 160ms ease,
         transform 160ms ease,
         opacity 160ms ease;
+}
+
+.historyButton {
+    border: 1px solid #b8c9d9;
+    background: #f7fafc;
+    color: #365a73;
+}
+
+.historyButton:hover:not(:disabled) {
+    border-color: #8eaabd;
+    background: #eef5f8;
 }
 
 .payButton {
@@ -575,8 +587,89 @@
 
 .payButton:disabled,
 .fillSalaryButton:disabled,
+.historyButton:disabled,
 .editButton:disabled,
 .archiveButton:disabled {
+    cursor: not-allowed;
+    opacity: 0.56;
+}
+
+.paymentHistoryList,
+.paymentHistoryState {
+    grid-column: 1 / -1;
+    min-width: 0;
+    border-top: 1px solid #e2e9e4;
+    padding-top: 13px;
+}
+
+.paymentHistoryState {
+    color: var(--color-muted);
+    font-size: 11px;
+}
+
+.paymentHistoryList {
+    display: grid;
+    gap: 7px;
+}
+
+.paymentHistoryRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 14px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid #e1e7e3;
+    border-radius: 12px;
+    background: #f8faf8;
+}
+
+.paymentHistoryRow > div:first-child {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.paymentHistoryRow span,
+.paymentHistoryRow small {
+    color: var(--color-muted);
+    font-size: 9px;
+}
+
+.paymentHistoryRow small {
+    overflow-wrap: anywhere;
+}
+
+.paymentHistoryAmount {
+    display: grid;
+    gap: 3px;
+    justify-items: end;
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+}
+
+.paymentHistoryAmount strong {
+    color: #244b3b;
+    font-size: 11px;
+}
+
+.reversePaymentButton {
+    min-height: 34px;
+    padding: 7px 10px;
+    border: 1px solid #d7c4be;
+    border-radius: 9px;
+    background: #fff;
+    color: #7e4c43;
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 800;
+}
+
+.reversePaymentButton:hover:not(:disabled) {
+    border-color: #c29389;
+    background: #fff4f1;
+}
+
+.reversePaymentButton:disabled {
     cursor: not-allowed;
     opacity: 0.56;
 }
@@ -815,6 +908,14 @@
 
     .editorHeader {
         padding: 20px;
+    }
+
+    .paymentHistoryRow {
+        grid-template-columns: 1fr auto;
+    }
+
+    .reversePaymentButton {
+        grid-column: 1 / -1;
     }
 }
 

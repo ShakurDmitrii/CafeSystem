@@ -1,0 +1,178 @@
+openapi: 3.1.0
+info:
+  title: CafeHelp Employee Payroll API
+  version: 1.0.0
+  description: Owner-only API for immutable salary accrual and payment history.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /payroll/employees:
+    get:
+      summary: List payroll balances for active employees
+      responses:
+        '200':
+          description: Current centrally calculated balances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SalarySummary'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /payroll/employees/{personId}/payments:
+    parameters:
+      - $ref: '#/components/parameters/PersonId'
+    get:
+      summary: Read immutable payment and reversal history
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Page ordered from newest to oldest
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SalaryPaymentPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      summary: Issue a partial or full salary payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SalaryPaymentRequest' }
+            example:
+              amount: 2500.00
+              idempotencyKey: 71f92f7f-081b-43bb-ae10-bd4311d2755f
+              comment: Частичная выплата
+      responses:
+        '201':
+          description: Payment created, or the original response for an identical retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SalaryPayment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /payroll/payments/{paymentId}/reversals:
+    post:
+      summary: Reverse one erroneous payment without deleting history
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SalaryReversalRequest' }
+      responses:
+        '201':
+          description: Reversal created, or the original response for an identical retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SalaryPayment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    PersonId:
+      name: personId
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+  schemas:
+    SalarySummary:
+      type: object
+      required: [personId, name, dailyRate, accruedShifts, accruedAmount, paidAmount, balance]
+      properties:
+        personId: { type: integer }
+        name: { type: string }
+        dailyRate: { type: number, multipleOf: 0.01 }
+        accruedShifts: { type: integer, minimum: 0 }
+        accruedAmount: { type: number, multipleOf: 0.01, minimum: 0 }
+        paidAmount: { type: number, multipleOf: 0.01, minimum: 0 }
+        balance: { type: number, multipleOf: 0.01, minimum: 0 }
+        lastPaidAt: { type: [string, 'null'], format: date-time }
+    SalaryPaymentRequest:
+      type: object
+      required: [amount, idempotencyKey]
+      properties:
+        amount: { type: number, exclusiveMinimum: 0, multipleOf: 0.01 }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 100 }
+        comment: { type: [string, 'null'], maxLength: 500 }
+    SalaryReversalRequest:
+      type: object
+      required: [idempotencyKey, comment]
+      properties:
+        idempotencyKey: { type: string, minLength: 8, maxLength: 100 }
+        comment: { type: string, minLength: 1, maxLength: 500 }
+    SalaryPayment:
+      type: object
+      required: [paymentId, personId, entryType, amount, balanceAfter, idempotencyKey, authorAccountId, authorName, createdAt]
+      properties:
+        paymentId: { type: integer, format: int64 }
+        personId: { type: integer }
+        entryType: { type: string, enum: [PAYMENT, REVERSAL] }
+        amount: { type: number, multipleOf: 0.01 }
+        balanceAfter: { type: number, multipleOf: 0.01, minimum: 0 }
+        idempotencyKey: { type: string }
+        authorAccountId: { type: integer }
+        authorName: { type: string }
+        relatedPaymentId: { type: [integer, 'null'], format: int64 }
+        comment: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+    SalaryPaymentPage:
+      type: object
+      required: [items, page, size, totalElements, totalPages]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SalaryPayment' }
+        page: { type: integer }
+        size: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        totalPages: { type: integer }
+    Problem:
+      type: object
+      properties:
+        status: { type: integer }
+        error: { type: string }
+        message: { type: string }
+        path: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid amount, comment, or idempotency key
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Unauthorized:
+      description: Missing or invalid JWT
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Forbidden:
+      description: Active OWNER account is required
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    NotFound:
+      description: Employee or payment was not found
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Conflict:
+      description: Balance changed, payment was already reversed, or idempotency key parameters differ
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }

@@ -6,7 +6,6 @@ const API_PERSON_REGISTER = `${API_BASE_URL}/api/persons/register`;
 
 const initialForm = {
     name: "",
-    numDays: "",
     salaryPerDay: "",
     username: "",
     password: "",
@@ -35,7 +34,6 @@ export default function AddPersonForm({ onPersonAdded }) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     name: form.name.trim(),
-                    numDays: Number.parseInt(form.numDays || "0", 10),
                     salaryPerDay: Number(form.salaryPerDay || 0),
                     username: form.username.trim(),
                     password: form.password,
@@ -78,7 +76,7 @@ export default function AddPersonForm({ onPersonAdded }) {
                     />
                 </label>
                 <label className={styles.wideField} htmlFor="person-salary-per-day">
-                    Ставка за день
+                    Ставка за смену
                     <span className={styles.inputWithUnit}>
                         <input
                             id="person-salary-per-day"
@@ -94,21 +92,6 @@ export default function AddPersonForm({ onPersonAdded }) {
                         />
                         <span>₽</span>
                     </span>
-                </label>
-                <label htmlFor="person-days">
-                    Начислено дней
-                    <input
-                        id="person-days"
-                        name="numDays"
-                        type="number"
-                        min="0"
-                        step="1"
-                        inputMode="numeric"
-                        value={form.numDays}
-                        onChange={(event) => updateField("numDays", event.target.value)}
-                        placeholder="0"
-                        required
-                    />
                 </label>
             </fieldset>
 

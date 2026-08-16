@@ -72,7 +72,7 @@ export default function EmployeeEditorModal({
                     <div>
                         <p className={styles.kicker}>Сотрудник #{person.personID}</p>
                         <h2 id="employee-editor-title">Редактировать сотрудника</h2>
-                        <p>Начисления рассчитываются по ставке за день. Изменение применится к ещё не закрытым дням.</p>
+                        <p>Начисления рассчитываются по ставке за смену. Изменение применится только к следующим закрытым сменам.</p>
                     </div>
                     <button
                         ref={closeButtonRef}
@@ -100,7 +100,7 @@ export default function EmployeeEditorModal({
                     </label>
 
                     <label className={styles.editorWideField} htmlFor="employee-edit-daily-rate">
-                        Ставка за день
+                        Ставка за смену
                         <span className={styles.editorInputWithUnit}>
                             <input
                                 id="employee-edit-daily-rate"

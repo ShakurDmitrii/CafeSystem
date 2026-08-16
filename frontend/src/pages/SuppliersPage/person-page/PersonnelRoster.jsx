@@ -9,16 +9,22 @@ const toPaymentInput = (value) => {
 
 function SalaryPaymentControls({ person, disabled, onPaySalary }) {
     const [amount, setAmount] = useState("");
+    const [submitting, setSubmitting] = useState(false);
     const numericAmount = Number(amount);
     const isValid = Number.isFinite(numericAmount)
         && numericAmount > 0
         && numericAmount <= person.amountToPay;
 
-    const handleSubmit = (event) => {
+    const handleSubmit = async (event) => {
         event.preventDefault();
-        if (!isValid || disabled) return;
-        const paymentAccepted = onPaySalary(person, numericAmount);
-        if (paymentAccepted) setAmount("");
+        if (!isValid || disabled || submitting) return;
+        setSubmitting(true);
+        try {
+            const paymentAccepted = await onPaySalary(person, numericAmount);
+            if (paymentAccepted) setAmount("");
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
@@ -37,7 +43,7 @@ function SalaryPaymentControls({ person, disabled, onPaySalary }) {
                         value={amount}
                         onChange={(event) => setAmount(event.target.value)}
                         placeholder="0"
-                        disabled={disabled || person.amountToPay <= 0}
+                        disabled={disabled || submitting || !person.payrollAvailable || person.amountToPay <= 0}
                         aria-describedby={`salary-balance-${person.personID}`}
                     />
                     <span>₽</span>
@@ -46,7 +52,7 @@ function SalaryPaymentControls({ person, disabled, onPaySalary }) {
                     className={styles.fillSalaryButton}
                     type="button"
                     onClick={() => setAmount(toPaymentInput(person.amountToPay))}
-                    disabled={disabled || person.amountToPay <= 0}
+                    disabled={disabled || submitting || !person.payrollAvailable || person.amountToPay <= 0}
                 >
                     Выдать всё
                 </button>
@@ -57,11 +63,68 @@ function SalaryPaymentControls({ person, disabled, onPaySalary }) {
             <button
                 className={styles.payButton}
                 type="submit"
-                disabled={disabled || !isValid}
+                disabled={disabled || submitting || !person.payrollAvailable || !isValid}
             >
-                Выдать
+                {submitting ? "Проводим…" : "Выдать"}
             </button>
         </form>
+    );
+}
+
+function PaymentHistory({
+    person,
+    items,
+    loading,
+    reversingPaymentId,
+    onReversePayment
+}) {
+    const reversedPaymentIds = new Set(
+        items
+            .filter((entry) => entry.entryType === "REVERSAL")
+            .map((entry) => entry.relatedPaymentId)
+    );
+
+    if (loading) {
+        return <div className={styles.paymentHistoryState} role="status">Загружаем общий журнал…</div>;
+    }
+    if (items.length === 0) {
+        return <div className={styles.paymentHistoryState}>Выплат пока не было.</div>;
+    }
+
+    return (
+        <div className={styles.paymentHistoryList}>
+            {items.map((entry) => {
+                const isReversal = entry.entryType === "REVERSAL";
+                const isReversed = !isReversal && reversedPaymentIds.has(entry.paymentId);
+                return (
+                    <div key={entry.paymentId} className={styles.paymentHistoryRow}>
+                        <div>
+                            <strong>{isReversal ? "Отмена выплаты" : "Выплата"}</strong>
+                            <span>{formatDateTime(entry.createdAt)} · {entry.authorName}</span>
+                            {entry.comment ? <small>{entry.comment}</small> : null}
+                        </div>
+                        <div className={styles.paymentHistoryAmount}>
+                            <strong>{isReversal ? "+" : "−"}{formatMoney(entry.amount)}</strong>
+                            <span>Остаток {formatMoney(entry.balanceAfter)}</span>
+                        </div>
+                        {!isReversal ? (
+                            <button
+                                type="button"
+                                className={styles.reversePaymentButton}
+                                disabled={isReversed || reversingPaymentId === entry.paymentId}
+                                onClick={() => onReversePayment(person, entry)}
+                            >
+                                {isReversed
+                                    ? "Отменена"
+                                    : reversingPaymentId === entry.paymentId
+                                        ? "Отменяем…"
+                                        : "Отменить"}
+                            </button>
+                        ) : null}
+                    </div>
+                );
+            })}
+        </div>
     );
 }
 
@@ -71,8 +134,15 @@ export default function PersonnelRoster({
     searchQuery,
     loading,
     deletingPersonId,
+    payingPersonId,
+    expandedHistoryId,
+    loadingHistoryId,
+    reversingPaymentId,
+    paymentHistory,
     onSearchChange,
     onPaySalary,
+    onToggleHistory,
+    onReversePayment,
     onEdit,
     onArchive
 }) {
@@ -114,7 +184,9 @@ export default function PersonnelRoster({
             ) : (
                 <div className={styles.rosterList}>
                     {people.map((person) => {
-                        const isBusy = deletingPersonId === person.personID;
+                        const isBusy = deletingPersonId === person.personID
+                            || payingPersonId === person.personID;
+                        const historyOpen = expandedHistoryId === person.personID;
 
                         return (
                             <article key={person.personID} className={styles.personCard}>
@@ -126,27 +198,27 @@ export default function PersonnelRoster({
                                         <span className={styles.personCode}>Сотрудник #{person.personID}</span>
                                         <h3>{person.name || "Без имени"}</h3>
                                         <span className={styles.rate}>
-                                            Ставка {formatMoney(person.salaryPerDay)} / день
+                                            Ставка {formatMoney(person.salaryPerDay)} / смену
                                         </span>
                                     </div>
                                 </div>
 
                                 <dl className={styles.personMetrics}>
                                     <div>
-                                        <dt>Дней к выплате</dt>
-                                        <dd>{person.unpaidDays}</dd>
+                                        <dt>Начислено смен</dt>
+                                        <dd>{person.accruedShifts}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Начислено всего</dt>
+                                        <dd>{formatMoney(person.accruedAmount)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Выплачено</dt>
+                                        <dd>{formatMoney(person.totalPaid)}</dd>
                                     </div>
                                     <div>
                                         <dt>Осталось выдать</dt>
                                         <dd>{formatMoney(person.amountToPay)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Выплачено всего</dt>
-                                        <dd>{formatMoney(person.totalPaid)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Последняя выплата</dt>
-                                        <dd>{formatDateTime(person.lastPaidAt)}</dd>
                                     </div>
                                 </dl>
 
@@ -157,6 +229,14 @@ export default function PersonnelRoster({
                                         onPaySalary={onPaySalary}
                                     />
                                     <div className={styles.personSecondaryActions}>
+                                        <button
+                                            className={styles.historyButton}
+                                            type="button"
+                                            onClick={() => onToggleHistory(person.personID)}
+                                            aria-expanded={historyOpen}
+                                        >
+                                            {historyOpen ? "Скрыть историю" : "История выплат"}
+                                        </button>
                                         <button
                                             className={styles.editButton}
                                             type="button"
@@ -175,6 +255,15 @@ export default function PersonnelRoster({
                                         </button>
                                     </div>
                                 </div>
+                                {historyOpen ? (
+                                    <PaymentHistory
+                                        person={person}
+                                        items={paymentHistory[person.personID] || []}
+                                        loading={loadingHistoryId === person.personID}
+                                        reversingPaymentId={reversingPaymentId}
+                                        onReversePayment={onReversePayment}
+                                    />
+                                ) : null}
                             </article>
                         );
                     })}

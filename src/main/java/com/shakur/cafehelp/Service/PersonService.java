@@ -25,9 +25,11 @@ public class PersonService {
     private static final Field<Boolean> PERSON_ARCHIVED = DSL.field(DSL.name("archived"), Boolean.class);
     private static DSLContext dsl;
     private final BCryptPasswordEncoder passwordEncoder;
-    public PersonService(DSLContext dsl, BCryptPasswordEncoder passwordEncoder) {
+    private final PayrollService payrollService;
+    public PersonService(DSLContext dsl, BCryptPasswordEncoder passwordEncoder, PayrollService payrollService) {
         this.dsl = dsl;
         this.passwordEncoder = passwordEncoder;
+        this.payrollService = payrollService;
     }
 
     public List<PersonDTO> findAll() {
@@ -40,8 +42,6 @@ public class PersonService {
 
                     dto.name = record.getName();
                     dto.personID = record.getPersonid();
-                    dto.salary = record.getSalary();
-                    dto.numDays = record.getNumdays() != null ? record.getNumdays() : 0;
                     dto.salaryPerDay = record.getSalaryperday();
                     return dto;
                 })
@@ -56,8 +56,6 @@ public class PersonService {
                     PersonDTO dto = new PersonDTO();
                     dto.setPersonID(record.getPersonid());
                     dto.setName(record.getName());
-                    dto.setSalary(record.getSalary());
-                    dto.setNumDays(record.getNumdays() != null ? record.getNumdays() : 0);
                     dto.setSalaryPerDay(record.getSalaryperday());
                     return dto;
                 });
@@ -73,18 +71,20 @@ public class PersonService {
                     PersonDTO dto = new PersonDTO();
                     dto.name = personRecord.getName();
                     dto.personID = personRecord.getPersonid();
-                    dto.salary = personRecord.getSalary();
-                    dto.numDays = personRecord.getNumdays() != null ? personRecord.getNumdays() : 0;
                     dto.salaryPerDay = personRecord.getSalaryperday();
                     return dto;
                 }).toList();
     }
 
     public PersonDTO create(PersonDTO dto) {
+        if (dto == null || isBlank(dto.name)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Имя сотрудника обязательно");
+        }
+        if (isNegative(dto.salaryPerDay)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ставка за смену не может быть отрицательной");
+        }
         PersonRecord record =dsl.newRecord(jooqdata.tables.Person.PERSON);
-        record.setName(dto.name);
-        record.setSalary(dto.salary != null ? dto.salary : BigDecimal.ZERO);
-        record.setNumdays(dto.numDays);
+        record.setName(dto.name.trim());
         record.setSalaryperday(dto.salaryPerDay != null ? dto.salaryPerDay : BigDecimal.ZERO);
         record.store();
         dsl.update(Person.PERSON)
@@ -100,6 +100,9 @@ public class PersonService {
         if (dto == null || isBlank(dto.name) || isBlank(dto.username) || isBlank(dto.password)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name, username, password обязательны");
         }
+        if (isNegative(dto.salaryPerDay)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ставка за смену не может быть отрицательной");
+        }
 
         String role = isBlank(dto.role) ? "WORKER" : dto.role.trim().toUpperCase();
         if (!ALLOWED_ROLES.contains(role)) {
@@ -108,8 +111,6 @@ public class PersonService {
 
         PersonRecord personRecord = dsl.newRecord(Person.PERSON);
         personRecord.setName(dto.name.trim());
-        personRecord.setSalary(dto.salary != null ? dto.salary : BigDecimal.ZERO);
-        personRecord.setNumdays(dto.numDays != null ? dto.numDays : 0);
         personRecord.setSalaryperday(dto.salaryPerDay != null ? dto.salaryPerDay : BigDecimal.ZERO);
         personRecord.store();
         dsl.update(Person.PERSON)
@@ -137,8 +138,6 @@ public class PersonService {
         PersonDTO response = new PersonDTO();
         response.personID = personId;
         response.name = personRecord.getName();
-        response.salary = personRecord.getSalary();
-        response.numDays = personRecord.getNumdays() != null ? personRecord.getNumdays() : 0;
         response.salaryPerDay = personRecord.getSalaryperday();
         return response;
     }
@@ -154,6 +153,7 @@ public class PersonService {
         PersonRecord record = dsl.selectFrom(Person.PERSON)
                 .where(Person.PERSON.PERSONID.eq(personId))
                 .and(PERSON_ARCHIVED.eq(false))
+                .forUpdate()
                 .fetchOne();
         if (record == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Сотрудник не найден");
@@ -166,8 +166,6 @@ public class PersonService {
         PersonDTO response = new PersonDTO();
         response.personID = record.getPersonid();
         response.name = record.getName();
-        response.salary = record.getSalary();
-        response.numDays = record.getNumdays() != null ? record.getNumdays() : 0;
         response.salaryPerDay = record.getSalaryperday();
         return response;
     }
@@ -176,17 +174,44 @@ public class PersonService {
     // Удаление сотрудника
     @Transactional
     public boolean deletePerson(int id) {
-        boolean personExists = dsl.fetchExists(
-                dsl.selectOne()
-                        .from(Person.PERSON)
-                        .where(Person.PERSON.PERSONID.eq(id))
-                        .and(PERSON_ARCHIVED.eq(false))
-        );
-        if (!personExists) {
+        PersonRecord person = dsl.selectFrom(Person.PERSON)
+                .where(Person.PERSON.PERSONID.eq(id))
+                .and(PERSON_ARCHIVED.eq(false))
+                .forUpdate()
+                .fetchOne();
+        if (person == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Сотрудник не найден");
         }
+        boolean hasOpenShift = dsl.fetchExists(
+                dsl.selectOne()
+                        .from(jooqdata.tables.Shift.SHIFT)
+                        .where(jooqdata.tables.Shift.SHIFT.ENDTIME.isNull())
+                        .and(
+                                jooqdata.tables.Shift.SHIFT.PERSONCODE.eq(id)
+                                        .orExists(
+                                                dsl.selectOne()
+                                                        .from(jooqdata.tables.Shiftperson.SHIFTPERSON)
+                                                        .where(jooqdata.tables.Shiftperson.SHIFTPERSON.SHIFTID
+                                                                .eq(jooqdata.tables.Shift.SHIFT.ID))
+                                                        .and(jooqdata.tables.Shiftperson.SHIFTPERSON.PERSONID.eq(id))
+                                        )
+                        )
+        );
+        if (hasOpenShift) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Нельзя архивировать сотрудника, пока у него есть открытая смена"
+            );
+        }
+        if (payrollService.getOutstandingBalance(id).signum() > 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Нельзя архивировать сотрудника, пока ему не выплачен остаток зарплаты"
+            );
+        }
 
-        dsl.deleteFrom(UserAccount.USER_ACCOUNT)
+        dsl.update(UserAccount.USER_ACCOUNT)
+                .set(UserAccount.USER_ACCOUNT.IS_ACTIVE, false)
                 .where(UserAccount.USER_ACCOUNT.PERSONID.eq(id))
                 .execute();
 

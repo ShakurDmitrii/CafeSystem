@@ -55,6 +55,7 @@ public class SecurityConfig {
 
                         // OWNER only: справочники/склады/движения/аналитика/админка
                         .requestMatchers("/api/user-accounts/**").hasRole("OWNER")
+                        .requestMatchers("/api/v1/payroll/**").hasRole("OWNER")
                         .requestMatchers(HttpMethod.GET, "/api/persons/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers("/api/persons/**").hasRole("OWNER")
                         .requestMatchers("/api/supplier/**").hasRole("OWNER")

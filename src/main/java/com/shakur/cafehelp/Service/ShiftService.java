@@ -56,15 +56,18 @@ public class ShiftService {
     private final DSLContext dsl;
     private final ShiftInventorySnapshotService shiftInventorySnapshotService;
     private final BusinessTimeProvider businessTime;
+    private final PayrollService payrollService;
 
     public ShiftService(
             DSLContext dsl,
             ShiftInventorySnapshotService shiftInventorySnapshotService,
-            BusinessTimeProvider businessTime
+            BusinessTimeProvider businessTime,
+            PayrollService payrollService
     ) {
         this.dsl = dsl;
         this.shiftInventorySnapshotService = shiftInventorySnapshotService;
         this.businessTime = businessTime;
+        this.payrollService = payrollService;
     }
 
     // Получить все смены
@@ -278,6 +281,7 @@ public class ShiftService {
                 .set(SHIFT_CLOSED_AT_FIELD, closedAt)
                 .where(Shift.SHIFT.ID.eq(shiftId))
                 .execute();
+        payrollService.accrueClosedShift(shiftId);
         shift.refresh();
         return shift;
     }

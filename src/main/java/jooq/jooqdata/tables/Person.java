@@ -18,7 +18,7 @@ import jooqdata.tables.records.PersonRecord;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function5;
+import org.jooq.Function3;
 import org.jooq.Identity;
 import org.jooq.InverseForeignKey;
 import org.jooq.Name;
@@ -27,7 +27,7 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row5;
+import org.jooq.Row3;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -67,16 +67,6 @@ public class Person extends TableImpl<PersonRecord> {
      * The column <code>sales.person.name</code>.
      */
     public final TableField<PersonRecord, String> NAME = createField(DSL.name("name"), SQLDataType.VARCHAR.nullable(false), this, "");
-
-    /**
-     * The column <code>sales.person.salary</code>.
-     */
-    public final TableField<PersonRecord, BigDecimal> SALARY = createField(DSL.name("salary"), SQLDataType.NUMERIC.nullable(false), this, "");
-
-    /**
-     * The column <code>sales.person.numdays</code>.
-     */
-    public final TableField<PersonRecord, Integer> NUMDAYS = createField(DSL.name("numdays"), SQLDataType.INTEGER, this, "");
 
     /**
      * The column <code>sales.person.salaryperday</code>.
@@ -327,18 +317,18 @@ public class Person extends TableImpl<PersonRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row5 type methods
+    // Row3 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row5<String, BigDecimal, Integer, BigDecimal, Integer> fieldsRow() {
-        return (Row5) super.fieldsRow();
+    public Row3<String, BigDecimal, Integer> fieldsRow() {
+        return (Row3) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function5<? super String, ? super BigDecimal, ? super Integer, ? super BigDecimal, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function3<? super String, ? super BigDecimal, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -346,7 +336,7 @@ public class Person extends TableImpl<PersonRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function5<? super String, ? super BigDecimal, ? super Integer, ? super BigDecimal, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function3<? super String, ? super BigDecimal, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

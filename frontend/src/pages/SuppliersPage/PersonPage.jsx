@@ -6,15 +6,12 @@ import styles from "./PersonPage.module.css";
 import EmployeeEditorModal from "./person-page/EmployeeEditorModal";
 import PersonnelRoster from "./person-page/PersonnelRoster";
 import TeamHero from "./person-page/TeamHero";
-import {
-    applySalaryPayment,
-    calculateSalaryBalance,
-    formatMoney
-} from "./person-page/personUtils";
+import { formatMoney } from "./person-page/personUtils";
 
 const API_PERSONS = `${API_BASE_URL}/api/persons`;
 const API_SHIFTS = `${API_BASE_URL}/api/shifts`;
-const SALARY_STORAGE_KEY = "salaryPayments";
+const API_PAYROLL = `${API_BASE_URL}/api/v1/payroll`;
+const LEGACY_SALARY_STORAGE_KEY = "salaryPayments";
 
 const fetchArray = async (url) => {
     const response = await fetch(url);
@@ -23,10 +20,30 @@ const fetchArray = async (url) => {
     return Array.isArray(data) ? data : [];
 };
 
+const parseResponse = async (response) => {
+    const text = await response.text();
+    let data = null;
+    try {
+        data = text ? JSON.parse(text) : null;
+    } catch {
+        data = null;
+    }
+    if (!response.ok) {
+        throw new Error(data?.message || data?.detail || data?.error || text || `Ошибка сервера (${response.status})`);
+    }
+    return data;
+};
+
+const createIdempotencyKey = (prefix) => {
+    const value = window.crypto?.randomUUID?.()
+        || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    return `${prefix}-${value}`;
+};
+
 export default function PersonPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const [persons, setPersons] = useState([]);
-    const [workDaysByPerson, setWorkDaysByPerson] = useState({});
+    const [payrollByPerson, setPayrollByPerson] = useState({});
     const [closedShifts, setClosedShifts] = useState(0);
     const [loading, setLoading] = useState(true);
     const [deletingPersonId, setDeletingPersonId] = useState(null);
@@ -35,24 +52,18 @@ export default function PersonPage() {
     const [editorError, setEditorError] = useState("");
     const [message, setMessage] = useState(null);
     const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
-    const [salaryPayments, setSalaryPayments] = useState(() => {
-        try {
-            const raw = localStorage.getItem(SALARY_STORAGE_KEY);
-            return raw ? JSON.parse(raw) : {};
-        } catch {
-            return {};
-        }
-    });
-
-    useEffect(() => {
-        localStorage.setItem(SALARY_STORAGE_KEY, JSON.stringify(salaryPayments));
-    }, [salaryPayments]);
+    const [payingPersonId, setPayingPersonId] = useState(null);
+    const [expandedHistoryId, setExpandedHistoryId] = useState(null);
+    const [loadingHistoryId, setLoadingHistoryId] = useState(null);
+    const [reversingPaymentId, setReversingPaymentId] = useState(null);
+    const [paymentHistory, setPaymentHistory] = useState({});
 
     const loadPersons = async () => {
         setLoading(true);
-        const [personsResult, shiftsResult] = await Promise.allSettled([
+        const [personsResult, shiftsResult, payrollResult] = await Promise.allSettled([
             fetchArray(API_PERSONS),
-            fetchArray(API_SHIFTS)
+            fetchArray(API_SHIFTS),
+            fetchArray(`${API_PAYROLL}/employees`)
         ]);
 
         if (personsResult.status === "fulfilled") {
@@ -65,35 +76,30 @@ export default function PersonPage() {
 
         if (shiftsResult.status === "fulfilled") {
             const finishedShifts = shiftsResult.value.filter((shift) => shift?.endTime);
-            const daysMap = new Map();
-
-            finishedShifts.forEach((shift) => {
-                const rawIds = Array.isArray(shift.personIds) && shift.personIds.length > 0
-                    ? shift.personIds
-                    : [shift.personCode];
-                const workerIds = [...new Set(
-                    rawIds
-                        .map((id) => Number(id))
-                        .filter((id) => Number.isInteger(id) && id >= 0)
-                )];
-
-                workerIds.forEach((personId) => {
-                    daysMap.set(personId, (daysMap.get(personId) || 0) + 1);
-                });
-            });
-
             setClosedShifts(finishedShifts.length);
-            setWorkDaysByPerson(Object.fromEntries(daysMap));
         } else {
             console.error("Ошибка загрузки смен:", shiftsResult.reason);
             setClosedShifts(0);
-            setWorkDaysByPerson({});
             if (personsResult.status === "fulfilled") {
                 setMessage({
                     type: "error",
                     text: "Команда загружена, но смены недоступны — начисления могут быть неполными."
                 });
             }
+        }
+
+        if (payrollResult.status === "fulfilled") {
+            setPayrollByPerson(Object.fromEntries(
+                payrollResult.value.map((summary) => [summary.personId, summary])
+            ));
+            localStorage.removeItem(LEGACY_SALARY_STORAGE_KEY);
+        } else {
+            console.error("Ошибка загрузки выплат:", payrollResult.reason);
+            setPayrollByPerson({});
+            setMessage({
+                type: "error",
+                text: "Не удалось загрузить серверные начисления. Выплаты временно недоступны."
+            });
         }
 
         setLoading(false);
@@ -106,22 +112,19 @@ export default function PersonPage() {
     }, []);
 
     const roster = useMemo(() => persons.map((person) => {
-        const workedDays = workDaysByPerson[person.personID] ?? (Number(person.numDays) || 0);
-        const salaryPerDay = Number(person.salaryPerDay) || 0;
-        const payment = salaryPayments[person.personID] || {};
-        const salaryBalance = calculateSalaryBalance({
-            workedDays,
-            salaryPerDay,
-            payment
-        });
+        const payroll = payrollByPerson[person.personID];
 
         return {
             ...person,
-            workedDays,
-            salaryPerDay,
-            ...salaryBalance
+            salaryPerDay: Number(payroll?.dailyRate ?? person.salaryPerDay) || 0,
+            accruedShifts: Number(payroll?.accruedShifts) || 0,
+            accruedAmount: Number(payroll?.accruedAmount) || 0,
+            amountToPay: Number(payroll?.balance) || 0,
+            totalPaid: Number(payroll?.paidAmount) || 0,
+            lastPaidAt: payroll?.lastPaidAt || null,
+            payrollAvailable: Boolean(payroll)
         };
-    }), [persons, salaryPayments, workDaysByPerson]);
+    }), [persons, payrollByPerson]);
 
     const filteredRoster = useMemo(() => {
         const query = searchQuery.trim().toLocaleLowerCase("ru-RU");
@@ -146,7 +149,7 @@ export default function PersonPage() {
         }, { replace: true });
     };
 
-    const handlePaySalary = (person, amount) => {
+    const handlePaySalary = async (person, amount) => {
         const normalizedAmount = Math.round((Number(amount) || 0) * 100) / 100;
         const normalizedDue = Math.round(person.amountToPay * 100) / 100;
         if (normalizedAmount <= 0 || normalizedAmount > normalizedDue) {
@@ -160,23 +163,87 @@ export default function PersonPage() {
             `Выдать ${person.name} ${formatMoney(normalizedAmount)}? После выплаты останется ${formatMoney(normalizedDue - normalizedAmount)}.`
         )) return false;
 
-        setSalaryPayments((current) => {
-            const previous = current[person.personID] || {};
-            return {
-                ...current,
-                [person.personID]: applySalaryPayment({
-                    payment: previous,
+        setPayingPersonId(person.personID);
+        setMessage(null);
+        try {
+            const response = await fetch(`${API_PAYROLL}/employees/${person.personID}/payments`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
                     amount: normalizedAmount,
-                    workedDays: person.workedDays,
-                    amountToPay: person.amountToPay
+                    idempotencyKey: createIdempotencyKey(`salary-${person.personID}`)
                 })
-            };
-        });
-        setMessage({
-            type: "success",
-            text: `${person.name}: выплата ${formatMoney(normalizedAmount)} отмечена.`
-        });
-        return true;
+            });
+            await parseResponse(response);
+            await loadPersons();
+            if (expandedHistoryId === person.personID) {
+                await loadPaymentHistory(person.personID, true);
+            }
+            setMessage({
+                type: "success",
+                text: `${person.name}: выплата ${formatMoney(normalizedAmount)} сохранена в общем журнале.`
+            });
+            return true;
+        } catch (error) {
+            console.error("Ошибка выплаты зарплаты:", error);
+            setMessage({ type: "error", text: error.message || "Не удалось провести выплату." });
+            return false;
+        } finally {
+            setPayingPersonId(null);
+        }
+    };
+
+    const loadPaymentHistory = async (personId, force = false) => {
+        if (!force && paymentHistory[personId]) return;
+        setLoadingHistoryId(personId);
+        try {
+            const response = await fetch(`${API_PAYROLL}/employees/${personId}/payments?page=0&size=50`);
+            const data = await parseResponse(response);
+            setPaymentHistory((current) => ({ ...current, [personId]: data?.items || [] }));
+        } catch (error) {
+            console.error("Ошибка загрузки истории выплат:", error);
+            setMessage({ type: "error", text: error.message || "Не удалось загрузить историю выплат." });
+        } finally {
+            setLoadingHistoryId(null);
+        }
+    };
+
+    const handleToggleHistory = async (personId) => {
+        if (expandedHistoryId === personId) {
+            setExpandedHistoryId(null);
+            return;
+        }
+        setExpandedHistoryId(personId);
+        await loadPaymentHistory(personId);
+    };
+
+    const handleReversePayment = async (person, payment) => {
+        const reason = window.prompt(
+            `Укажите причину отмены выплаты ${formatMoney(payment.amount)} сотруднику ${person.name}.`
+        );
+        if (!reason?.trim()) return;
+        if (!window.confirm("Создать обратную проводку? Исходная запись останется в истории.")) return;
+
+        setReversingPaymentId(payment.paymentId);
+        setMessage(null);
+        try {
+            const response = await fetch(`${API_PAYROLL}/payments/${payment.paymentId}/reversals`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    idempotencyKey: createIdempotencyKey(`salary-reversal-${payment.paymentId}`),
+                    comment: reason.trim()
+                })
+            });
+            await parseResponse(response);
+            await Promise.all([loadPersons(), loadPaymentHistory(person.personID, true)]);
+            setMessage({ type: "success", text: "Выплата отменена обратной проводкой." });
+        } catch (error) {
+            console.error("Ошибка отмены выплаты:", error);
+            setMessage({ type: "error", text: error.message || "Не удалось отменить выплату." });
+        } finally {
+            setReversingPaymentId(null);
+        }
     };
 
     const handleOpenEditor = (person) => {
@@ -242,11 +309,6 @@ export default function PersonPage() {
                 throw new Error(details || `Ошибка сервера (${response.status})`);
             }
 
-            setSalaryPayments((current) => {
-                const next = { ...current };
-                delete next[person.personID];
-                return next;
-            });
             await loadPersons();
             setMessage({ type: "success", text: `${person.name} перемещён в архив.` });
         } catch (error) {
@@ -300,8 +362,15 @@ export default function PersonPage() {
                     searchQuery={searchQuery}
                     loading={loading}
                     deletingPersonId={deletingPersonId}
+                    payingPersonId={payingPersonId}
+                    expandedHistoryId={expandedHistoryId}
+                    loadingHistoryId={loadingHistoryId}
+                    reversingPaymentId={reversingPaymentId}
+                    paymentHistory={paymentHistory}
                     onSearchChange={handleSearchChange}
                     onPaySalary={handlePaySalary}
+                    onToggleHistory={handleToggleHistory}
+                    onReversePayment={handleReversePayment}
                     onEdit={handleOpenEditor}
                     onArchive={handleDeletePerson}
                 />
