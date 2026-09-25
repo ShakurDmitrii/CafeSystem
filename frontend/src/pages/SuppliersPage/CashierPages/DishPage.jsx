@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_BASE_URL } from "../../../auth";
+import { API_BASE_URL, getAuth, hasRole } from "../../../auth";
 import DishSetsSection from "./DishSetsSection";
 import DishCreatePanel from "./dish-page/DishCreatePanel";
 import DishEditModal from "./dish-page/DishEditModal";
@@ -333,6 +333,9 @@ export default function DishPage() {
         }
     };
 
+    // Менять меню может только владелец; сотрудник видит его в режиме просмотра
+    const canManage = hasRole(getAuth(), ["OWNER"]);
+
     return (
         <div className={styles.page}>
             <DishPageHeader
@@ -349,6 +352,7 @@ export default function DishPage() {
                     aria-labelledby="dishes-tab"
                     className={styles.viewPanel}
                 >
+                    {canManage && (
                     <DishCreatePanel
                         dishCount={dishes.length}
                         form={createForm}
@@ -360,6 +364,7 @@ export default function DishPage() {
                         onImageChange={handleCreateImageUpload}
                         onCreate={handleCreateDish}
                     />
+                    )}
                     <DishList
                         dishes={dishes}
                         loading={loading}
@@ -367,8 +372,8 @@ export default function DishPage() {
                         deletingDishId={deletingDishId}
                         formatMoney={formatMoney}
                         formatWeight={formatWeight}
-                        onEdit={openEditModal}
-                        onDelete={deleteDish}
+                        onEdit={canManage ? openEditModal : undefined}
+                        onDelete={canManage ? deleteDish : undefined}
                         onRetry={loadPage}
                     />
                 </div>
@@ -379,7 +384,7 @@ export default function DishPage() {
                     aria-labelledby="sets-tab"
                     className={styles.viewPanel}
                 >
-                    <DishSetsSection dishes={dishes} categories={sortedCategories} />
+                    <DishSetsSection dishes={dishes} categories={sortedCategories} readOnly={!canManage} />
                 </div>
             )}
 

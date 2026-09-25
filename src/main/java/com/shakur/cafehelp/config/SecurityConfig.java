@@ -91,15 +91,25 @@ public class SecurityConfig {
                         // WORKER + OWNER: касса и операционная работа
                         .requestMatchers("/api/orders/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers("/api/clients/**").hasAnyRole("WORKER", "OWNER")
+                        // Меню и справочники: сотрудник только читает, менять может владелец
                         .requestMatchers(HttpMethod.GET, "/api/dishes/**").hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers("/api/dishes/**").hasRole("OWNER")
+                        .requestMatchers(HttpMethod.GET, "/api/dish-sets/**").hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers("/api/dish-sets/**").hasRole("OWNER")
                         .requestMatchers(HttpMethod.GET, "/api/dish-categories/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers("/api/dish-categories/**").hasRole("OWNER")
                         .requestMatchers(HttpMethod.GET, "/api/product/**").hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers("/api/product/**").hasRole("OWNER")
                         .requestMatchers(HttpMethod.GET, "/api/consumables/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers(HttpMethod.POST, "/api/consumables/preview").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers("/api/consumables/**").hasRole("OWNER")
+
+                        // Смены: сотрудник открывает (/create из кассы, /open) и закрывает смену,
+                        // менять состав существующей смены может только владелец
                         .requestMatchers(HttpMethod.GET, "/api/shifts/**").hasAnyRole("WORKER", "OWNER")
-                        .requestMatchers(HttpMethod.POST, "/api/shifts/open", "/api/shifts/*/close").hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers(HttpMethod.POST, "/api/shifts/create", "/api/shifts/open", "/api/shifts/*/close")
+                        .hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers("/api/shifts/**").hasRole("OWNER")
                         .requestMatchers("/api/tech-products/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers("/api/preparations/**").hasAnyRole("WORKER", "OWNER")
 

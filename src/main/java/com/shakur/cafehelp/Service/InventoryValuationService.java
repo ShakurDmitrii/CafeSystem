@@ -218,6 +218,75 @@ public class InventoryValuationService {
         );
     }
 
+    /**
+     * Ручная корректировка остатка заготовки. Количество и стоимость меняются вместе,
+     * иначе следующая выработка смешает новую себестоимость со старой стоимостью
+     * уже списанного остатка.
+     */
+    @Transactional
+    public ValuationChange adjustPreparationAtCurrentCost(
+            int warehouseId,
+            int preparationId,
+            BigDecimal delta,
+            String sourceType,
+            Integer sourceId,
+            String createdBy
+    ) {
+        if (delta == null || delta.signum() == 0) {
+            throw new IllegalArgumentException("Изменение количества не может быть нулевым");
+        }
+        requireWarehouses(warehouseId);
+        InventoryValuationCalculator.Balance current = lockPreparationBalance(warehouseId, preparationId);
+        BigDecimal target = current.quantity().add(delta);
+        if (target.signum() < 0) {
+            throw new IllegalArgumentException("Недостаточно заготовки на складе");
+        }
+        InventoryValuationCalculator.Adjustment adjustment = InventoryValuationCalculator.adjust(
+                current, delta, loadLastPreparationUnitCost(preparationId)
+        );
+
+        // Остаток считается от неотрицательного количества, поэтому физическое
+        // количество выставляем в целевое значение, а не прибавляем delta к «минусу».
+        double physicalQuantity = loadPreparationPhysicalQuantity(warehouseId, preparationId);
+        double physicalDelta = target.doubleValue() - physicalQuantity;
+        if (Math.abs(physicalDelta) > 0.000001d
+                && !wareHouseService.adjustPreparationQuantity(warehouseId, preparationId, physicalDelta)) {
+            throw new IllegalArgumentException("Не удалось скорректировать количество заготовки");
+        }
+        persistPreparationBalance(warehouseId, preparationId, adjustment.updated());
+
+        ValuationChange change = new ValuationChange(
+                adjustment.quantity(), adjustment.value(), adjustment.unitCost(), adjustment.updated()
+        );
+        recordPreparationMovement(
+                warehouseId, preparationId, change, adjustment.incoming(),
+                "inventory_adjustment", sourceType, sourceId, createdBy
+        );
+        return change;
+    }
+
+    private double loadPreparationPhysicalQuantity(int warehouseId, int preparationId) {
+        Double quantity = dsl.select(DSL.coalesce(DSL.sum(PREP_QUANTITY), BigDecimal.ZERO))
+                .from(PREPARATION_WAREHOUSE)
+                .where(PREP_WAREHOUSE_ID.eq(warehouseId))
+                .and(PREPARATION_ID.eq(preparationId))
+                .fetchOne(0, Double.class);
+        return quantity != null ? quantity : 0.0;
+    }
+
+    private BigDecimal loadLastPreparationUnitCost(int preparationId) {
+        Field<Integer> preparationField = DSL.field(DSL.name("preparation_id"), Integer.class);
+        BigDecimal unitCost = dsl.select(MOVEMENT_UNIT_COST)
+                .from(PREPARATION_MOVEMENTS)
+                .where(preparationField.eq(preparationId))
+                .and(MOVEMENT_TYPE.eq("production_receipt"))
+                .and(MOVEMENT_UNIT_COST.gt(BigDecimal.ZERO))
+                .orderBy(MOVEMENT_DATE.desc(), DSL.field(DSL.name("id")).desc())
+                .limit(1)
+                .fetchOne(MOVEMENT_UNIT_COST);
+        return unitCost != null ? unitCost : BigDecimal.ZERO;
+    }
+
     @Transactional
     public RevaluationResult revalue(
             int warehouseId,
