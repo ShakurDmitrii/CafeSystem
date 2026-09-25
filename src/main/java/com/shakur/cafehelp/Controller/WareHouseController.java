@@ -174,9 +174,19 @@ public class WareHouseController {
     ) {
         Number deltaNum = body != null ? body.get("delta") : null;
         if (deltaNum == null) return ResponseEntity.badRequest().build();
-        boolean ok = wareHouseService.adjustPreparationQuantity(warehouseId, preparationId, deltaNum.doubleValue());
-        if (!ok) return ResponseEntity.badRequest().build();
-        return ResponseEntity.ok().build();
+        try {
+            inventoryValuationService.adjustPreparationAtCurrentCost(
+                    warehouseId,
+                    preparationId,
+                    java.math.BigDecimal.valueOf(deltaNum.doubleValue()),
+                    "manual_adjustment",
+                    null,
+                    "warehouse-api"
+            );
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException exception) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @PostMapping("/{warehouseId}/products/{productId}/revaluation")

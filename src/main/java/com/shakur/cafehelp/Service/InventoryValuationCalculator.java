@@ -35,6 +35,27 @@ public final class InventoryValuationCalculator {
         return new Issue(issuedQuantity, issuedValue, balance(remainingQuantity, remainingValue));
     }
 
+    /**
+     * Manual stock adjustment at the current average cost. A surplus is valued at
+     * the average (or {@code fallbackUnitCost} when the balance has no cost yet),
+     * a shortage leaves the balance at the average like any other issue.
+     */
+    static Adjustment adjust(Balance current, BigDecimal delta, BigDecimal fallbackUnitCost) {
+        if (delta == null || delta.signum() == 0) {
+            throw new IllegalArgumentException("Изменение количества не может быть нулевым");
+        }
+        if (delta.signum() < 0) {
+            Issue issued = issue(current, delta.negate(), false);
+            return new Adjustment(false, issued.quantity(), issued.value(), current.averageUnitCost(), issued.remaining());
+        }
+        BigDecimal unitCost = current.averageUnitCost().signum() > 0
+                ? current.averageUnitCost()
+                : (fallbackUnitCost != null ? fallbackUnitCost.max(BigDecimal.ZERO) : BigDecimal.ZERO)
+                        .setScale(SCALE, RoundingMode.HALF_UP);
+        BigDecimal value = delta.multiply(unitCost).setScale(SCALE, RoundingMode.HALF_UP);
+        return new Adjustment(true, delta, value, unitCost, receive(current, delta, value));
+    }
+
     static Balance balance(BigDecimal quantity, BigDecimal value) {
         requireNonNegative(quantity, "quantity");
         requireNonNegative(value, "value");
@@ -61,5 +82,8 @@ public final class InventoryValuationCalculator {
     }
 
     record Issue(BigDecimal quantity, BigDecimal value, Balance remaining) {
+    }
+
+    record Adjustment(boolean incoming, BigDecimal quantity, BigDecimal value, BigDecimal unitCost, Balance updated) {
     }
 }
