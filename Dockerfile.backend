@@ -10,8 +10,13 @@ RUN gradle --no-daemon bootJar -x test -x generateJooq
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/build/libs/*.jar app.jar
 COPY db ./db
 
 EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+    CMD curl --fail --silent http://127.0.0.1:8080/api/health || exit 1
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

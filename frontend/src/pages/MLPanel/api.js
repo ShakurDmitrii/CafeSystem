@@ -111,6 +111,8 @@ export const ApiClient = {
                 minIngredients: constraints.minIngredients,
                 maxIngredients: constraints.maxIngredients,
                 maxCost: constraints.maxCost,
+                sellingPrice: constraints.sellingPrice === '' ? null : constraints.sellingPrice,
+                totalWeightGrams: constraints.totalWeightGrams,
                 minProfitMargin: constraints.minProfitMargin,
                 mustInclude: constraints.mustInclude,
                 excludedIngredients: constraints.excludedIngredients ?? constraints.exclude ?? [],
@@ -169,6 +171,8 @@ export const ApiClient = {
                     populationSize: params.populationSize ?? 80,
                     generations: params.generations ?? 40,
                     markup: params.markup ?? 2.35,
+                    sellingPrice: params.sellingPrice,
+                    totalWeightGrams: params.totalWeightGrams ?? 140,
                     mustInclude: params.mustInclude ?? [],
                     excludedIngredients: params.excludedIngredients ?? []
                 })

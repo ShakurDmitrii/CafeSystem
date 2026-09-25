@@ -1,0 +1,142 @@
+openapi: 3.1.0
+info:
+  title: CafeHelp Image Files API
+  version: 1.0.0
+  description: Безопасная загрузка и контролируемая выдача изображений каталога.
+servers:
+  - url: /
+paths:
+  /api/v1/files/images:
+    post:
+      summary: Загрузить изображение
+      description: Доступно только OWNER. Принимаются корректные JPEG и PNG размером до 5 МБ.
+      operationId: uploadImage
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              additionalProperties: false
+              properties:
+                file:
+                  type: string
+                  format: binary
+                folder:
+                  type: string
+                  enum: [products, dishes, dish-sets, misc]
+                  default: misc
+      responses:
+        '200':
+          description: Изображение проверено и сохранено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          description: Пустой, повреждённый, неподдерживаемый файл или некорректная папка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: JWT отсутствует или недействителен
+        '403':
+          description: Недостаточно роли OWNER
+        '413':
+          description: Файл превышает 5 МБ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: MinIO временно недоступен; ответ содержит Retry-After
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              example: 5
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/files/images/{folder}/{filename}:
+    get:
+      summary: Получить публичное изображение по непредсказуемому ключу
+      operationId: getImage
+      security: []
+      parameters:
+        - name: folder
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [products, dishes, dish-sets, misc]
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9a-f-]{36}\.(jpg|png)$'
+      responses:
+        '200':
+          description: Изображение
+          headers:
+            X-Content-Type-Options:
+              schema:
+                type: string
+              example: nosniff
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Некорректный ключ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: MinIO временно недоступен
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    UploadResponse:
+      type: object
+      required: [key, url]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          example: products/7aa0a8ef-bf72-4f7d-9ca3-c16c19152c89.png
+        url:
+          type: string
+          format: uri
+          example: http://localhost:8080/api/v1/files/images/products/7aa0a8ef-bf72-4f7d-9ca3-c16c19152c89.png
+    ApiError:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        message:
+          type: string

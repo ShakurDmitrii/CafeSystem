@@ -23,6 +23,9 @@ import ProductsPage from "./pages/Products/ProductsPage";
 import HomePage from "./pages/Home/HomePage";
 import KitchenDisplayPage from "./pages/SuppliersPage/CashierPages/KitchenDisplayPage";
 import TaxPage from "./pages/Tax/TaxPage";
+import SystemPage from "./pages/System/SystemPage";
+import DesktopStartupGate from "./components/desktop/DesktopStartupGate";
+import DesktopPrintPage from "./pages/DesktopPrint/DesktopPrintPage";
 
 function ProtectedRoute({ auth, roles, element }) {
     if (!auth) return <Navigate to="/login" replace />;
@@ -33,6 +36,8 @@ function ProtectedRoute({ auth, roles, element }) {
 function AppLayout({ auth, setAuth }) {
     const location = useLocation();
     const isKitchenDisplay = location.pathname.startsWith("/kitchen-display");
+    const isDesktopPrint = location.pathname.startsWith("/desktop-print/");
+    const isStandaloneWindow = isKitchenDisplay || isDesktopPrint;
 
     const handleLogout = () => {
         clearAuth();
@@ -46,6 +51,7 @@ function AppLayout({ auth, setAuth }) {
                     <Route path="/tech-card/:dishId" element={<ProtectedRoute auth={auth} roles={["WORKER", "OWNER"]} element={<TechCardPage />} />} />
                     <Route path="/preparation-tech-card/:preparationId" element={<ProtectedRoute auth={auth} roles={["WORKER", "OWNER"]} element={<TechCardPage />} />} />
                     <Route path="/kitchen-display/:shiftId" element={<ProtectedRoute auth={auth} roles={["WORKER", "OWNER"]} element={<KitchenDisplayPage auth={auth} />} />} />
+                    <Route path="/desktop-print/:jobId" element={<ProtectedRoute auth={auth} roles={["WORKER", "OWNER"]} element={<DesktopPrintPage />} />} />
                     <Route path="/suppliers" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<SuppliersPage />} />} />
                     <Route path="/clients" element={<ProtectedRoute auth={auth} roles={["WORKER", "OWNER"]} element={<ClientsPage />} />} />
                     <Route path="/suppliers/:id" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<SupplierProductPage />} />} />
@@ -59,12 +65,13 @@ function AppLayout({ auth, setAuth }) {
                     <Route path="/movements" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<MovementPage />} />} />
                     <Route path="/ml" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<MlPage />} />} />
                     <Route path="/tax" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<TaxPage />} />} />
+                    <Route path="/system" element={<ProtectedRoute auth={auth} roles={["OWNER"]} element={<SystemPage />} />} />
                     <Route path="/" element={<ProtectedRoute auth={auth} element={<HomePage auth={auth} />} />} />
                     <Route path="*" element={<Navigate to={auth ? "/" : "/login"} replace />} />
         </Routes>
     );
 
-    if (auth && !isKitchenDisplay) {
+    if (auth && !isStandaloneWindow) {
         return (
             <AppShell auth={auth} onLogout={handleLogout}>
                 {appRoutes}
@@ -74,7 +81,7 @@ function AppLayout({ auth, setAuth }) {
 
     return (
         <div className="App">
-            <main className={`App-content ${isKitchenDisplay ? "App-content--full" : "App-content--auth"}`}>
+            <main className={`App-content ${isStandaloneWindow ? "App-content--full" : "App-content--auth"}`}>
                 {appRoutes}
             </main>
         </div>
@@ -110,9 +117,11 @@ function App() {
     }, [auth]);
 
     return (
-        <Router>
-            <AppLayout auth={auth} setAuth={setAuth} />
-        </Router>
+        <DesktopStartupGate>
+            <Router>
+                <AppLayout auth={auth} setAuth={setAuth} />
+            </Router>
+        </DesktopStartupGate>
     );
 }
 

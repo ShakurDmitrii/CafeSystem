@@ -2,11 +2,15 @@ package com.shakur.cafehelp.DTO.MlDTO;
 
 import lombok.Builder;
 import lombok.Data;
+import lombok.AllArgsConstructor;
+import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class RollPredictionResponseDTO {
     // Идентификаторы
     private String requestId;
@@ -32,6 +36,8 @@ public class RollPredictionResponseDTO {
     // Метаданные
     private LocalDateTime predictionTime;
     private String modelVersion;
+    private String target;
+    private List<String> warnings;
 
     // Поле для ошибок (ДОБАВЬТЕ ЭТО!)
     private String errorMessage;
@@ -47,9 +53,7 @@ public class RollPredictionResponseDTO {
         return RollPredictionResponseDTO.builder()
                 .ingredients(ingredients)
                 .predictedSales(predictedSales)
-                .confidenceScore(0.85)
                 .predictionTime(LocalDateTime.now())
-                .modelVersion("1.0")
                 .build();
     }
 
@@ -58,7 +62,6 @@ public class RollPredictionResponseDTO {
         return RollPredictionResponseDTO.builder()
                 .errorMessage(errorMessage)
                 .predictionTime(LocalDateTime.now())
-                .confidenceScore(0.0)
                 .build();
     }
 }

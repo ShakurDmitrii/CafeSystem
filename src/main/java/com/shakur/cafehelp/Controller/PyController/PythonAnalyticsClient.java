@@ -1,6 +1,5 @@
 package com.shakur.cafehelp.Controller.PyController;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shakur.cafehelp.DTO.MlDTO.AnaliticDTO.*;
 import com.shakur.cafehelp.exception.PythonServiceException;
@@ -12,17 +11,14 @@ import org.springframework.http.*;
 import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.client.ClientHttpResponse;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -31,47 +27,67 @@ import java.util.Optional;
 @Slf4j
 public class PythonAnalyticsClient {
 
-    private static RestTemplate restTemplate;
-    private static String pythonApiUrl = "http://localhost:8000";
-    private static String internalServiceToken = "";
+    private final RestTemplate restTemplate;
+    private final String pythonApiUrl;
+    private final ObjectMapper objectMapper;
 
     public PythonAnalyticsClient(
             RestTemplateBuilder restTemplateBuilder,
             @Value("${python.api.url:http://localhost:8000}") String configuredPythonApiUrl,
-            @Value("${internal.service.token:}") String configuredInternalServiceToken
+            @Value("${internal.service.token:}") String configuredInternalServiceToken,
+            @Value("${internal.api.contract-version:1}") String contractVersion,
+            @Value("${python.client.connect-timeout:3s}") Duration connectTimeout,
+            @Value("${python.client.read-timeout:30s}") Duration readTimeout,
+            ObjectMapper objectMapper
     ) {
-        internalServiceToken = configuredInternalServiceToken == null
-                ? ""
-                : configuredInternalServiceToken;
-        restTemplate = configureRestTemplate(restTemplateBuilder);
-        pythonApiUrl = configuredPythonApiUrl;
-        log.info("PythonAnalyticsClient initialized with URL: {}", pythonApiUrl);
+        this.restTemplate = configureRestTemplate(
+                restTemplateBuilder,
+                configuredInternalServiceToken,
+                contractVersion,
+                connectTimeout,
+                readTimeout
+        );
+        this.pythonApiUrl = configuredPythonApiUrl.replaceAll("/+$", "");
+        this.objectMapper = objectMapper;
+        log.info("PythonAnalyticsClient initialized");
     }
 
-    private RestTemplate configureRestTemplate(RestTemplateBuilder builder) {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(Duration.ofSeconds(10));
-        requestFactory.setReadTimeout(Duration.ofSeconds(30));
-
+    private RestTemplate configureRestTemplate(
+            RestTemplateBuilder builder,
+            String serviceToken,
+            String contractVersion,
+            Duration connectTimeout,
+            Duration readTimeout
+    ) {
         return builder
-                .requestFactory(() -> requestFactory)
+                .connectTimeout(connectTimeout)
+                .readTimeout(readTimeout)
                 .additionalInterceptors(
-                        new ServiceTokenInterceptor(),
+                        new ServiceTokenInterceptor(serviceToken, contractVersion),
                         new LoggingInterceptor()
                 )
                 .build();
     }
 
     private static class ServiceTokenInterceptor implements ClientHttpRequestInterceptor {
+        private final String serviceToken;
+        private final String contractVersion;
+
+        private ServiceTokenInterceptor(String serviceToken, String contractVersion) {
+            this.serviceToken = serviceToken == null ? "" : serviceToken;
+            this.contractVersion = contractVersion;
+        }
+
         @Override
         public ClientHttpResponse intercept(
                 HttpRequest request,
                 byte[] body,
                 ClientHttpRequestExecution execution
         ) throws IOException {
-            if (!internalServiceToken.isBlank()) {
-                request.getHeaders().set("X-Service-Token", internalServiceToken);
+            if (!serviceToken.isBlank()) {
+                request.getHeaders().set("X-Service-Token", serviceToken);
             }
+            request.getHeaders().set("X-Contract-Version", contractVersion);
             return execution.execute(request, body);
         }
     }
@@ -95,16 +111,16 @@ public class PythonAnalyticsClient {
     /**
      * Проверка доступности Python сервиса
      */
-    public static boolean isPythonServiceAvailable() {
+    public boolean isPythonServiceAvailable() {
         String url = pythonApiUrl + "/health";
-        log.info("🩺 Checking Python health at: {}", url);
+        log.debug("Checking Python health endpoint");
         try {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
             boolean available = response.getStatusCode().is2xxSuccessful();
             log.info("✅ Python service health check: {}", available ? "UP" : "DOWN");
             return available;
         } catch (Exception e) {
-            log.warn("❌ Python service is not available: {}", e.getMessage());
+            log.warn("Python service health check failed: {}", e.getClass().getSimpleName());
             return false;
         }
     }
@@ -112,14 +128,14 @@ public class PythonAnalyticsClient {
     /**
      * Запрос всех данных для дашборда с подробным логированием
      */
-    public static DashboardDataDTO getDashboardDataFromPython(
+    public DashboardDataDTO getDashboardDataFromPython(
             String timeRange,
             LocalDateTime startDate,
             LocalDateTime endDate,
             boolean refresh) {
 
         // ВАЖНО: используем timeRange (camelCase) как в Java контроллере
-        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(pythonApiUrl)
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(pythonApiUrl)
                 .path("/api/analytics/dashboard")
                 .queryParam("timeRange", timeRange)  // <- camelCase!
                 .queryParam("refresh", refresh);
@@ -132,51 +148,33 @@ public class PythonAnalyticsClient {
         }
 
         String url = builder.toUriString();
-        log.info("🔗 Sending to Python: {}", url);
+        log.debug("Requesting Python analytics dashboard");
 
         try {
-            // 1. Сначала получаем raw JSON для дебага
             ResponseEntity<String> rawResponse = restTemplate.getForEntity(url, String.class);
-            log.info("📥 Python response status: {}", rawResponse.getStatusCode());
-            log.info("📥 Python response body length: {} chars",
-                    rawResponse.getBody() != null ? rawResponse.getBody().length() : 0);
-
-            // Логируем первые 200 символов ответа
-            if (rawResponse.getBody() != null && rawResponse.getBody().length() > 0) {
-                String preview = rawResponse.getBody().length() > 200
-                        ? rawResponse.getBody().substring(0, 200) + "..."
-                        : rawResponse.getBody();
-                log.info("📥 Python response preview: {}", preview);
+            String body = requireBody(rawResponse, "dashboard");
+            DashboardDataDTO data = objectMapper.readValue(body, DashboardDataDTO.class);
+            if (!data.isValid()) {
+                throw PythonServiceException.invalidResponse(
+                        new IllegalStateException("Incomplete dashboard response")
+                );
             }
-
-            // 2. Создаем ObjectMapper с настройками для snake_case
-            ObjectMapper mapper = new ObjectMapper();
-            mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-            // 3. Маппим JSON в DTO
-            DashboardDataDTO data = mapper.readValue(rawResponse.getBody(), DashboardDataDTO.class);
-
-            // 4. Устанавливаем дополнительные поля
             data.setGeneratedAt(String.valueOf(LocalDateTime.now()));
             data.setIsCached(false);
             if (data.getDataSource() == null) {
                 data.setDataSource("Python Analytics API");
             }
 
-            log.info("✅ Successfully fetched dashboard data from Python");
-            log.info("✅ Data summary - KPI: {}, TopRolls: {}, Insights: {}",
-                    data.getKpi() != null ? "present" : "null",
-                    data.getTopRolls() != null ? data.getTopRolls().size() : 0,
-                    data.getInsights() != null ? data.getInsights().size() : 0);
             return data;
 
         } catch (HttpClientErrorException e) {
-            log.error("❌ HTTP error from Python: {} {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new PythonServiceException("Python analytics request failed", e);
-
+            log.error("Python analytics request rejected with status {}", e.getStatusCode());
+            throw PythonServiceException.translate(e);
+        } catch (PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("❌ Error fetching dashboard data from Python: {}", e.getMessage());
-            throw new PythonServiceException("Python analytics service unavailable", e);
+            log.error("Python dashboard request failed: {}", e.getClass().getSimpleName());
+            throw PythonServiceException.translate(e);
         }
     }
 
@@ -184,29 +182,32 @@ public class PythonAnalyticsClient {
      * Запрос KPI данных из Python
      */
     public KpiDataDTO getKpiFromPython(String timeRange, boolean forceRefresh) {
-        String url = UriComponentsBuilder.fromHttpUrl(pythonApiUrl)
+        String url = UriComponentsBuilder.fromUriString(pythonApiUrl)
                 .path("/api/analytics/kpi")
                 .queryParam("timeRange", timeRange)  // camelCase
                 .queryParam("refresh", forceRefresh)
                 .toUriString();
 
-        log.info("📊 Sending KPI request to Python: {}", url);
+        log.debug("Sending KPI request to Python");
 
         try {
-            // Получаем raw JSON для дебага
-            ResponseEntity<String> rawResponse = restTemplate.getForEntity(url, String.class);
-            log.info("📥 KPI response status: {}", rawResponse.getStatusCode());
-
-            ObjectMapper mapper = new ObjectMapper();
-            mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-            KpiDataDTO kpi = mapper.readValue(rawResponse.getBody(), KpiDataDTO.class);
-            log.info("✅ Successfully fetched KPI data");
+            ResponseEntity<KpiDataDTO> response = restTemplate.getForEntity(url, KpiDataDTO.class);
+            KpiDataDTO kpi = requireBody(response, "kpi");
+            if (kpi.getTotalProfit() == null
+                    || kpi.getTotalSales() == null
+                    || kpi.getProfitChange() == null
+                    || kpi.getSalesChange() == null) {
+                throw PythonServiceException.invalidResponse(
+                        new IllegalStateException("Incomplete KPI response")
+                );
+            }
             return kpi;
 
+        } catch (PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("❌ Error fetching KPI from Python: {}", e.getMessage());
-            throw new PythonServiceException("Python analytics service unavailable", e);
+            log.error("Python KPI request failed: {}", e.getClass().getSimpleName());
+            throw PythonServiceException.translate(e);
         }
     }
 
@@ -214,14 +215,14 @@ public class PythonAnalyticsClient {
      * Запрос топ роллов из Python
      */
     public List<TopRollDTO> getTopRollsFromPython(String timeRange, int limit, String sortBy) {
-        String url = UriComponentsBuilder.fromHttpUrl(pythonApiUrl)
+        String url = UriComponentsBuilder.fromUriString(pythonApiUrl)
                 .path("/api/analytics/top-rolls")
                 .queryParam("timeRange", timeRange)  // camelCase
                 .queryParam("limit", limit)
                 .queryParam("sortBy", sortBy)  // camelCase
                 .toUriString();
 
-        log.info("🏆 Sending top rolls request to Python: {}", url);
+        log.debug("Sending top rolls request to Python");
 
         try {
             ResponseEntity<List<TopRollDTO>> response = restTemplate.exchange(
@@ -231,17 +232,12 @@ public class PythonAnalyticsClient {
                     new ParameterizedTypeReference<List<TopRollDTO>>() {}
             );
 
-            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                log.info("✅ Successfully fetched {} top rolls", response.getBody().size());
-                return response.getBody();
-            }
-
-            log.warn("⚠️ Empty response for top rolls");
-            return Collections.emptyList();
-
+            return requireBody(response, "top rolls");
+        } catch (PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("❌ Error fetching top rolls from Python: {}", e.getMessage());
-            throw new PythonServiceException("Python analytics service unavailable", e);
+            log.error("Python top rolls request failed: {}", e.getClass().getSimpleName());
+            throw PythonServiceException.translate(e);
         }
     }
 
@@ -249,13 +245,13 @@ public class PythonAnalyticsClient {
      * Запрос трендов продаж
      */
     public List<SalesTrendDTO> getSalesTrendFromPython(String timeRange, String granularity) {
-        String url = UriComponentsBuilder.fromHttpUrl(pythonApiUrl)
+        String url = UriComponentsBuilder.fromUriString(pythonApiUrl)
                 .path("/api/analytics/sales-trend")
                 .queryParam("timeRange", timeRange)  // camelCase
                 .queryParam("granularity", granularity)
                 .toUriString();
 
-        log.info("📈 Sending sales trend request to Python: {}", url);
+        log.debug("Sending sales trend request to Python");
 
         try {
             ResponseEntity<List<SalesTrendDTO>> response = restTemplate.exchange(
@@ -265,11 +261,12 @@ public class PythonAnalyticsClient {
                     new ParameterizedTypeReference<List<SalesTrendDTO>>() {}
             );
 
-            return response.getBody() != null ? response.getBody() : Collections.emptyList();
-
+            return requireBody(response, "sales trend");
+        } catch (PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("❌ Error fetching sales trend from Python: {}", e.getMessage());
-            throw new PythonServiceException("Python analytics service unavailable", e);
+            log.error("Python sales trend request failed: {}", e.getClass().getSimpleName());
+            throw PythonServiceException.translate(e);
         }
     }
 
@@ -277,13 +274,13 @@ public class PythonAnalyticsClient {
      * Запрос AI инсайтов
      */
     public List<InsightDTO> getInsightsFromPython(String timeRange, String priority) {
-        String url = UriComponentsBuilder.fromHttpUrl(pythonApiUrl)
+        String url = UriComponentsBuilder.fromUriString(pythonApiUrl)
                 .path("/api/analytics/insights")
                 .queryParam("timeRange", timeRange)  // camelCase
                 .queryParamIfPresent("priority", Optional.ofNullable(priority))
                 .toUriString();
 
-        log.info("💡 Sending insights request to Python: {}", url);
+        log.debug("Sending insights request to Python");
 
         try {
             ResponseEntity<List<InsightDTO>> response = restTemplate.exchange(
@@ -293,43 +290,22 @@ public class PythonAnalyticsClient {
                     new ParameterizedTypeReference<List<InsightDTO>>() {}
             );
 
-            return response.getBody() != null ? response.getBody() : Collections.emptyList();
-
+            return requireBody(response, "insights");
+        } catch (PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("❌ Error fetching insights from Python: {}", e.getMessage());
-            throw new PythonServiceException("Python analytics service unavailable", e);
+            log.error("Python insights request failed: {}", e.getClass().getSimpleName());
+            throw PythonServiceException.translate(e);
         }
     }
 
-    /**
-     * Отправка фидбека по инсайту в Python
-     */
-    public boolean sendInsightFeedback(String insightId, String action, Map<String, Object> metadata) {
-        String url = pythonApiUrl + "/api/analytics/insights/" + insightId + "/feedback";
-
-        log.info("📝 Sending feedback to Python: {}", url);
-
-        try {
-            Map<String, Object> requestBody = Map.of(
-                    "action", action,
-                    "metadata", metadata,
-                    "timestamp", LocalDateTime.now().toString()
+    private <T> T requireBody(ResponseEntity<T> response, String operation) {
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            throw PythonServiceException.invalidResponse(
+                    new IllegalStateException("Missing response body for " + operation)
             );
-
-            ResponseEntity<Void> response = restTemplate.postForEntity(
-                    url,
-                    requestBody,
-                    Void.class
-            );
-
-            boolean success = response.getStatusCode().is2xxSuccessful();
-            log.info("✅ Feedback sent successfully: {}", success);
-            return success;
-
-        } catch (Exception e) {
-            log.error("❌ Error sending insight feedback to Python: {}", e.getMessage());
-            return false;
         }
+        return response.getBody();
     }
 
     /**
@@ -337,9 +313,8 @@ public class PythonAnalyticsClient {
      */
     public Map<String, Object> getPythonApiStats() {
         boolean available = isPythonServiceAvailable();
-        log.info("📊 Python API Stats - Available: {}, URL: {}", available, pythonApiUrl);
+        log.info("Python API availability checked: {}", available);
         return Map.of(
-                "url", pythonApiUrl,
                 "available", available,
                 "lastChecked", LocalDateTime.now()
         );

@@ -83,7 +83,10 @@ export default function WarehousePage() {
                     const product = productMap.get(productId) ?? {};
                     const priceKey = `${warehouseId}-${productId}`;
                     const unitFactor = getSafeUnitFactor(product.unitFactor);
-                    const averageBasePrice = averages[priceKey];
+                    const storedAverageBasePrice = Number(row.averageUnitCost);
+                    const averageBasePrice = Number.isFinite(storedAverageBasePrice)
+                        ? storedAverageBasePrice
+                        : averages[priceKey];
                     return {
                         ...product,
                         ...row,
@@ -95,6 +98,7 @@ export default function WarehousePage() {
                         averagePrice: averageBasePrice == null
                             ? Number(product.productPrice ?? 0)
                             : averageBasePrice * unitFactor,
+                        inventoryValue: Number(row.inventoryValue ?? 0),
                         latestPrice: latest[priceKey] ?? null
                     };
                 })];
@@ -400,6 +404,49 @@ export default function WarehousePage() {
         if (ok) setStockInputs((previous) => ({ ...previous, [key]: { quantity: "", unitPrice: "" } }));
     };
 
+    const revalueStock = async (warehouseId, product) => {
+        const key = `${warehouseId}-${product.productId}`;
+        const enteredPrice = parseDecimal(stockInputs[key]?.unitPrice);
+        if (!Number.isFinite(enteredPrice) || enteredPrice < 0) {
+            setPageError("Укажите новую среднюю цену в поле цены.");
+            return;
+        }
+        const reason = window.prompt(
+            `Причина переоценки «${product.productName}». Например: исправлена ошибочная цена прихода`
+        );
+        if (reason == null) return;
+        if (!reason.trim()) {
+            setPageError("Для переоценки нужна причина.");
+            return;
+        }
+
+        const averageUnitCost = enteredPrice / getSafeUnitFactor(product.unitFactor);
+        setBusyKey(`stock-${key}`);
+        setPageError("");
+        try {
+            const response = await fetch(
+                `${API_WAREHOUSES}/${warehouseId}/products/${product.productId}/revaluation`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        averageUnitCost,
+                        reason: reason.trim()
+                    })
+                }
+            );
+            const body = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(body?.message || "Не удалось переоценить остаток.");
+            showNotice("Стоимость текущего остатка обновлена. Прошлые продажи не изменены.");
+            setStockInputs((previous) => ({ ...previous, [key]: { ...previous[key], unitPrice: "" } }));
+            await loadData();
+        } catch (error) {
+            setPageError(error.message);
+        } finally {
+            setBusyKey("");
+        }
+    };
+
     return (
         <div className={styles.page}>
             <WarehouseHero
@@ -504,6 +551,7 @@ export default function WarehousePage() {
                                     [key]: { ...(previous[key] ?? {}), ...value }
                                 }))}
                                 onAdjustStock={(product, direction) => adjustStock(warehouse.warehouseId, product, direction)}
+                                onRevalueStock={(product) => revalueStock(warehouse.warehouseId, product)}
                             />
                         ))}
                     </div>

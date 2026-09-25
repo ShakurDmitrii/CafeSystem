@@ -1,0 +1,141 @@
+name: cafehelp
+
+services:
+  db:
+    image: ${CAFEHELP_POSTGRES_IMAGE:-postgres:16-alpine}
+    container_name: cafehelp-db
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 1g
+
+  tax_db:
+    image: ${CAFEHELP_POSTGRES_IMAGE:-postgres:16-alpine}
+    container_name: cafehelp-tax-db
+    environment:
+      POSTGRES_DB: taxdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${TAX_POSTGRES_PASSWORD:?TAX_POSTGRES_PASSWORD is required}
+    volumes:
+      - tax_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d taxdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 512m
+
+  minio:
+    image: ${CAFEHELP_MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}
+    container_name: cafehelp-minio
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    mem_limit: 768m
+
+  backend:
+    image: ${CAFEHELP_BACKEND_IMAGE:-cafehelp-backend:0.1.0}
+    container_name: cafehelp-backend
+    depends_on:
+      db:
+        condition: service_healthy
+      tax_db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/postgres
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      TAX_DATASOURCE_URL: jdbc:postgresql://tax_db:5432/taxdb
+      TAX_DATASOURCE_USERNAME: postgres
+      TAX_DATASOURCE_PASSWORD: ${TAX_POSTGRES_PASSWORD}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      SECURITY_JWT_SECRET: ${SECURITY_JWT_SECRET}
+      VK_BOT_API_TOKEN: ${VK_BOT_API_TOKEN:-}
+      TAX_DISPATCH_MODE: ${TAX_PROVIDER:-SAFE}
+      PYTHON_API_URL: http://pymodule:8000
+      ML_PYTHON_SERVICE_URL: http://pymodule:8000
+      ML_SERVICE_URL: http://pymodule:8000
+      STORAGE_MINIO_ENDPOINT: http://minio:9000
+      STORAGE_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      STORAGE_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      STORAGE_MINIO_BUCKET: ${MINIO_BUCKET:-cafehelp-files}
+      STORAGE_MINIO_PUBLIC_BASE_URL: http://localhost:8080
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    mem_limit: 2g
+
+  pymodule:
+    image: ${CAFEHELP_PYMODULE_IMAGE:-cafehelp-pymodule:0.1.0}
+    container_name: cafehelp-pymodule
+    depends_on:
+      - backend
+    environment:
+      JAVA_API_URL: http://backend:8080
+      JAVA_API_TIMEOUT_SECONDS: 30
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      INTERNAL_API_CONTRACT_VERSION: 1
+    volumes:
+      - pymodule_models:/app/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    cpus: 2.0
+    mem_limit: 2g
+
+  vkbot:
+    image: ${CAFEHELP_VKBOT_IMAGE:-cafehelp-vkbot:0.1.0}
+    container_name: cafehelp-vkbot
+    profiles: ["vkbot"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      BACKEND_URL: http://backend:8080
+      VK_GROUP_TOKEN: ${VK_GROUP_TOKEN:-}
+      VK_GROUP_ID: ${VK_GROUP_ID:-}
+      VK_BOT_API_TOKEN: ${VK_BOT_API_TOKEN:-}
+      VK_LONG_POLL_WAIT: ${VK_LONG_POLL_WAIT:-10}
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 256m
+
+volumes:
+  pg_data:
+    external: true
+    name: cafehelp_pg_data
+  tax_pg_data:
+    external: true
+    name: cafehelp_tax_pg_data
+  minio_data:
+    external: true
+    name: cafehelp_minio_data
+  pymodule_models:
+    external: true
+    name: cafehelp_pymodule_models

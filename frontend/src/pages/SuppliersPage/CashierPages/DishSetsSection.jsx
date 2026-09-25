@@ -4,7 +4,7 @@ import DishPickerModal from "./DishPickerModal";
 import styles from "./DishPage.module.css";
 
 const API_DISH_SETS = `${API_BASE_URL}/api/dish-sets`;
-const API_UPLOAD = `${API_BASE_URL}/api/files/upload-image`;
+const API_UPLOAD = `${API_BASE_URL}/api/v1/files/images`;
 
 const createSetForm = () => ({
     setName: "",
@@ -452,7 +452,7 @@ export default function DishSetsSection({ dishes = [], categories = [], readOnly
                         <input
                             type="file"
                             name="createSetImage"
-                            accept="image/*"
+                            accept="image/jpeg,image/png"
                             className={styles.fileInput}
                             aria-label="Фото нового набора"
                             onChange={(e) => handleCreateImageUpload(e.target.files?.[0])}
@@ -690,7 +690,7 @@ export default function DishSetsSection({ dishes = [], categories = [], readOnly
                                     <input
                                         type="file"
                                         name="editSetImage"
-                                        accept="image/*"
+                                        accept="image/jpeg,image/png"
                                         className={styles.fileInput}
                                         aria-label="Новое фото набора"
                                         onChange={(e) => handleEditImageUpload(e.target.files?.[0])}

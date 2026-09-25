@@ -31,7 +31,7 @@ class JavaApiClient:
         endpoint: str,
         params: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-        timeout: int = 10
+        timeout: float | None = None,
     ) -> Any:
         if not self.session:
             raise RuntimeError("JavaApiClient not initialized")
@@ -41,13 +41,16 @@ class JavaApiClient:
         request_headers["X-Service-Token"] = (
             settings.INTERNAL_SERVICE_TOKEN.get_secret_value()
         )
+        request_headers["X-Contract-Version"] = settings.INTERNAL_API_CONTRACT_VERSION
 
         try:
             async with self.session.get(
                 url,
                 params=params,
                 headers=request_headers,
-                timeout=aiohttp.ClientTimeout(total=timeout),
+                timeout=aiohttp.ClientTimeout(
+                    total=timeout or settings.JAVA_API_TIMEOUT_SECONDS
+                ),
             ) as response:
                 if response.status == 200:
                     return await response.json()
@@ -60,6 +63,6 @@ class JavaApiClient:
 
         except JavaApiError:
             raise
-        except Exception as e:
-            logger.error(f"Java API request failed: {e}")
-            raise JavaApiError(502, "Java API unavailable") from e
+        except Exception as exc:
+            logger.error("Java API request failed: %s", type(exc).__name__)
+            raise JavaApiError(502, "Java API unavailable") from exc

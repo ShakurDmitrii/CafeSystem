@@ -9,7 +9,7 @@ export default function PredictionResult({ prediction, loading, error }) {
             <div className={`${styles.resultCard} ${styles.centeredState}`} role="status">
                 <span className={styles.spinner} aria-hidden="true" />
                 <h3>Модель считает сценарий</h3>
-                <p>Сопоставляем состав с историей продаж и себестоимостью.</p>
+                <p>Сопоставляем состав с историей продаж.</p>
             </div>
         );
     }
@@ -30,12 +30,12 @@ export default function PredictionResult({ prediction, loading, error }) {
                 <span className={styles.emptyIcon} aria-hidden="true"><BarChartOutlined /></span>
                 <p className={styles.eyebrow}>Результат</p>
                 <h3>Здесь появится прогноз</h3>
-                <p>После расчёта вы увидите продажи в день, уверенность модели и финансовые показатели.</p>
+                <p>После расчёта вы увидите оценку продаж и ограничения модели. Для расчёта экономики нужна техкарта.</p>
             </div>
         );
     }
 
-    const confidence = Number(prediction.confidenceScore) || 0;
+    const confidence = prediction.confidenceScore == null ? null : Number(prediction.confidenceScore);
     const confidenceTone = confidence >= 0.8
         ? styles.confidenceHigh
         : confidence >= 0.6
@@ -47,14 +47,14 @@ export default function PredictionResult({ prediction, loading, error }) {
             <div className={styles.resultTopline}>
                 <span className={styles.successMark} aria-hidden="true"><CheckCircleOutlined /></span>
                 <span className={`${styles.confidenceBadge} ${confidenceTone}`}>
-                    Уверенность {formatPercent(confidence, { fraction: true, digits: 0 })}
+                    {confidence == null ? 'Уверенность не оценена' : `Уверенность ${formatPercent(confidence, { fraction: true, digits: 0 })}`}
                 </span>
             </div>
 
             <p className={styles.eyebrow}>Прогноз спроса</p>
             <div className={styles.salesValue}>
                 {formatNumber(prediction.predictedSales)}
-                <span>продаж в день</span>
+                <span>{prediction.target === 'daily_quantity_on_sale_days' ? 'порций в день с продажами' : 'оценка старой модели — нужно переобучение'}</span>
             </div>
 
             <div className={styles.metricGrid}>
@@ -63,15 +63,16 @@ export default function PredictionResult({ prediction, loading, error }) {
                     <strong>{formatCurrency(prediction.estimatedCost)}</strong>
                 </div>
                 <div>
-                    <span>Ожидаемая прибыль</span>
+                    <span>Расчётная маржа в рублях</span>
                     <strong>{formatCurrency(prediction.estimatedProfit)}</strong>
                 </div>
             </div>
 
             <div className={styles.metaInfo}>
-                <span>Модель {prediction.modelVersion || '1.0'}</span>
-                <span>Расчёт в {formatTime(prediction.timestamp)}</span>
+                <span>Модель {prediction.modelVersion || 'не указана'}</span>
+                <span>Расчёт в {formatTime(prediction.predictionTime || prediction.timestamp)}</span>
             </div>
+            {(prediction.warnings || []).map((warning) => <p key={warning}>{warning}</p>)}
         </article>
     );
 }

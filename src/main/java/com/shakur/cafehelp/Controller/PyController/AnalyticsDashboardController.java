@@ -228,4 +228,14 @@ public class AnalyticsDashboardController {
                 .errorMessage(message)
                 .build();
     }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidAnalyticsRequest(
+            IllegalArgumentException exception
+    ) {
+        return ResponseEntity.badRequest().body(Map.of(
+                "code", "INVALID_ANALYTICS_REQUEST",
+                "message", exception.getMessage()
+        ));
+    }
 }

@@ -61,7 +61,7 @@ public class DishSetService {
 
         sets.forEach(dto -> {
             dto.setItems(itemsBySet.getOrDefault(dto.getSetId(), List.of()));
-            dto.setFirstCost(syncAndCalculateCost(dto));
+            dto.setFirstCost(calculateCost(dto));
         });
 
         return sets;
@@ -76,7 +76,7 @@ public class DishSetService {
 
         DishSetDTO dto = mapSetBase(record);
         dto.setItems(loadItemsBySetIds(List.of(id)).getOrDefault(id, List.of()));
-        dto.setFirstCost(syncAndCalculateCost(dto));
+        dto.setFirstCost(calculateCost(dto));
         return dto;
     }
 
@@ -97,7 +97,9 @@ public class DishSetService {
                 .fetchOne(SET_ID);
 
         persistItems(id, items);
-        return getById(id != null ? id : 0);
+        DishSetDTO created = getById(id != null ? id : 0);
+        persistCalculatedCost(created);
+        return created;
     }
 
     @Transactional
@@ -126,7 +128,9 @@ public class DishSetService {
                 .execute();
         persistItems(id, items);
 
-        return getById(id);
+        DishSetDTO updated = getById(id);
+        persistCalculatedCost(updated);
+        return updated;
     }
 
     @Transactional
@@ -205,7 +209,7 @@ public class DishSetService {
         return result;
     }
 
-    private double syncAndCalculateCost(DishSetDTO dto) {
+    private double calculateCost(DishSetDTO dto) {
         Integer setId = dto.getSetId();
         if (setId == null || setId <= 0) return 0.0;
 
@@ -226,20 +230,15 @@ public class DishSetService {
             total += dishCost * qty;
         }
 
-        double rounded = BigDecimal.valueOf(total).setScale(2, RoundingMode.HALF_UP).doubleValue();
-        Double stored = dsl.select(SET_FIRST_COST)
-                .from(DISH_SET)
-                .where(SET_ID.eq(setId))
-                .fetchOne(SET_FIRST_COST);
+        return BigDecimal.valueOf(total).setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
 
-        if (stored == null || Math.abs(stored - rounded) > 0.009) {
-            dsl.update(DISH_SET)
-                    .set(SET_FIRST_COST, rounded)
-                    .where(SET_ID.eq(setId))
-                    .execute();
-        }
-
-        return rounded;
+    private void persistCalculatedCost(DishSetDTO dto) {
+        if (dto == null || dto.getSetId() == null || dto.getSetId() <= 0) return;
+        dsl.update(DISH_SET)
+                .set(SET_FIRST_COST, dto.getFirstCost() != null ? dto.getFirstCost() : 0.0)
+                .where(SET_ID.eq(dto.getSetId()))
+                .execute();
     }
 
     private void persistItems(Integer setId, List<DishSetItemDTO> items) {

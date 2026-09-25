@@ -66,6 +66,7 @@ export default function OrderCard({
     onPrintOrderNumber,
     onPrintOrderDetails,
     onUpdatePayment,
+    onRequestCashPayment,
     onIssueOrder
 }) {
     const hasInlineItems = Array.isArray(order.items)
@@ -230,6 +231,18 @@ export default function OrderCard({
                 )}
             </div>
 
+            {Array.isArray(order.consumables) && order.consumables.length > 0 ? (
+                <div className={styles.orderCardConsumables}>
+                    <strong>Комплектация · {order.personCount || 1} перс.</strong>
+                    {order.consumables.map((item) => (
+                        <span key={item.productId}>
+                            {item.productName}: {Number(item.actualQuantity || 0).toLocaleString("ru-RU")} {item.baseUnit}
+                            {Number(item.surchargeAmount || 0) > 0 ? ` · +${formatMoney(item.surchargeAmount)}` : ""}
+                        </span>
+                    ))}
+                </div>
+            ) : null}
+
             <div className={styles.orderCardTotal}>
                 <span>Итого</span>
                 <strong>{formatMoney(order.amount)}</strong>
@@ -240,6 +253,12 @@ export default function OrderCard({
                 {order.clientName && <div><dt>Гость</dt><dd>{order.clientName}</dd></div>}
                 {order.clientPhone && <div><dt>Телефон</dt><dd>{order.clientPhone}</dd></div>}
                 {Number(delayMinutes) > 0 && <div><dt>Задержка</dt><dd>{delayMinutes} мин</dd></div>}
+                {isPaid && order.paymentType === "cash" && order.cashReceived != null && (
+                    <div><dt>Получено</dt><dd>{formatMoney(order.cashReceived)}</dd></div>
+                )}
+                {isPaid && order.paymentType === "cash" && order.cashChange != null && (
+                    <div><dt>Сдача</dt><dd>{formatMoney(order.cashChange)}</dd></div>
+                )}
             </dl>
 
             <div className={styles.orderCardActions}>
@@ -272,11 +291,7 @@ export default function OrderCard({
                             className={styles.orderActionPrimary}
                             type="button"
                             disabled={Boolean(busyAction)}
-                            onClick={() => runAction(
-                                "cash",
-                                () => onUpdatePayment?.(order.orderId, "cash"),
-                                "Оплата наличными отмечена"
-                            )}
+                            onClick={() => onRequestCashPayment?.(order)}
                         >
                             Наличные
                         </button>

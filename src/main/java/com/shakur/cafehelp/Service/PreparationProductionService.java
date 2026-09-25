@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -18,17 +19,20 @@ public class PreparationProductionService {
     private final RecipeRequirementService recipeRequirementService;
     private final WareHouseService wareHouseService;
     private final ProductService productService;
+    private final InventoryValuationService inventoryValuationService;
 
     public PreparationProductionService(
             PreparationService preparationService,
             RecipeRequirementService recipeRequirementService,
             WareHouseService wareHouseService,
-            ProductService productService
+            ProductService productService,
+            InventoryValuationService inventoryValuationService
     ) {
         this.preparationService = preparationService;
         this.recipeRequirementService = recipeRequirementService;
         this.wareHouseService = wareHouseService;
         this.productService = productService;
+        this.inventoryValuationService = inventoryValuationService;
     }
 
     @Transactional
@@ -53,22 +57,50 @@ public class PreparationProductionService {
 
         validateAvailability(warehouseId, requirements);
 
+        BigDecimal productionValue = BigDecimal.ZERO;
         for (Map.Entry<Integer, Double> entry : requirements.productRequirements().entrySet()) {
-            if (!wareHouseService.adjustQuantity(warehouseId, entry.getKey(), -entry.getValue())) {
+            try {
+                InventoryValuationService.ValuationChange change = inventoryValuationService.issueExactAndRecord(
+                        warehouseId,
+                        entry.getKey(),
+                        BigDecimal.valueOf(entry.getValue()),
+                        "preparation_writeoff",
+                        "preparation_production",
+                        preparationId,
+                        "preparation-service"
+                );
+                productionValue = productionValue.add(change.value());
+            } catch (IllegalArgumentException exception) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Не удалось списать продукт #" + entry.getKey());
             }
         }
 
         for (Map.Entry<Integer, Double> entry : requirements.preparationRequirements().entrySet()) {
-            if (!wareHouseService.adjustPreparationQuantity(warehouseId, entry.getKey(), -entry.getValue())) {
+            try {
+                InventoryValuationService.ValuationChange change = inventoryValuationService.issuePreparationExact(
+                        warehouseId,
+                        entry.getKey(),
+                        BigDecimal.valueOf(entry.getValue()),
+                        "preparation_production",
+                        preparationId,
+                        "preparation-service"
+                );
+                productionValue = productionValue.add(change.value());
+            } catch (IllegalArgumentException exception) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Не удалось списать заготовку #" + entry.getKey());
             }
         }
 
         double producedQuantity = (preparation.getOutputWeight() != null ? preparation.getOutputWeight() : 0.0) * batchCount;
-        if (!wareHouseService.adjustPreparationQuantity(warehouseId, preparationId, producedQuantity)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Не удалось оприходовать заготовку");
-        }
+        inventoryValuationService.receivePreparation(
+                warehouseId,
+                preparationId,
+                BigDecimal.valueOf(producedQuantity),
+                productionValue,
+                "preparation_production",
+                preparationId,
+                "preparation-service"
+        );
 
         PreparationProductionResponseDTO response = new PreparationProductionResponseDTO();
         response.setPreparationId(preparationId);

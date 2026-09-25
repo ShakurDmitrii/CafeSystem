@@ -29,6 +29,9 @@ public class WareHouseService {
     private static final Field<Integer> PW_PREPARATION_ID = DSL.field(DSL.name("preparationid"), Integer.class);
     private static final Field<Integer> PW_ID = DSL.field(DSL.name("preparationwarehouseid"), Integer.class);
     private static final Field<Double> PW_QUANTITY = DSL.field(DSL.name("quantity"), Double.class);
+    private static final Field<BigDecimal> PRODUCT_INVENTORY_VALUE = DSL.field(DSL.name("inventory_value"), BigDecimal.class);
+    private static final Field<BigDecimal> PREPARATION_INVENTORY_VALUE = DSL.field(DSL.name("inventory_value"), BigDecimal.class);
+    private static final Field<BigDecimal> PREPARATION_AVERAGE_UNIT_COST = DSL.field(DSL.name("average_unit_cost"), BigDecimal.class);
 
     public WareHouseService(DSLContext dsl) {
         this.dsl = dsl;
@@ -191,11 +194,17 @@ public class WareHouseService {
 
     // Получение всех продуктов на складе
     public List<ProductWarehouseDTO> getProductsOnWarehouse(int warehouseId) {
+        Field<BigDecimal> totalValue = DSL.sum(PRODUCT_INVENTORY_VALUE).as("inventory_value");
+        Field<BigDecimal> totalQuantity = DSL.sum(
+                Productwarehouse.PRODUCTWAREHOUSE.QUANTITY.cast(BigDecimal.class)
+        ).as("quantity_numeric");
         return dsl.select(
                         DSL.min(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTWAREHOUSEID).as("productwarehouseid"),
                         Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID,
                         Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID,
-                        DSL.sum(Productwarehouse.PRODUCTWAREHOUSE.QUANTITY).as("quantity")
+                        DSL.sum(Productwarehouse.PRODUCTWAREHOUSE.QUANTITY).as("quantity"),
+                        totalValue,
+                        totalQuantity
                 )
                 .from(Productwarehouse.PRODUCTWAREHOUSE)
                 .where(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID.eq(warehouseId))
@@ -212,13 +221,22 @@ public class WareHouseService {
                     dto.setProductId(r.get(Productwarehouse.PRODUCTWAREHOUSE.PRODUCTID));
                     dto.setWarehouseId(r.get(Productwarehouse.PRODUCTWAREHOUSE.WAREHOUSEID));
                     dto.setQuantity(r.get("quantity", Double.class) != null ? r.get("quantity", Double.class) : 0.0);
+                    BigDecimal quantity = r.get(totalQuantity);
+                    BigDecimal value = r.get(totalValue) != null ? r.get(totalValue) : BigDecimal.ZERO;
+                    dto.setInventoryValue(value);
+                    dto.setAverageUnitCost(quantity != null && quantity.signum() > 0
+                            ? value.divide(quantity, 6, java.math.RoundingMode.HALF_UP)
+                            : BigDecimal.ZERO);
                     return dto;
                 })
                 .toList();
     }
 
     public List<PreparationWarehouseDTO> getPreparationsOnWarehouse(int warehouseId) {
-        return dsl.select(PW_ID, PW_PREPARATION_ID, PW_WAREHOUSE_ID, PW_QUANTITY)
+        return dsl.select(
+                        PW_ID, PW_PREPARATION_ID, PW_WAREHOUSE_ID, PW_QUANTITY,
+                        PREPARATION_INVENTORY_VALUE, PREPARATION_AVERAGE_UNIT_COST
+                )
                 .from(PREPARATION_WAREHOUSE)
                 .where(PW_WAREHOUSE_ID.eq(warehouseId))
                 .orderBy(PW_ID.asc())
@@ -228,6 +246,8 @@ public class WareHouseService {
                     dto.setPreparationId(record.get(PW_PREPARATION_ID));
                     dto.setWarehouseId(record.get(PW_WAREHOUSE_ID));
                     dto.setQuantity(record.get(PW_QUANTITY) != null ? record.get(PW_QUANTITY) : 0.0);
+                    dto.setInventoryValue(record.get(PREPARATION_INVENTORY_VALUE));
+                    dto.setAverageUnitCost(record.get(PREPARATION_AVERAGE_UNIT_COST));
                     return dto;
                 });
     }
@@ -538,7 +558,7 @@ public class WareHouseService {
         return true;
     }
 
-    private boolean lockWarehouses(int... warehouseIds) {
+    boolean lockWarehousesForInventory(int... warehouseIds) {
         List<Integer> ids = java.util.Arrays.stream(warehouseIds)
                 .boxed()
                 .distinct()
@@ -555,6 +575,10 @@ public class WareHouseService {
                 .forUpdate()
                 .fetch(WAREHOUSE.WAREHOUSEID);
         return lockedIds.size() == ids.size();
+    }
+
+    private boolean lockWarehouses(int... warehouseIds) {
+        return lockWarehousesForInventory(warehouseIds);
     }
 
 }

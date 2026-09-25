@@ -85,6 +85,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -225,9 +226,11 @@ class CafehelpApplicationTests {
                     sales.inventory_shift_report_line,
                     sales.inventory_shift_report,
                     sales.shift_inventory_snapshot,
+                    sales.preparation_stock_movements,
                     sales.stock_movements,
                     sales.inventory_document_lines,
                     sales.inventory_documents,
+                    sales.order_consumable,
                     sales.orderdish,
                     sales."order",
                     sales.preparationwarehouse,
@@ -235,6 +238,8 @@ class CafehelpApplicationTests {
                     sales.preparation,
                     sales.dish,
                     sales.productwarehouse,
+                    sales.supplier_price_history,
+                    sales.consumable_rule,
                     sales.product_supplier,
                     sales.product,
                     sales.supplier,
@@ -1199,6 +1204,43 @@ class CafehelpApplicationTests {
     }
 
     @Test
+    void anonymousCannotUploadImage() throws Exception {
+        mockMvc.perform(multipart("/api/v1/files/images")
+                        .file("file", "not-an-image".getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void workerCannotUploadImage() throws Exception {
+        mockMvc.perform(multipart("/api/v1/files/images")
+                        .file("file", "not-an-image".getBytes(StandardCharsets.UTF_8))
+                        .header("Authorization", bearerToken("WORKER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ownerGetsStructuredValidationErrorForDisguisedImage() throws Exception {
+        mockMvc.perform(multipart("/api/v1/files/images")
+                        .file(new org.springframework.mock.web.MockMultipartFile(
+                                "file",
+                                "payload.png",
+                                "image/png",
+                                "not-an-image".getBytes(StandardCharsets.UTF_8)
+                        ))
+                        .param("folder", "products")
+                        .header("Authorization", bearerToken("OWNER")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("UNSUPPORTED_IMAGE"));
+    }
+
+    @Test
+    void publicImageRouteRejectsMalformedKeyBeforeStorageAccess() throws Exception {
+        mockMvc.perform(get("/api/v1/files/images/products/not-a-uuid.png"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_IMAGE_KEY"));
+    }
+
+    @Test
     void insufficientStockDoesNotBlockPaidOrderAndIsReportedAsShortage() {
         OrderFixture fixture = createOrderFixture(2.0, 5.0);
         OrderDTO request = orderRequest(fixture.shiftId(), fixture.dishId(), true);
@@ -1398,6 +1440,20 @@ class CafehelpApplicationTests {
         assertThat(cancelled.getCancelledAt()).isNotNull();
         assertThat(wareHouseService.getAvailableQuantity(fixture.warehouseId(), fixture.productId()))
                 .isEqualTo(7.0);
+
+        InventoryShiftReportRowDTO cancelledOrderStock = inventoryShiftReportService.getReport(
+                        fixture.warehouseId(),
+                        fixture.shiftId()
+                ).getRows().stream()
+                .filter(row -> fixture.productId() == row.getProductId())
+                .findFirst()
+                .orElseThrow();
+        assertThat(cancelledOrderStock.getSoldQty()).isZero();
+        assertThat(cancelledOrderStock.getMovementOutQty()).isEqualTo(3.0);
+        assertThat(cancelledOrderStock.getExpectedQty()).isEqualTo(7.0);
+        assertThat(cancelledOrderStock.getSystemQty()).isEqualTo(7.0);
+        assertThat(cancelledOrderStock.getShortageFlag()).isFalse();
+
         assertThat(dsl.fetch("""
                 select event_key, event_type
                 from sales.tax_outbox
@@ -1905,8 +1961,9 @@ class CafehelpApplicationTests {
         InventoryFixture fixture = createInventoryFixture(4.0, false);
         dsl.execute(
                 """
-                INSERT INTO sales.productwarehouse (warehouseid, productid, quantity)
-                VALUES (?, ?, 6)
+                UPDATE sales.productwarehouse
+                SET quantity = quantity + 6
+                WHERE warehouseid = ? AND productid = ?
                 """,
                 fixture.firstWarehouseId(),
                 fixture.productId()

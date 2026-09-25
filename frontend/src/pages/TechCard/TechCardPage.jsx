@@ -250,7 +250,9 @@ export default function TechCardPage() {
         try {
             const res = await fetch(API_PRODUCTS);
             const data = await res.json();
-            const nextProducts = Array.isArray(data) ? data : [];
+            const nextProducts = Array.isArray(data)
+                ? data.filter((product) => (product.itemType || "ingredient") === "ingredient")
+                : [];
             setProducts(nextProducts);
             return nextProducts;
         } catch (err) {

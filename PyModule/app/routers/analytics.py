@@ -21,6 +21,7 @@ from app.services.analytics import (
 
 logger = logging.getLogger(__name__)
 TimeRange = Literal["day", "week", "month", "quarter", "year"]
+TopRollSort = Literal["sales", "profit", "margin"]
 router = APIRouter(
     prefix="/api/analytics",
     tags=["Analytics"],
@@ -127,17 +128,24 @@ async def get_kpi(
 async def get_top_rolls(
     timeRange: Annotated[TimeRange, Query()] = "week",
     limit: int = Query(default=10, ge=1, le=100),
+    sortBy: Annotated[TopRollSort, Query()] = "sales",
     java_client: JavaApiClient = Depends(get_java_client),
 ) -> list[dict[str, Any]]:
     dashboard = await _load_dashboard(timeRange, java_client)
-    return dashboard["top_rolls"][:limit]
+    return sorted(
+        dashboard["top_rolls"],
+        key=lambda item: float(item.get(sortBy, 0)),
+        reverse=True,
+    )[:limit]
 
 
 @router.get("/sales-trend")
 async def get_sales_trend(
     timeRange: Annotated[TimeRange, Query()] = "week",
+    granularity: Literal["day"] = "day",
     java_client: JavaApiClient = Depends(get_java_client),
 ) -> list[dict[str, Any]]:
+    del granularity
     return (await _load_dashboard(timeRange, java_client))["sales_trend"]
 
 

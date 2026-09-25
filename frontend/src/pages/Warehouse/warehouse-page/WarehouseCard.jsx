@@ -24,11 +24,12 @@ export default function WarehouseCard({
     onCatalogSubmit,
     onNewProductSubmit,
     onStockInput,
-    onAdjustStock
+    onAdjustStock,
+    onRevalueStock
 }) {
     const visibleProducts = products.filter((product) => showZeroStock || Number(product.quantityBase) > 0);
     const totalValue = products.reduce(
-        (sum, product) => sum + Number(product.quantityDisplay ?? 0) * Number(product.averagePrice ?? 0),
+        (sum, product) => sum + Number(product.inventoryValue ?? 0),
         0
     );
     const selectedCatalog = catalogProducts.find(
@@ -61,7 +62,7 @@ export default function WarehouseCard({
             <div className={styles.stockToolbar}>
                 <div>
                     <strong>Остаток</strong>
-                    <span>Цена рассчитана по приходам</span>
+                    <span>Средняя цена рассчитана по фактическому остатку</span>
                 </div>
                 <div>
                     <button type="button" onClick={() => onOpenPanel("catalog")}>+ Приход из каталога</button>
@@ -175,11 +176,12 @@ export default function WarehouseCard({
                                     </label>
                                     <label>
                                         <span className={styles.visuallyHidden}>Цена прихода для {product.productName}</span>
-                                        <input name={`price-${key}`} inputMode="decimal" autoComplete="off" placeholder="Цена прихода…"
+                                        <input name={`price-${key}`} inputMode="decimal" autoComplete="off" placeholder="Цена / новая средняя…"
                                             value={values.unitPrice ?? ""} onChange={(event) => onStockInput(key, { unitPrice: event.target.value })} />
                                     </label>
                                     <button type="button" onClick={() => onAdjustStock(product, "in")} disabled={busyKey === `stock-${key}`}>Приход</button>
                                     <button className={styles.writeoffButton} type="button" onClick={() => onAdjustStock(product, "out")} disabled={busyKey === `stock-${key}`}>Списать</button>
+                                    <button type="button" onClick={() => onRevalueStock(product)} disabled={busyKey === `stock-${key}`}>Переоценить</button>
                                 </div>
                             </div>
                         );

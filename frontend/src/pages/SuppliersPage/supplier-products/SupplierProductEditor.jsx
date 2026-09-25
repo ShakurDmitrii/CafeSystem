@@ -49,7 +49,7 @@ export default function SupplierProductEditor({
 
             <p className={styles.editorIntro}>
                 Поставщик: <strong>{supplierName}</strong>. Цена указывается
-                за закупочную единицу.
+                за его закупочную единицу и не переоценивает уже принятый остаток.
             </p>
 
             <form className={styles.editorForm} onSubmit={onSubmit}>
@@ -70,7 +70,7 @@ export default function SupplierProductEditor({
 
                 <div className={styles.pairedFields}>
                     <label className={styles.field} htmlFor="supplier-product-price">
-                        <span>Цена закупки, ₽</span>
+                        <span>Цена этого поставщика, ₽</span>
                         <input
                             id="supplier-product-price"
                             name="productPrice"
@@ -191,7 +191,7 @@ export default function SupplierProductEditor({
                                 id="supplier-product-image"
                                 name="productImage"
                                 type="file"
-                                accept="image/*"
+                                accept="image/jpeg,image/png"
                                 onChange={handleFileChange}
                                 disabled={uploadingImage}
                             />
@@ -199,7 +199,7 @@ export default function SupplierProductEditor({
                         <small aria-live="polite">
                             {uploadingImage
                                 ? "Загружаем изображение…"
-                                : form.imageUrl ? "Изображение добавлено" : "Можно добавить JPG, PNG или WebP"}
+                                : form.imageUrl ? "Изображение добавлено" : "Можно добавить JPG или PNG до 5 МБ"}
                         </small>
                         {form.imageUrl ? (
                             <button

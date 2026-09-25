@@ -14,7 +14,7 @@ import styles from "./SuppliersProductPage.module.css";
 
 const API_PRODUCTS = `${API_BASE_URL}/api/product`;
 const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
-const API_UPLOAD = `${API_BASE_URL}/api/files/upload-image`;
+const API_UPLOAD = `${API_BASE_URL}/api/v1/files/images`;
 
 const UNIT_PRESETS = {
     g: { baseUnit: "g", unitFactor: "1" },
@@ -50,12 +50,12 @@ const normalizeProduct = (product) => ({
     productId: Number(product?.productId ?? product?.id ?? 0),
     supplierId: Number(product?.supplierId ?? product?.supplierID ?? 0),
     productName: String(product?.productName ?? "").trim(),
-    productPrice: Number(product?.productPrice ?? 0),
+    productPrice: Number(product?.supplierPrice ?? product?.productPrice ?? 0),
     waste: Number(product?.waste ?? 0),
     isFavorite: Boolean(product?.isFavorite),
-    unit: product?.unit || product?.baseUnit || "g",
+    unit: product?.supplierUnit || product?.unit || product?.baseUnit || "g",
     baseUnit: product?.baseUnit || product?.unit || "g",
-    unitFactor: Number(product?.unitFactor ?? 1),
+    unitFactor: Number(product?.supplierUnitFactor ?? product?.unitFactor ?? 1),
     averageStockPrice: product?.averageStockPrice,
     imageUrl: product?.imageUrl ?? ""
 });
@@ -342,13 +342,24 @@ export default function SupplierProductPage() {
                     body: JSON.stringify({
                         supplierId,
                         productName,
-                        productPrice,
                         waste,
                         isFavorite: Boolean(form.isFavorite),
-                        unit: form.unit,
-                        baseUnit: form.baseUnit,
-                        unitFactor,
-                        imageUrl: form.imageUrl || null
+                        imageUrl: form.imageUrl || null,
+                        ...(editing
+                            ? {
+                                supplierPrice: productPrice,
+                                supplierUnit: form.unit,
+                                supplierUnitFactor: unitFactor
+                            }
+                            : {
+                                productPrice,
+                                supplierPrice: productPrice,
+                                unit: form.unit,
+                                baseUnit: form.baseUnit,
+                                unitFactor,
+                                supplierUnit: form.unit,
+                                supplierUnitFactor: unitFactor
+                            })
                     })
                 }
             );

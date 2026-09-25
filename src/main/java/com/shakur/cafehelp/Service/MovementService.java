@@ -1,6 +1,5 @@
 package com.shakur.cafehelp.Service;
 
-import com.shakur.cafehelp.DTO.ProductWarehouseDTO;
 import com.shakur.cafehelp.DTO.MovementDTO;
 import com.shakur.cafehelp.DTO.MovementReportRowDTO;
 import com.shakur.cafehelp.DTO.MovementRequestDTO;
@@ -29,11 +28,18 @@ public class MovementService {
     private final DSLContext dsl;
     private final WareHouseService wareHouseService;
     private final UnitConversionService unitConversionService;
+    private final InventoryValuationService inventoryValuationService;
 
-    public MovementService(DSLContext dsl, WareHouseService wareHouseService, UnitConversionService unitConversionService) {
+    public MovementService(
+            DSLContext dsl,
+            WareHouseService wareHouseService,
+            UnitConversionService unitConversionService,
+            InventoryValuationService inventoryValuationService
+    ) {
         this.dsl = dsl;
         this.wareHouseService = wareHouseService;
         this.unitConversionService = unitConversionService;
+        this.inventoryValuationService = inventoryValuationService;
     }
 
     private static final Table<?> INVENTORY_DOCUMENTS = DSL.table(DSL.name("sales", "inventory_documents"));
@@ -67,12 +73,27 @@ public class MovementService {
     private static final Field<BigDecimal> MOVEMENT_UNIT_COST = DSL.field(DSL.name("unit_cost"), BigDecimal.class);
     private static final Field<BigDecimal> MOVEMENT_AMOUNT = DSL.field(DSL.name("amount"), BigDecimal.class);
     private static final Field<LocalDateTime> MOVEMENT_CREATED_AT = DSL.field(DSL.name("created_at"), LocalDateTime.class);
+    private static final Field<String> MOVEMENT_TYPE = DSL.field(DSL.name("movement_type"), String.class);
+    private static final Field<String> MOVEMENT_SOURCE_TYPE = DSL.field(DSL.name("source_type"), String.class);
+    private static final Field<Integer> MOVEMENT_SOURCE_ID = DSL.field(DSL.name("source_id"), Integer.class);
+    private static final Field<String> MOVEMENT_CREATED_BY = DSL.field(DSL.name("created_by"), String.class);
     private static final Field<Integer> PRODUCT_PRODUCT_ID = DSL.field(DSL.name("productid"), Integer.class);
     private static final Field<Integer> PRODUCT_SUPPLIER_ID = DSL.field(DSL.name("supplierid"), Integer.class);
     private static final Table<?> PRODUCT_SUPPLIER = DSL.table(DSL.name("sales", "product_supplier"));
     private static final Field<Integer> PS_PRODUCT_ID = DSL.field(DSL.name("product_id"), Integer.class);
     private static final Field<Integer> PS_SUPPLIER_ID = DSL.field(DSL.name("supplier_id"), Integer.class);
+    private static final Field<BigDecimal> PS_DEFAULT_PRICE = DSL.field(DSL.name("default_price"), BigDecimal.class);
+    private static final Field<LocalDateTime> PS_LAST_PRICE_AT = DSL.field(DSL.name("last_price_at"), LocalDateTime.class);
+    private static final Table<?> SUPPLIER_PRICE_HISTORY = DSL.table(DSL.name("sales", "supplier_price_history"));
+    private static final Field<Integer> PRICE_HISTORY_SUPPLIER_ID = DSL.field(DSL.name("supplier_id"), Integer.class);
+    private static final Field<Integer> PRICE_HISTORY_PRODUCT_ID = DSL.field(DSL.name("product_id"), Integer.class);
+    private static final Field<BigDecimal> PRICE_HISTORY_PRICE = DSL.field(DSL.name("price"), BigDecimal.class);
+    private static final Field<LocalDateTime> PRICE_HISTORY_VALID_FROM = DSL.field(DSL.name("valid_from"), LocalDateTime.class);
+    private static final Field<LocalDateTime> PRICE_HISTORY_VALID_TO = DSL.field(DSL.name("valid_to"), LocalDateTime.class);
+    private static final Field<String> PRICE_HISTORY_SOURCE_DOC_TYPE = DSL.field(DSL.name("source_doc_type"), String.class);
+    private static final Field<Integer> PRICE_HISTORY_SOURCE_DOC_ID = DSL.field(DSL.name("source_doc_id"), Integer.class);
     private static final Field<Double> PRODUCT_WASTE = DSL.field(DSL.name("waste"), Double.class);
+    private static final Field<BigDecimal> PRODUCT_PRICE = DSL.field(DSL.name("productprice"), BigDecimal.class);
 
     @Transactional
     public MovementDTO createMovement(MovementRequestDTO dto) {
@@ -90,6 +111,12 @@ public class MovementService {
         BigDecimal netQtyBase = qtyBase;
         BigDecimal unitPrice = dto.getUnitPrice() != null ? BigDecimal.valueOf(dto.getUnitPrice()) : null;
         BigDecimal inputQty = dto.getQuantity() != null ? BigDecimal.valueOf(dto.getQuantity()) : BigDecimal.ZERO;
+        if (unitPrice == null && "receipt".equals(docType)) {
+            unitPrice = dsl.select(PRODUCT_PRICE)
+                    .from(PRODUCT)
+                    .where(PRODUCT_PRODUCT_ID.eq(dto.getProductId()))
+                    .fetchOne(PRODUCT_PRICE);
+        }
         BigDecimal total = unitPrice != null ? unitPrice.multiply(inputQty) : null;
 
         Integer fromWarehouseId = dto.getFromWarehouseId();
@@ -127,46 +154,45 @@ public class MovementService {
             netQtyBase = qtyBase.multiply(factor);
         }
 
+        InventoryValuationService.ValuationChange valuationChange;
         if ("movement".equals(docType)) {
             if (fromWarehouseId == null
                     || toWarehouseId == null
                     || fromWarehouseId.equals(toWarehouseId)) {
                 return null;
             }
-
-            boolean moved = wareHouseService.moveProduct(
-                    fromWarehouseId,
-                    toWarehouseId,
-                    dto.getProductId(),
-                    qtyBase.doubleValue()
-            );
-            if (!moved) return null;
-        } else if ("receipt".equals(docType)) {
-            if (toWarehouseId == null) {
+            if (wareHouseService.getAvailableQuantity(fromWarehouseId, dto.getProductId()) + 0.000001d
+                    < qtyBase.doubleValue()) {
                 return null;
             }
 
-            boolean adjusted = wareHouseService.adjustQuantity(toWarehouseId, dto.getProductId(), netQtyBase.doubleValue());
-            if (!adjusted) {
-                ProductWarehouseDTO pw = new ProductWarehouseDTO();
-                pw.setProductId(dto.getProductId());
-                // addProductsToWarehouse() itself converts to base quantity by product factor
-                Double netQtyDisplay = dto.getQuantity();
-                if (dto.getQuantity() != null && qtyBase.compareTo(BigDecimal.ZERO) > 0) {
-                    netQtyDisplay = netQtyBase
-                            .divide(qtyBase, 6, java.math.RoundingMode.HALF_UP)
-                            .multiply(BigDecimal.valueOf(dto.getQuantity()))
-                            .doubleValue();
-                }
-                pw.setQuantity(netQtyDisplay);
-                wareHouseService.addProductsToWarehouse(toWarehouseId, List.of(pw));
+            valuationChange = inventoryValuationService.transfer(
+                    fromWarehouseId, toWarehouseId, dto.getProductId(), qtyBase
+            );
+        } else if ("receipt".equals(docType)) {
+            if (toWarehouseId == null || total == null) {
+                return null;
+            }
+            valuationChange = inventoryValuationService.receive(
+                    toWarehouseId, dto.getProductId(), netQtyBase, total
+            );
+            if (supplierId != null) {
+                dsl.update(PRODUCT_SUPPLIER)
+                        .set(PS_DEFAULT_PRICE, unitPrice)
+                        .set(PS_LAST_PRICE_AT, now)
+                        .where(PS_PRODUCT_ID.eq(dto.getProductId()))
+                        .and(PS_SUPPLIER_ID.eq(supplierId))
+                        .execute();
             }
         } else if ("writeoff".equals(docType)) {
             if (fromWarehouseId == null) {
                 return null;
             }
-            boolean adjusted = wareHouseService.adjustQuantity(fromWarehouseId, dto.getProductId(), -qtyBase.doubleValue());
-            if (!adjusted) return null;
+            if (wareHouseService.getAvailableQuantity(fromWarehouseId, dto.getProductId()) + 0.000001d
+                    < qtyBase.doubleValue()) {
+                return null;
+            }
+            valuationChange = inventoryValuationService.issueExact(fromWarehouseId, dto.getProductId(), qtyBase);
         } else {
             return null;
         }
@@ -177,13 +203,36 @@ public class MovementService {
                 .returning(DOC_ID)
                 .fetchOne(DOC_ID);
 
+        if ("receipt".equals(docType) && supplierId != null && unitPrice != null) {
+            dsl.update(SUPPLIER_PRICE_HISTORY)
+                    .set(PRICE_HISTORY_VALID_TO, now)
+                    .where(PRICE_HISTORY_SUPPLIER_ID.eq(supplierId))
+                    .and(PRICE_HISTORY_PRODUCT_ID.eq(dto.getProductId()))
+                    .and(PRICE_HISTORY_VALID_TO.isNull())
+                    .execute();
+            dsl.insertInto(SUPPLIER_PRICE_HISTORY)
+                    .columns(
+                            PRICE_HISTORY_SUPPLIER_ID, PRICE_HISTORY_PRODUCT_ID, PRICE_HISTORY_PRICE,
+                            PRICE_HISTORY_VALID_FROM, PRICE_HISTORY_SOURCE_DOC_TYPE, PRICE_HISTORY_SOURCE_DOC_ID
+                    )
+                    .values(
+                            supplierId, dto.getProductId(), unitPrice, now,
+                            "inventory_document", documentId
+                    )
+                    .execute();
+        }
+
         dsl.insertInto(INVENTORY_DOCUMENT_LINES)
                 .columns(LINE_DOCUMENT_ID, LINE_PRODUCT_ID, LINE_QTY, LINE_UNIT_PRICE, LINE_TOTAL)
                 .values(documentId, dto.getProductId(), qtyBase, unitPrice, total)
                 .execute();
 
         dsl.insertInto(STOCK_MOVEMENTS)
-                .columns(MOVEMENT_DATE, MOVEMENT_DOCUMENT_ID, MOVEMENT_WAREHOUSE_ID, MOVEMENT_PRODUCT_ID, MOVEMENT_QTY_IN, MOVEMENT_QTY_OUT, MOVEMENT_UNIT_COST, MOVEMENT_AMOUNT, MOVEMENT_CREATED_AT)
+                .columns(
+                        MOVEMENT_DATE, MOVEMENT_DOCUMENT_ID, MOVEMENT_WAREHOUSE_ID, MOVEMENT_PRODUCT_ID,
+                        MOVEMENT_QTY_IN, MOVEMENT_QTY_OUT, MOVEMENT_UNIT_COST, MOVEMENT_AMOUNT, MOVEMENT_CREATED_AT,
+                        MOVEMENT_TYPE, MOVEMENT_SOURCE_TYPE, MOVEMENT_SOURCE_ID, MOVEMENT_CREATED_BY
+                )
                 .values(
                         now,
                         documentId,
@@ -191,16 +240,28 @@ public class MovementService {
                         dto.getProductId(),
                         "receipt".equals(docType) ? netQtyBase : BigDecimal.ZERO,
                         "receipt".equals(docType) ? BigDecimal.ZERO : qtyBase,
-                        unitPrice,
-                        total,
-                        now
+                        valuationChange.unitCost(),
+                        valuationChange.value(),
+                        now,
+                        docType,
+                        "inventory_document",
+                        documentId,
+                        dto.getCreatedBy()
                 )
                 .execute();
 
         if ("movement".equals(docType)) {
             dsl.insertInto(STOCK_MOVEMENTS)
-                    .columns(MOVEMENT_DATE, MOVEMENT_DOCUMENT_ID, MOVEMENT_WAREHOUSE_ID, MOVEMENT_PRODUCT_ID, MOVEMENT_QTY_IN, MOVEMENT_QTY_OUT, MOVEMENT_UNIT_COST, MOVEMENT_AMOUNT, MOVEMENT_CREATED_AT)
-                    .values(now, documentId, toWarehouseId, dto.getProductId(), qtyBase, BigDecimal.ZERO, unitPrice, total, now)
+                    .columns(
+                            MOVEMENT_DATE, MOVEMENT_DOCUMENT_ID, MOVEMENT_WAREHOUSE_ID, MOVEMENT_PRODUCT_ID,
+                            MOVEMENT_QTY_IN, MOVEMENT_QTY_OUT, MOVEMENT_UNIT_COST, MOVEMENT_AMOUNT, MOVEMENT_CREATED_AT,
+                            MOVEMENT_TYPE, MOVEMENT_SOURCE_TYPE, MOVEMENT_SOURCE_ID, MOVEMENT_CREATED_BY
+                    )
+                    .values(
+                            now, documentId, toWarehouseId, dto.getProductId(), qtyBase, BigDecimal.ZERO,
+                            valuationChange.unitCost(), valuationChange.value(), now,
+                            docType, "inventory_document", documentId, dto.getCreatedBy()
+                    )
                     .execute();
         }
 

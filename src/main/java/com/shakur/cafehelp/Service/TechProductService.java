@@ -227,11 +227,17 @@ public class TechProductService {
         if (dto.getPreparationId() != null && !preparationExists(dto.getPreparationId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Заготовка-владелец не найдена");
         }
-        if (dto.getProductId() != null && !dsl.fetchExists(
-                dsl.selectOne().from(jooqdata.tables.Product.PRODUCT)
-                        .where(jooqdata.tables.Product.PRODUCT.PRODUCTID.eq(dto.getProductId()))
-        )) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Продукт для техкарты не найден");
+        if (dto.getProductId() != null) {
+            String itemType = dsl.select(org.jooq.impl.DSL.field(org.jooq.impl.DSL.name("item_type"), String.class))
+                    .from(jooqdata.tables.Product.PRODUCT)
+                    .where(jooqdata.tables.Product.PRODUCT.PRODUCTID.eq(dto.getProductId()))
+                    .fetchOne(0, String.class);
+            if (itemType == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Продукт для техкарты не найден");
+            }
+            if (!"ingredient".equals(itemType)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Расходники и упаковку нельзя добавлять в рецепт");
+            }
         }
         if (dto.getIngredientPreparationId() != null && !preparationExists(dto.getIngredientPreparationId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Заготовка-ингредиент не найдена");

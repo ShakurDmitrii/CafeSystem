@@ -7,7 +7,12 @@ import com.shakur.cafehelp.Service.MlServices.InventoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -15,6 +20,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/ml/data")
 @RequiredArgsConstructor
+@Validated
 public class MlDataController {
 
     private final SalesService salesService;
@@ -32,7 +38,11 @@ public class MlDataController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate endDate,
 
-            @RequestParam(defaultValue = "1000") int limit) {
+            @RequestParam(defaultValue = "1000") @Min(1) @Max(10000) int limit) {
+
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must not be after endDate");
+        }
 
         // Получаем данные и ограничиваем лимитом
         var sales = salesService.getSalesForML(startDate, endDate);

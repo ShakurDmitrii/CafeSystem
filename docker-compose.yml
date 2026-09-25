@@ -43,6 +43,8 @@ services:
         condition: service_healthy
       tax_db:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/postgres
       SPRING_DATASOURCE_USERNAME: postgres
@@ -62,6 +64,7 @@ services:
       VK_GROUP_TOKEN: "${VK_GROUP_TOKEN:-}"
       VK_GROUP_ID: "${VK_GROUP_ID:-}"
       INTERNAL_SERVICE_TOKEN: "${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN is required}"
+      INTERNAL_API_CONTRACT_VERSION: "${INTERNAL_API_CONTRACT_VERSION:-1}"
       SECURITY_JWT_SECRET: "${SECURITY_JWT_SECRET:?SECURITY_JWT_SECRET is required}"
       # URLs to Python service must use docker DNS name (not localhost).
       # Spring relaxed binding will map these env vars to properties:
@@ -69,13 +72,15 @@ services:
       # - ml.python.service.url
       # - ml.service.url
       PYTHON_API_URL: http://pymodule:8000
+      PYTHON_CONNECT_TIMEOUT: "${PYTHON_CONNECT_TIMEOUT:-3s}"
+      PYTHON_READ_TIMEOUT: "${PYTHON_READ_TIMEOUT:-30s}"
       ML_PYTHON_SERVICE_URL: http://pymodule:8000
       ML_SERVICE_URL: http://pymodule:8000
       STORAGE_MINIO_ENDPOINT: http://minio:9000
-      STORAGE_MINIO_ACCESS_KEY: minioadmin
-      STORAGE_MINIO_SECRET_KEY: minioadmin123
-      STORAGE_MINIO_BUCKET: cafehelp-files
-      STORAGE_MINIO_PUBLIC_BASE_URL: http://localhost:9000
+      STORAGE_MINIO_ACCESS_KEY: "${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}"
+      STORAGE_MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}"
+      STORAGE_MINIO_BUCKET: "${MINIO_BUCKET:-cafehelp-files}"
+      STORAGE_MINIO_PUBLIC_BASE_URL: "${PUBLIC_API_BASE_URL:-http://localhost:8080}"
     ports:
       - "8080:8080"
 
@@ -88,7 +93,9 @@ services:
       - backend
     environment:
       JAVA_API_URL: http://backend:8080
+      JAVA_API_TIMEOUT_SECONDS: "${JAVA_API_TIMEOUT_SECONDS:-30}"
       INTERNAL_SERVICE_TOKEN: "${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN is required}"
+      INTERNAL_API_CONTRACT_VERSION: "${INTERNAL_API_CONTRACT_VERSION:-1}"
     expose:
       - "8000"
     volumes:
@@ -130,17 +137,24 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: cafehelp-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: "minioadmin123"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
 
 volumes:
   pg_data:

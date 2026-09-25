@@ -3,6 +3,7 @@ package com.shakur.cafehelp.Service.MlServices;
 
 import com.shakur.cafehelp.DTO.MlDTO.RollMenuItemDTO;
 import com.shakur.cafehelp.DTO.MlDTO.SalesRecordDTO;
+import com.shakur.cafehelp.exception.PythonServiceException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,19 +34,40 @@ public class MlTrainingService {
             List<SalesRecordDTO> salesRecords,
             List<RollMenuItemDTO> menuItems) {
 
-        List<Map<String, Object>> trainingRecords = new ArrayList<>();
+        Map<DailyKey, Map<String, Object>> dailyRecords = new LinkedHashMap<>();
+        int skippedWithoutIngredients = 0;
 
         // 1. Создаем записи на основе продаж
         for (SalesRecordDTO sale : salesRecords) {
-            Map<String, Object> record = new HashMap<>();
-            record.put("rollName", sale.getRollName());
-            record.put("ingredients", parseIngredients(String.valueOf(sale.getIngredients())));
-            record.put("sales", sale.getQuantity());
-            record.put("date", sale.getSaleDate().toString());
-
-            trainingRecords.add(record);
+            if (sale == null || sale.getSaleDate() == null || sale.getQuantity() == null || sale.getQuantity() < 0) {
+                throw new IllegalArgumentException("Продажа для обучения содержит некорректную дату или количество");
+            }
+            List<String> ingredients = normalizeIngredients(sale.getIngredients());
+            if (ingredients.isEmpty()) {
+                skippedWithoutIngredients++;
+                continue;
+            }
+            DailyKey key = new DailyKey(sale.getRollId() != null ? sale.getRollId() : sale.getRollName(),
+                    sale.getLocationId(), sale.getSaleDate(), ingredients.stream().sorted().toList());
+            Map<String, Object> record = dailyRecords.computeIfAbsent(key, ignored -> {
+                Map<String, Object> row = new HashMap<>();
+                row.put("rollName", sale.getRollName());
+                row.put("ingredients", ingredients);
+                row.put("date", sale.getSaleDate().toString());
+                row.put("sales", 0);
+                return row;
+            });
+            record.put("sales", Math.addExact((Integer) record.get("sales"), sale.getQuantity()));
         }
+        List<Map<String, Object>> trainingRecords = dailyRecords.values().stream()
+                .sorted(Comparator.comparing(row -> row.get("date").toString())).toList();
 
+        if (skippedWithoutIngredients > 0) {
+            log.warn(
+                    "Пропущено {} записей продаж без ингредиентов техкарты",
+                    skippedWithoutIngredients
+            );
+        }
         log.info("Подготовлено {} записей для обучения ML", trainingRecords.size());
         return trainingRecords;
     }
@@ -54,6 +76,12 @@ public class MlTrainingService {
      * Отправить данные в Python ML сервис для обучения
      */
     public Map<String, Object> sendToPythonML(List<Map<String, Object>> trainingRecords) {
+        if (trainingRecords == null || trainingRecords.size() < 10) {
+            throw new IllegalArgumentException("Для обучения требуется минимум 10 суточных записей по блюдам");
+        }
+        if (trainingRecords.size() > 100_000) {
+            throw new IllegalArgumentException("Для одного запуска допускается не более 100000 записей");
+        }
         try {
             String url = pythonMlServiceUrl + "/api/ml/train";
 
@@ -72,16 +100,23 @@ public class MlTrainingService {
 
             if (response.getStatusCode().is2xxSuccessful()) {
                 Map<String, Object> result = response.getBody();
-                log.info("ML модель успешно обучена: {}", result);
+                if (result == null || result.isEmpty()) {
+                    throw PythonServiceException.invalidResponse(
+                            new IllegalStateException("Empty training response")
+                    );
+                }
+                log.info("ML модель успешно обучена; responseFields={}", result.keySet());
                 return result;
             } else {
                 log.error("Ошибка обучения ML модели: {}", response.getStatusCode());
                 throw new RuntimeException("Failed to train ML model");
             }
 
+        } catch (IllegalArgumentException | PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("Ошибка отправки данных в ML сервис: {}", e.getMessage(), e);
-            throw new RuntimeException("ML service error: " + e.getMessage(), e);
+            log.error("Ошибка отправки данных в ML сервис: {}", e.getClass().getSimpleName());
+            throw PythonServiceException.translate(e);
         }
     }
 
@@ -115,9 +150,11 @@ public class MlTrainingService {
 
             return result;
 
+        } catch (IllegalArgumentException | PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("Ошибка синхронизации данных: {}", e.getMessage(), e);
-            throw new RuntimeException("Sync failed: " + e.getMessage(), e);
+            log.error("Ошибка синхронизации данных: {}", e.getClass().getSimpleName());
+            throw PythonServiceException.translate(e);
         }
     }
 
@@ -139,8 +176,7 @@ public class MlTrainingService {
         } catch (Exception e) {
             Map<String, Object> health = new HashMap<>();
             health.put("status", "unreachable");
-            health.put("error", e.getMessage());
-            health.put("pythonServiceUrl", pythonMlServiceUrl);
+            health.put("message", "Python ML service is unavailable");
             return health;
         }
     }
@@ -211,29 +247,26 @@ public class MlTrainingService {
 
             log.info("Полная переобучение модели на {} записях", allTrainingData.size());
 
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("records", allTrainingData);
-            requestBody.put("retrain_full", true);
-            requestBody.put("data_range", "all_history");
+            return sendToPythonML(allTrainingData);
 
-            String url = pythonMlServiceUrl + "/api/ml/train";
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
-
-            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("Полное переобучение завершено успешно");
-                return response.getBody();
-            } else {
-                throw new RuntimeException("Full retraining failed");
-            }
-
+        } catch (IllegalArgumentException | PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("Ошибка полного переобучения: {}", e.getMessage(), e);
-            throw new RuntimeException("Full retrain error: " + e.getMessage(), e);
+            log.error("Ошибка полного переобучения: {}", e.getClass().getSimpleName());
+            throw PythonServiceException.translate(e);
         }
     }
+
+    private List<String> normalizeIngredients(List<String> ingredients) {
+        if (ingredients == null) return Collections.emptyList();
+        return ingredients.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .map(value -> value.toLowerCase(Locale.ROOT))
+                .distinct()
+                .toList();
+    }
+
+    private record DailyKey(String dish, String location, LocalDate date, List<String> ingredients) {}
 }

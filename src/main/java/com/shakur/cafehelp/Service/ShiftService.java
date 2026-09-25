@@ -168,13 +168,23 @@ public class ShiftService {
     }
 
     private List<OrderLineItem> loadOrderLineItems(int orderId) {
+        return loadOrderLineItems(List.of(orderId)).getOrDefault(orderId, List.of());
+    }
+
+    private Map<Integer, List<OrderLineItem>> loadOrderLineItems(List<Integer> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return Map.of();
+        }
+
         Field<Double> dishPriceField = Dish.DISH.PRICE.as("dish_price");
         Field<Double> dishFirstCostField = Dish.DISH.FIRSTCOST.as("dish_first_cost");
         Field<String> setNameField = DISH_SET_NAME.as("set_name");
         Field<Double> setPriceField = DISH_SET_PRICE.as("set_price");
         Field<Double> setFirstCostField = DISH_SET_FIRST_COST.as("set_first_cost");
 
-        return dsl.select(
+        Map<Integer, List<OrderLineItem>> itemsByOrderId = new HashMap<>();
+        dsl.select(
+                        Orderdish.ORDERDISH.ORDERID,
                         Orderdish.ORDERDISH.DISHID,
                         ORDERDISH_SET_ID,
                         Orderdish.ORDERDISH.QTY,
@@ -190,15 +200,18 @@ public class ShiftService {
                 .from(Orderdish.ORDERDISH)
                 .leftJoin(Dish.DISH).on(Dish.DISH.DISHID.eq(Orderdish.ORDERDISH.DISHID))
                 .leftJoin(DISH_SET).on(DISH_SET_ID.eq(ORDERDISH_SET_ID))
-                .where(Orderdish.ORDERDISH.ORDERID.eq(orderId))
-                .fetch(record -> {
+                .where(Orderdish.ORDERDISH.ORDERID.in(orderIds))
+                .orderBy(Orderdish.ORDERDISH.ORDERID.asc())
+                .fetch()
+                .forEach(record -> {
+                    Integer orderId = record.get(Orderdish.ORDERDISH.ORDERID);
                     Integer dishId = record.get(Orderdish.ORDERDISH.DISHID);
                     Integer setId = record.get(ORDERDISH_SET_ID);
                     int qty = record.get(Orderdish.ORDERDISH.QTY) != null ? record.get(Orderdish.ORDERDISH.QTY) : 0;
                     boolean isDish = dishId != null && dishId > 0;
                     Double storedPrice = record.get(ORDERDISH_UNIT_PRICE);
                     Double storedFirstCost = record.get(ORDERDISH_UNIT_COST);
-                    return new OrderLineItem(
+                    OrderLineItem item = new OrderLineItem(
                             dishId,
                             setId,
                             isDish ? record.get(Dish.DISH.DISHNAME) : record.get(setNameField),
@@ -210,7 +223,9 @@ public class ShiftService {
                                     : isDish ? record.get(dishFirstCostField) : record.get(setFirstCostField),
                             qty
                     );
+                    itemsByOrderId.computeIfAbsent(orderId, ignored -> new ArrayList<>()).add(item);
                 });
+        return itemsByOrderId;
     }
 
     private record OrderLineItem(
@@ -242,6 +257,9 @@ public class ShiftService {
                 .and(ORDER_CANCELLED_AT.isNull())
                 .and(IS_PAID_FIELD.eq(true))
                 .fetch();
+        Map<Integer, List<OrderLineItem>> itemsByOrderId = loadOrderLineItems(
+                orders.getValues(Order.ORDER.ORDERID)
+        );
 
         Double income = orders.stream()
                 .mapToDouble(order -> {
@@ -249,7 +267,7 @@ public class ShiftService {
                     if (amount != null && amount > 0) {
                         return amount;
                     }
-                    return loadOrderLineItems(order.getOrderid()).stream()
+                    return itemsByOrderId.getOrDefault(order.getOrderid(), List.of()).stream()
                             .mapToDouble(item -> {
                                 double price = item.price() != null ? item.price() : 0.0;
                                 return price * item.qty();
@@ -259,7 +277,7 @@ public class ShiftService {
                 .sum();
 
         Double totalCost = orders.stream()
-                .mapToDouble(order -> loadOrderLineItems(order.getOrderid()).stream()
+                .mapToDouble(order -> itemsByOrderId.getOrDefault(order.getOrderid(), List.of()).stream()
                         .mapToDouble(item -> {
                             double firstCost = item.firstCost() != null ? item.firstCost() : 0.0;
                             return firstCost * item.qty();
@@ -340,15 +358,21 @@ public class ShiftService {
                         Order.ORDER.AMOUNT,
                         Order.ORDER.TIMEDELAY,
                         Order.ORDER.CLIENTID,
+                        Client.CLIENT.FULLNAME,
+                        Client.CLIENT.NUMBER,
                         PAYMENT_TYPE_FIELD,
                         IS_PAID_FIELD,
                         PAID_AT_FIELD
                 )
                 .from(Order.ORDER)
+                .leftJoin(Client.CLIENT).on(Client.CLIENT.CLIENTID.eq(Order.ORDER.CLIENTID))
                 .where(Order.ORDER.SHIFTID.eq(shiftId))
                 .and(ORDER_CANCELLED_AT.isNull())
                 .orderBy(Order.ORDER.ORDERID.asc())
                 .fetch();
+        Map<Integer, List<OrderLineItem>> itemsByOrderId = loadOrderLineItems(
+                orderRows.getValues(Order.ORDER.ORDERID)
+        );
 
         List<Map<String, Object>> orders = new ArrayList<>();
         double totalRevenue = 0.0;
@@ -367,18 +391,10 @@ public class ShiftService {
 
         for (Record orderRow : orderRows) {
             Integer orderId = orderRow.get(Order.ORDER.ORDERID);
-            Integer clientId = orderRow.get(Order.ORDER.CLIENTID);
-            Record clientRow = null;
-            if (clientId != null) {
-                clientRow = dsl.select(Client.CLIENT.FULLNAME, Client.CLIENT.NUMBER)
-                        .from(Client.CLIENT)
-                        .where(Client.CLIENT.CLIENTID.eq(clientId))
-                        .fetchOne();
-            }
             List<Map<String, Object>> items = new ArrayList<>();
             double itemsTotal = 0.0;
             double orderCost = 0.0;
-            for (OrderLineItem itemRow : loadOrderLineItems(orderId)) {
+            for (OrderLineItem itemRow : itemsByOrderId.getOrDefault(orderId, List.of())) {
                 String dishName = itemRow.name();
                 Integer qty = itemRow.qty();
                 Double price = itemRow.price() != null ? itemRow.price() : 0.0;
@@ -442,8 +458,8 @@ public class ShiftService {
             orderData.put("deliveryExpense", deliveryExpense);
             orderData.put("orderAmount", orderAmount);
             orderData.put("delayMinutes", orderRow.get(Order.ORDER.TIMEDELAY) != null ? orderRow.get(Order.ORDER.TIMEDELAY) : 0.0);
-            orderData.put("clientName", clientRow != null ? clientRow.get(Client.CLIENT.FULLNAME) : null);
-            orderData.put("clientPhone", clientRow != null ? clientRow.get(Client.CLIENT.NUMBER) : null);
+            orderData.put("clientName", orderRow.get(Client.CLIENT.FULLNAME));
+            orderData.put("clientPhone", orderRow.get(Client.CLIENT.NUMBER));
             orderData.put("items", items);
             orders.add(orderData);
         }

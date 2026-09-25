@@ -7,6 +7,7 @@ import com.shakur.cafehelp.DTO.TechProductDTO;
 import com.shakur.cafehelp.Service.DishService;
 import com.shakur.cafehelp.Service.ProductService;
 import com.shakur.cafehelp.Service.TechProductService;
+import com.shakur.cafehelp.exception.PythonServiceException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.DSLContext;
@@ -54,18 +55,30 @@ public class PredictionService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            HttpEntity<RollPredictionRequestDTO> entity = new HttpEntity<>(request, headers);
+            Map<String, Object> body = Map.of("ingredients", requireIngredients(request));
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
             ResponseEntity<RollPredictionResponseDTO> response = restTemplate.exchange(
                     url, HttpMethod.POST, entity, RollPredictionResponseDTO.class
             );
 
             log.info("Prediction request sent to ML service: {}", request.getIngredients());
-            return response.getBody();
+            RollPredictionResponseDTO result = response.getBody();
+            if (result == null
+                    || result.getIngredients() == null
+                    || result.getPredictedSales() == null
+                    || !Double.isFinite(result.getPredictedSales()) || result.getPredictedSales() < 0) {
+                throw PythonServiceException.invalidResponse(
+                        new IllegalStateException("Incomplete prediction response")
+                );
+            }
+            return result;
 
+        } catch (IllegalArgumentException | PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Failed to get prediction from ML service: {}", e.getMessage());
-            throw new RuntimeException("ML service unavailable: " + e.getMessage());
+            throw PythonServiceException.translate(e);
         }
     }
 
@@ -79,7 +92,13 @@ public class PredictionService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            HttpEntity<BatchPredictionRequestDTO> entity = new HttpEntity<>(request, headers);
+            if (request == null || request.getRolls() == null || request.getRolls().isEmpty()) {
+                throw new IllegalArgumentException("rolls обязателен");
+            }
+            List<Map<String, Object>> rolls = request.getRolls().stream()
+                    .map(roll -> Map.<String, Object>of("ingredients", requireIngredients(roll)))
+                    .toList();
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(Map.of("rolls", rolls), headers);
 
             ResponseEntity<BatchPredictionResponseDTO> response = restTemplate.exchange(
                     url, HttpMethod.POST, entity, BatchPredictionResponseDTO.class
@@ -87,11 +106,19 @@ public class PredictionService {
 
             log.info("Batch prediction for {} rolls sent to ML service",
                     request.getRolls().size());
-            return response.getBody();
+            BatchPredictionResponseDTO result = response.getBody();
+            if (result == null || result.getPredictions() == null || result.getModelVersion() == null) {
+                throw PythonServiceException.invalidResponse(
+                        new IllegalStateException("Incomplete batch prediction response")
+                );
+            }
+            return result;
 
+        } catch (IllegalArgumentException | PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Failed batch prediction: {}", e.getMessage());
-            throw new RuntimeException("ML service unavailable: " + e.getMessage());
+            throw PythonServiceException.translate(e);
         }
     }
 
@@ -122,6 +149,8 @@ public class PredictionService {
             constraints.put("populationSize", request.getPopulationSize());
             constraints.put("generations", request.getGenerations());
             constraints.put("numResults", request.getNumResults());
+            constraints.put("sellingPrice", request.getSellingPrice());
+            constraints.put("totalWeightGrams", request.getTotalWeightGrams());
 
             Map<String, Object> body = new HashMap<>();
             body.put("constraints", constraints);
@@ -136,11 +165,24 @@ public class PredictionService {
             );
 
             log.info("Optimization request sent to ML service: {}", request.getRequestId());
-            return response.getBody();
+            OptimizationResponseDTO result = response.getBody();
+            if (result == null || result.getStatus() == null) {
+                throw PythonServiceException.invalidResponse(
+                        new IllegalStateException("Incomplete optimization response")
+                );
+            }
+            if ("completed".equals(result.getStatus()) && result.getResults() == null) {
+                throw PythonServiceException.invalidResponse(
+                        new IllegalStateException("Completed optimization has no results")
+                );
+            }
+            return result;
 
+        } catch (IllegalArgumentException | PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Failed optimization request: {}", e.getMessage());
-            throw new RuntimeException("ML service unavailable: " + e.getMessage());
+            throw PythonServiceException.translate(e);
         }
     }
 
@@ -156,6 +198,21 @@ public class PredictionService {
             log.warn("ML service is not available: {}", e.getMessage());
             return false;
         }
+    }
+
+    private List<String> requireIngredients(RollPredictionRequestDTO request) {
+        if (request == null || request.getIngredients() == null || request.getIngredients().isEmpty()) {
+            throw new IllegalArgumentException("ingredients обязателен");
+        }
+        List<String> normalized = request.getIngredients().stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .toList();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException("ingredients обязателен");
+        }
+        return normalized;
     }
 
     public Map<String, Object> generateNewDish(GenerateDishRequestDTO request) {
@@ -174,6 +231,8 @@ public class PredictionService {
             constraints.put("populationSize", request.getPopulationSize());
             constraints.put("generations", request.getGenerations());
             constraints.put("markup", request.getMarkup());
+            constraints.put("sellingPrice", request.getSellingPrice());
+            constraints.put("totalWeightGrams", request.getTotalWeightGrams());
             constraints.put("mustInclude", request.getMustInclude());
             constraints.put("excludedIngredients", request.getExcludedIngredients());
 
@@ -197,9 +256,11 @@ public class PredictionService {
             result.put("sourceIngredients", ingredients.size());
             return result;
 
+        } catch (IllegalArgumentException | PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Failed to generate new dish: {}", e.getMessage(), e);
-            throw new RuntimeException("ML dish generation failed: " + e.getMessage());
+            throw PythonServiceException.translate(e);
         }
     }
 

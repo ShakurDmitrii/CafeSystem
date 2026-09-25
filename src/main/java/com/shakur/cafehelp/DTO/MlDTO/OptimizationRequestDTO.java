@@ -7,6 +7,8 @@ import java.util.List;
 
 @Data
 public class OptimizationRequestDTO {
+    private Double sellingPrice;
+    private Double totalWeightGrams = 140.0;
     private String requestId;
     private String userId;  // кто запросил
 

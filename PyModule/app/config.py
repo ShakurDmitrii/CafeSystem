@@ -1,10 +1,12 @@
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     APP_NAME: str = "CafeHelp Analytics Service"
     JAVA_API_URL: str = "http://localhost:8080"
     INTERNAL_SERVICE_TOKEN: SecretStr
+    INTERNAL_API_CONTRACT_VERSION: str = "1"
+    JAVA_API_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0, le=120)
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("INTERNAL_SERVICE_TOKEN")

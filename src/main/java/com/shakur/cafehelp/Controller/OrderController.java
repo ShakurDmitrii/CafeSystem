@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -32,7 +33,7 @@ public class OrderController {
 
     // Создание нового заказа
     @PostMapping
-    public ResponseEntity<?> createOrder(@RequestBody OrderDTO order) {
+    public ResponseEntity<?> createOrder(@RequestBody OrderDTO order, java.security.Principal principal) {
         System.out.println("=== СОЗДАНИЕ ЗАКАЗА ===");
         System.out.println("Получен DTO: " + order);
         System.out.println("duty: " + order.getDuty());
@@ -41,6 +42,7 @@ public class OrderController {
                 (order.getDebt_payment_date() != null ?
                         order.getDebt_payment_date().getClass().getName() : "null"));
         try {
+            order.setCreatedBy(principal != null ? principal.getName() : "order-api");
             OrderDTO createdOrder = orderService.createOrder(order);
             return ResponseEntity.ok(createdOrder);
         } catch (InvalidOrderRequestException | IllegalArgumentException e) {
@@ -77,7 +79,12 @@ public class OrderController {
             @RequestBody PaymentUpdateRequest request
     ) {
         try {
-            OrderDTO updatedOrder = orderService.updateOrderPayment(orderId, request.getPaymentType(), request.getPaid());
+            OrderDTO updatedOrder = orderService.updateOrderPayment(
+                    orderId,
+                    request.getPaymentType(),
+                    request.getPaid(),
+                    request.getCashReceived()
+            );
             return ResponseEntity.ok(updatedOrder);
         } catch (OrderStateConflictException e) {
             return orderError(HttpStatus.CONFLICT, "ORDER_STATE_CONFLICT", e.getMessage());
@@ -166,6 +173,7 @@ public class OrderController {
     public static class PaymentUpdateRequest {
         private String paymentType;
         private Boolean paid;
+        private BigDecimal cashReceived;
 
         public String getPaymentType() {
             return paymentType;
@@ -182,6 +190,9 @@ public class OrderController {
         public void setPaid(Boolean paid) {
             this.paid = paid;
         }
+
+        public BigDecimal getCashReceived() { return cashReceived; }
+        public void setCashReceived(BigDecimal cashReceived) { this.cashReceived = cashReceived; }
     }
 
     // 🔥 ВСЕ ЗАКАЗЫ
