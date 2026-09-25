@@ -447,12 +447,12 @@ export default function InventoryShiftReport({ warehouses, onApplied, initialShi
 
                                 return (
                                     <tr key={row.productId}>
-                                        <td>
+                                        <td data-label="Продукт">
                                             <div className={styles.productName}>{row.productName}</div>
                                             <div className={styles.productMeta}>ID: {row.productId} • {row.unit || "ед."}</div>
                                         </td>
-                                        <td>{formatQty(row.openingQty)} {row.unit}</td>
-                                        <td>
+                                        <td data-label="Было">{formatQty(row.openingQty)} {row.unit}</td>
+                                        <td data-label="Движения">
                                             <div className={movementNet < -0.000001 ? styles.netOut : movementNet > 0.000001 ? styles.netIn : styles.netNeutral}>
                                                 {movementNet > 0.000001 ? "+" : ""}
                                                 {formatQty(row.movementNetQty)} {row.unit}
@@ -461,10 +461,10 @@ export default function InventoryShiftReport({ warehouses, onApplied, initialShi
                                                 +{formatQty(row.movementInQty)} / -{formatQty(row.movementOutQty)}
                                             </div>
                                         </td>
-                                        <td>{formatQty(row.soldQty)} {row.unit}</td>
-                                        <td>{formatQty(row.expectedQty)} {row.unit}</td>
-                                        <td>{formatQty(row.systemQty)} {row.unit}</td>
-                                        <td>
+                                        <td data-label="Продажи">{formatQty(row.soldQty)} {row.unit}</td>
+                                        <td data-label="Должно быть">{formatQty(row.expectedQty)} {row.unit}</td>
+                                        <td data-label="В системе">{formatQty(row.systemQty)} {row.unit}</td>
+                                        <td data-label="Фактический остаток">
                                             <input
                                                 className={styles.input}
                                                 type="number"
@@ -477,7 +477,7 @@ export default function InventoryShiftReport({ warehouses, onApplied, initialShi
                                                 onChange={(e) => handleActualChange(row.productId, e.target.value)}
                                             />
                                         </td>
-                                        <td>
+                                        <td data-label="Расхождение">
                                             <span className={`${styles.discrepancy} ${discrepancyClass}`}>
                                                 {discrepancy < -0.000001 ? "−" : discrepancy > 0.000001 ? "+" : ""}
                                                 {formatQty(Math.abs(discrepancy))} {row.unit}
@@ -490,7 +490,7 @@ export default function InventoryShiftReport({ warehouses, onApplied, initialShi
                                                         : "без расхождения"}
                                             </div>
                                         </td>
-                                        <td>
+                                        <td data-label="Контроль">
                                             {row.shortageFlag ? (
                                                 <div className={styles.warningBadge}>
                                                     Возможна нехватка: {formatQty(row.shortageQty)} {row.unit}

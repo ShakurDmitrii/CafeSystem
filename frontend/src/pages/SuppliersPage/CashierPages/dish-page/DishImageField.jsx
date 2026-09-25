@@ -30,7 +30,7 @@ export default function DishImageField({
                     id={id}
                     name={id}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png"
                     className={styles.fileInput}
                     aria-describedby={`${id}-hint`}
                     onChange={(event) => onFileChange(event.target.files?.[0])}

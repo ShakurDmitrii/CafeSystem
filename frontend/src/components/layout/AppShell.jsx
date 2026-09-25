@@ -19,7 +19,8 @@ const managementNavigation = [
     { to: "/person", label: "Персонал", roles: ["OWNER"] },
     { to: "/consigment", label: "Накладные", roles: ["OWNER"] },
     { to: "/ml", label: "AI-аналитика", roles: ["OWNER"] },
-    { to: "/tax", label: "Налог", roles: ["OWNER"] }
+    { to: "/tax", label: "Налог", roles: ["OWNER"] },
+    { to: "/system", label: "Система", roles: ["OWNER"] }
 ];
 
 const allNavigation = [...primaryNavigation, ...managementNavigation];

@@ -1,0 +1,17 @@
+.frame {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    border: 0;
+    background: #fff;
+}
+
+.error {
+    display: grid;
+    min-height: 100vh;
+    place-items: center;
+    padding: 32px;
+    color: var(--color-danger);
+    font-weight: 750;
+    text-align: center;
+}

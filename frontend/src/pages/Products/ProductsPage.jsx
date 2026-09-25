@@ -14,7 +14,9 @@ import styles from "./ProductsPage.module.css";
 
 const API_PRODUCTS = `${API_BASE_URL}/api/product`;
 const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
-const API_UPLOAD = `${API_BASE_URL}/api/files/upload-image`;
+const API_UPLOAD = `${API_BASE_URL}/api/v1/files/images`;
+const API_CONSUMABLES = `${API_BASE_URL}/api/consumables`;
+const API_DISH_CATEGORIES = `${API_BASE_URL}/api/dish-categories`;
 
 const UNIT_PRESETS = {
     g: { baseUnit: "g", unitFactor: "1" },
@@ -43,7 +45,13 @@ const createEmptyForm = () => ({
     unit: "g",
     baseUnit: "g",
     unitFactor: "1",
-    imageUrl: ""
+    imageUrl: "",
+    itemType: "ingredient",
+    consumableBasis: "per_order",
+    consumableDefaultQuantity: "1",
+    consumableTriggerQuantity: "1",
+    consumableDishCategoryId: "",
+    consumableActive: true
 });
 
 const normalizeProduct = (product) => ({
@@ -58,7 +66,13 @@ const normalizeProduct = (product) => ({
     baseUnit: product?.baseUnit || product?.unit || "g",
     unitFactor: Number(product?.unitFactor ?? 1),
     averageStockPrice: product?.averageStockPrice,
-    imageUrl: product?.imageUrl ?? ""
+    imageUrl: product?.imageUrl ?? "",
+    itemType: product?.itemType || "ingredient",
+    consumableBasis: product?.consumableBasis || "per_order",
+    consumableDefaultQuantity: product?.consumableDefaultQuantity ?? 1,
+    consumableTriggerQuantity: product?.consumableTriggerQuantity ?? 1,
+    consumableDishCategoryId: product?.consumableDishCategoryId ?? "",
+    consumableActive: product?.consumableActive ?? true
 });
 
 const normalizeSupplier = (supplier) => {
@@ -111,6 +125,7 @@ export default function ProductsPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const [products, setProducts] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
+    const [dishCategories, setDishCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [pageError, setPageError] = useState("");
     const [statusMessage, setStatusMessage] = useState("");
@@ -132,23 +147,41 @@ export default function ProductsPage() {
         setPageError("");
 
         try {
-            const [productsResponse, suppliersResponse] = await Promise.all([
+            const [productsResponse, suppliersResponse, consumablesResponse, categoriesResponse] = await Promise.all([
                 fetch(API_PRODUCTS),
-                fetch(API_SUPPLIERS)
+                fetch(API_SUPPLIERS),
+                fetch(API_CONSUMABLES),
+                fetch(API_DISH_CATEGORIES)
             ]);
 
             if (!productsResponse.ok || !suppliersResponse.ok) {
                 throw new Error("Проверьте подключение к серверу и повторите загрузку.");
             }
 
-            const [productsData, suppliersData] = await Promise.all([
+            const [productsData, suppliersData, consumablesData, categoriesData] = await Promise.all([
                 productsResponse.json().catch(() => []),
-                suppliersResponse.json().catch(() => [])
+                suppliersResponse.json().catch(() => []),
+                consumablesResponse.ok ? consumablesResponse.json().catch(() => []) : [],
+                categoriesResponse.ok ? categoriesResponse.json().catch(() => []) : []
             ]);
+
+            const rulesByProduct = new Map((Array.isArray(consumablesData) ? consumablesData : []).map((rule) => [
+                Number(rule.productId),
+                {
+                    consumableBasis: rule.basis,
+                    consumableDefaultQuantity: rule.defaultQuantity,
+                    consumableTriggerQuantity: rule.triggerQuantity,
+                    consumableDishCategoryId: rule.dishCategoryId,
+                    consumableActive: rule.active
+                }
+            ]));
 
             setProducts(
                 Array.isArray(productsData)
-                    ? productsData.map(normalizeProduct)
+                    ? productsData.map((product) => normalizeProduct({
+                        ...product,
+                        ...(rulesByProduct.get(Number(product.productId ?? product.id)) ?? {})
+                    }))
                     : []
             );
             setSuppliers(
@@ -156,6 +189,7 @@ export default function ProductsPage() {
                     ? suppliersData.map(normalizeSupplier).filter((supplier) => supplier.id > 0)
                     : []
             );
+            setDishCategories(Array.isArray(categoriesData) ? categoriesData : []);
         } catch (error) {
             console.error("Ошибка загрузки каталога продуктов:", error);
             setPageError(error.message || "Не удалось получить продукты и поставщиков.");
@@ -314,7 +348,13 @@ export default function ProductsPage() {
             unit: form.unit,
             baseUnit: form.baseUnit,
             unitFactor,
-            imageUrl: form.imageUrl || null
+            imageUrl: form.imageUrl || null,
+            itemType: form.itemType,
+            consumableBasis: form.consumableBasis,
+            consumableDefaultQuantity: Number(form.consumableDefaultQuantity || 0),
+            consumableTriggerQuantity: Number(form.consumableTriggerQuantity || 1),
+            consumableDishCategoryId: form.consumableDishCategoryId ? Number(form.consumableDishCategoryId) : null,
+            consumableActive: Boolean(form.consumableActive)
         };
 
         setSaving(true);
@@ -394,7 +434,13 @@ export default function ProductsPage() {
             unit: product.unit || "g",
             baseUnit: product.baseUnit || product.unit || "g",
             unitFactor: String(product.unitFactor ?? "1"),
-            imageUrl: product.imageUrl || ""
+            imageUrl: product.imageUrl || "",
+            itemType: product.itemType || "ingredient",
+            consumableBasis: product.consumableBasis || "per_order",
+            consumableDefaultQuantity: String(product.consumableDefaultQuantity ?? "1"),
+            consumableTriggerQuantity: String(product.consumableTriggerQuantity ?? "1"),
+            consumableDishCategoryId: String(product.consumableDishCategoryId ?? ""),
+            consumableActive: product.consumableActive ?? true
         });
         requestAnimationFrame(() => {
             document.getElementById("product-editor")?.scrollIntoView({ block: "start" });
@@ -429,6 +475,7 @@ export default function ProductsPage() {
                 <ProductEditor
                     form={form}
                     suppliers={suppliers}
+                    dishCategories={dishCategories}
                     unitOptions={UNIT_OPTIONS}
                     editingProductId={editingProductId}
                     saving={saving}

@@ -1303,6 +1303,88 @@
     font-size: 13px;
 }
 
+.personCountField {
+    display: grid;
+    grid-template-columns: auto 68px;
+    align-items: center;
+    gap: 8px;
+    color: #567068;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.personCountField input,
+.consumableLine input {
+    width: 100%;
+    min-height: 38px;
+    padding: 7px 9px;
+    border: 1px solid #cfded8;
+    border-radius: 8px;
+    color: var(--cash-ink);
+    background: white;
+}
+
+.consumableLines {
+    display: grid;
+    gap: 7px;
+}
+
+.consumableLine {
+    display: grid;
+    grid-template-columns: minmax(140px, 1fr) 116px 104px auto;
+    align-items: end;
+    gap: 9px;
+    padding: 10px;
+    border: 1px solid #dce8e3;
+    border-radius: 10px;
+    background: #f7faf8;
+}
+
+.consumableIdentity {
+    display: grid;
+    min-width: 0;
+}
+
+.consumableIdentity > span {
+    color: #26755f;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.consumableIdentity strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+}
+
+.consumableIdentity small,
+.blockHeading small {
+    color: var(--cash-muted);
+    font-size: 10px;
+}
+
+.consumableLine label {
+    display: grid;
+    gap: 4px;
+    color: #567068;
+    font-size: 10px;
+    font-weight: 750;
+}
+
+.consumableReset {
+    min-height: 38px;
+    padding: 7px 10px;
+    border: 1px solid var(--cash-line);
+    border-radius: 8px;
+    color: #26755f;
+    background: white;
+    font-size: 10px;
+    font-weight: 850;
+}
+
 .qtyControls {
     display: inline-flex;
     align-items: center;
@@ -1436,6 +1518,24 @@
     padding: 13px 0;
     border-top: 1px dashed #b8cbc4;
     border-bottom: 1px dashed #b8cbc4;
+}
+
+.orderCardConsumables {
+    display: grid;
+    gap: 3px;
+    padding: 9px 10px;
+    border: 1px dashed #b8cbc4;
+    border-radius: 8px;
+    color: #3f5f56;
+    background: #f7faf8;
+    font-size: 11px;
+}
+
+.orderCardConsumables strong {
+    color: var(--cash-deep);
+    font-size: 10px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
 }
 
 .receiptTotal > div {
@@ -2118,7 +2218,9 @@
 }
 
 .modalBody {
+    min-width: 0;
     max-height: calc(100vh - 210px);
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 20px;
@@ -2144,6 +2246,84 @@
 .pickerList {
     display: grid;
     gap: 10px;
+}
+
+.cashPaymentForm {
+    display: grid;
+    gap: 14px;
+}
+
+.cashPaymentTotal,
+.cashPaymentChange {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 15px 16px;
+    border-radius: 11px;
+}
+
+.cashPaymentTotal {
+    color: white;
+    background: var(--cash-deep);
+}
+
+.cashPaymentTotal strong,
+.cashPaymentChange strong {
+    font-family: Georgia, serif;
+    font-size: 28px;
+}
+
+.cashReceivedField {
+    display: grid;
+    gap: 7px;
+    color: var(--cash-muted);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.cashReceivedField > div {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    overflow: hidden;
+    border: 2px solid #9abdb1;
+    border-radius: 11px;
+    background: white;
+}
+
+.cashReceivedField input {
+    min-width: 0;
+    padding: 14px 15px;
+    border: 0;
+    outline: 0;
+    font-size: 25px;
+    font-weight: 850;
+    font-variant-numeric: tabular-nums;
+}
+
+.cashReceivedField > div > span {
+    padding: 0 15px;
+    color: var(--cash-muted);
+    font-size: 20px;
+    font-weight: 800;
+}
+
+.cashPaymentChange {
+    border: 1px solid #b9dbcf;
+    color: #174f3f;
+    background: #e5f5ef;
+}
+
+.cashPaymentHint,
+.cashPaymentError {
+    margin: 0;
+    padding: 9px 11px;
+    border-radius: 8px;
+    color: #8f2e28;
+    background: #ffebe8;
+    font-size: 12px;
+    font-weight: 750;
 }
 
 .pickerList {
@@ -2398,6 +2578,15 @@
 
     .orderLine {
         grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    .consumableLine {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .consumableIdentity,
+    .consumableReset {
+        grid-column: 1 / -1;
     }
 
     .lineAmount {

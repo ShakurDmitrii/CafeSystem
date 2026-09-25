@@ -9,7 +9,7 @@ import DishPageHeader from "./dish-page/DishPageHeader";
 import styles from "./DishPage.module.css";
 
 const API_DISHES = `${API_BASE_URL}/api/dishes`;
-const API_UPLOAD = `${API_BASE_URL}/api/files/upload-image`;
+const API_UPLOAD = `${API_BASE_URL}/api/v1/files/images`;
 const API_DISH_CATEGORIES = `${API_BASE_URL}/api/dish-categories`;
 
 const createDishForm = () => ({

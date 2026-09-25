@@ -4,6 +4,7 @@ import styles from "../ProductsPage.module.css";
 export default function ProductEditor({
     form,
     suppliers,
+    dishCategories,
     unitOptions,
     editingProductId,
     saving,
@@ -48,11 +49,105 @@ export default function ProductEditor({
             </div>
 
             <p className={styles.editorIntro}>
-                Цена указывается за закупочную единицу. Коэффициент переводит её
-                в единицу складского учёта.
+                Цена по умолчанию подставляется в новые поставки. Изменение карточки
+                не переоценивает уже принятый складской остаток.
             </p>
 
             <form className={styles.editorForm} onSubmit={onSubmit}>
+                <fieldset className={styles.unitFieldset}>
+                    <legend>Назначение товара</legend>
+                    <div className={styles.unitFields}>
+                        <label className={styles.field} htmlFor="product-item-type">
+                            <span>Тип</span>
+                            <select
+                                id="product-item-type"
+                                value={form.itemType}
+                                onChange={(event) => onChange("itemType", event.target.value)}
+                                className={styles.select}
+                            >
+                                <option value="ingredient">Ингредиент рецепта</option>
+                                <option value="consumable">Расходник</option>
+                                <option value="packaging">Упаковка</option>
+                            </select>
+                        </label>
+                        {form.itemType !== "ingredient" ? (
+                            <label className={styles.field} htmlFor="consumable-basis">
+                                <span>Добавлять</span>
+                                <select
+                                    id="consumable-basis"
+                                    value={form.consumableBasis}
+                                    onChange={(event) => onChange("consumableBasis", event.target.value)}
+                                    className={styles.select}
+                                >
+                                    <option value="per_person">На количество персон</option>
+                                    <option value="per_order">Один раз на заказ</option>
+                                    <option value="per_menu_item">На позиции меню</option>
+                                </select>
+                            </label>
+                        ) : null}
+                    </div>
+
+                    {form.itemType !== "ingredient" ? (
+                        <>
+                            <div className={styles.unitFields}>
+                                <label className={styles.field} htmlFor="consumable-default-quantity">
+                                    <span>Количество, {form.baseUnit}</span>
+                                    <input
+                                        id="consumable-default-quantity"
+                                        type="number"
+                                        min="0"
+                                        step="0.001"
+                                        value={form.consumableDefaultQuantity}
+                                        onChange={(event) => onChange("consumableDefaultQuantity", event.target.value)}
+                                        className={styles.input}
+                                    />
+                                </label>
+                                {form.consumableBasis !== "per_order" ? (
+                                    <label className={styles.field} htmlFor="consumable-trigger-quantity">
+                                        <span>{form.consumableBasis === "per_person" ? "На каждые N персон" : "На каждые N позиций"}</span>
+                                        <input
+                                            id="consumable-trigger-quantity"
+                                            type="number"
+                                            min="0.001"
+                                            step="0.001"
+                                            value={form.consumableTriggerQuantity}
+                                            onChange={(event) => onChange("consumableTriggerQuantity", event.target.value)}
+                                            className={styles.input}
+                                        />
+                                    </label>
+                                ) : null}
+                            </div>
+                            {form.consumableBasis === "per_menu_item" ? (
+                                <label className={styles.field} htmlFor="consumable-category">
+                                    <span>Категория блюд</span>
+                                    <select
+                                        id="consumable-category"
+                                        value={form.consumableDishCategoryId}
+                                        onChange={(event) => onChange("consumableDishCategoryId", event.target.value)}
+                                        className={styles.select}
+                                    >
+                                        <option value="">Все позиции меню</option>
+                                        {dishCategories.map((category) => (
+                                            <option key={category.categoryId} value={category.categoryId}>{category.name}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                            ) : null}
+                            <label className={styles.favoriteField}>
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(form.consumableActive)}
+                                    onChange={(event) => onChange("consumableActive", event.target.checked)}
+                                />
+                                <span>
+                                    <strong>Добавлять в заказ автоматически</strong>
+                                    <small>Сотрудник сможет изменить количество и вручную указать доплату.</small>
+                                </span>
+                            </label>
+                        </>
+                    ) : null}
+                </fieldset>
+
                 <label className={styles.field} htmlFor="product-supplier">
                     <span>Поставщик</span>
                     <select
@@ -90,7 +185,7 @@ export default function ProductEditor({
 
                 <div className={styles.pairedFields}>
                     <label className={styles.field} htmlFor="product-price">
-                        <span>Цена закупки, ₽</span>
+                        <span>Цена по умолчанию, ₽</span>
                         <input
                             id="product-price"
                             name="productPrice"
@@ -212,7 +307,7 @@ export default function ProductEditor({
                                 id="product-image"
                                 name="productImage"
                                 type="file"
-                                accept="image/*"
+                                accept="image/jpeg,image/png"
                                 onChange={handleFileChange}
                                 disabled={uploadingImage}
                             />
@@ -220,7 +315,7 @@ export default function ProductEditor({
                         <small aria-live="polite">
                             {uploadingImage
                                 ? "Загружаем изображение…"
-                                : form.imageUrl ? "Изображение добавлено" : "Можно добавить JPG, PNG или WebP"}
+                                : form.imageUrl ? "Изображение добавлено" : "Можно добавить JPG или PNG до 5 МБ"}
                         </small>
                         {form.imageUrl ? (
                             <button

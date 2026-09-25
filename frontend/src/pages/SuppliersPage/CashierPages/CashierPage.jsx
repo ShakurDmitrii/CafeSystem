@@ -1,15 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL } from "../../../auth";
 import styles from "./CashierPage.module.css";
 import DishPickerModal from "./DishPickerModal";
 import InventoryShiftReport from "../../Warehouse/InventoryShiftReport";
 import CashierHeader from "./cashier-page/CashierHeader";
 import CashierModal from "./cashier-page/CashierModal";
+import CashPaymentModal from "./cashier-page/CashPaymentModal";
 import DebtNotification from "./cashier-page/DebtNotification";
 import OrderComposer from "./cashier-page/OrderComposer";
 import OrdersBoard from "./cashier-page/OrdersBoard";
 import ShiftLobby from "./cashier-page/ShiftLobby";
 import ShiftReportModal from "./cashier-page/ShiftReportModal";
+import { openAppWindow, openPrintDocument } from "../../../utils/desktopWindows";
 
 const API_ORDERS = `${API_BASE_URL}/api/orders`;
 const API_SHIFTS = `${API_BASE_URL}/api/shifts`;
@@ -18,6 +20,7 @@ const API_DISHES = `${API_BASE_URL}/api/dishes`;
 const API_DISH_SETS = `${API_BASE_URL}/api/dish-sets`;
 const API_CLIENTS = `${API_BASE_URL}/api/clients`;
 const API_WAREHOUSES = `${API_BASE_URL}/warehouses`;
+const API_CONSUMABLES_PREVIEW = `${API_BASE_URL}/api/consumables/preview`;
 const API_TODAY_DEBTS = `${API_BASE_URL}/api/clients/today-debts`;
 const API_OVERDUE_DEBTS = `${API_BASE_URL}/api/clients/overdue-debts`;
 const API_DISH_CATEGORIES = `${API_BASE_URL}/api/dish-categories`;
@@ -81,6 +84,10 @@ export default function CashierPage() {
     const loadOrdersRef = useRef(null);
     const [orders, setOrders] = useState([]);
     const [currentOrderItems, setCurrentOrderItems] = useState([]);
+    const [personCount, setPersonCount] = useState(1);
+    const [orderConsumables, setOrderConsumables] = useState([]);
+    const [consumableOverrides, setConsumableOverrides] = useState({});
+    const [consumablesLoading, setConsumablesLoading] = useState(false);
     const [shiftOpen, setShiftOpen] = useState(false);
     const [currentShift, setCurrentShift] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -119,6 +126,48 @@ export default function CashierPage() {
     const [warehouses, setWarehouses] = useState([]);
     const [inventoryReportOpen, setInventoryReportOpen] = useState(false);
     const [inventoryReportShiftId, setInventoryReportShiftId] = useState("");
+    const [cashPaymentDialog, setCashPaymentDialog] = useState(null);
+    const [cashPaymentBusy, setCashPaymentBusy] = useState(false);
+    const [cashPaymentError, setCashPaymentError] = useState("");
+
+    const orderItemsForPreview = useMemo(
+        () => expandOrderItemsForApi(currentOrderItems),
+        [currentOrderItems]
+    );
+
+    useEffect(() => {
+        if (orderItemsForPreview.length === 0) {
+            setOrderConsumables([]);
+            return undefined;
+        }
+        const controller = new AbortController();
+        const timer = window.setTimeout(async () => {
+            setConsumablesLoading(true);
+            try {
+                const response = await fetch(API_CONSUMABLES_PREVIEW, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        personCount,
+                        items: orderItemsForPreview,
+                        consumables: Object.values(consumableOverrides)
+                    }),
+                    signal: controller.signal
+                });
+                if (!response.ok) throw new Error("Не удалось рассчитать комплектацию");
+                const body = await response.json();
+                setOrderConsumables(Array.isArray(body?.consumables) ? body.consumables : []);
+            } catch (error) {
+                if (error.name !== "AbortError") console.error(error);
+            } finally {
+                if (!controller.signal.aborted) setConsumablesLoading(false);
+            }
+        }, 150);
+        return () => {
+            window.clearTimeout(timer);
+            controller.abort();
+        };
+    }, [consumableOverrides, orderItemsForPreview, personCount]);
 
     // === ДОБАВЛЕНО: Состояния для долгов ===
     const [todayDebts, setTodayDebts] = useState([]);
@@ -606,24 +655,20 @@ export default function CashierPage() {
             lines.push(`Расходы смены: ${Number(report.totals?.expenses || 0).toFixed(2)} ₽`);
             lines.push(`Прибыль: ${Number(report.totals?.profit || 0).toFixed(2)} ₽`);
 
-            const reportText = lines.join("\n");
-
-            const w = window.open("", "_blank", "width=800,height=900");
-            if (!w) {
-                alert("Не удалось открыть окно печати. Разрешите всплывающие окна.");
-                return;
-            }
-            w.document.write(`
+            const reportText = escapeHtml(lines.join("\n"));
+            await openPrintDocument({
+                title: `Z-Отчет смены ${report.shiftId}`,
+                width: 800,
+                height: 900,
+                html: `
                 <html>
                   <head><title>Z-Отчет смены ${report.shiftId}</title></head>
                   <body style="font-family: Consolas, monospace; white-space: pre-wrap; padding: 16px;">
 ${reportText}
                   </body>
                 </html>
-            `);
-            w.document.close();
-            w.focus();
-            w.print();
+                `
+            });
         } catch (e) {
             console.error("Ошибка формирования Z-отчета:", e);
             alert(e.message || "Не удалось сформировать Z-отчет");
@@ -648,7 +693,7 @@ ${reportText}
         }
     };
 
-    const createOrder = async () => {
+    const createOrder = async (cashReceived = null) => {
         if (currentOrderItems.length === 0 || !currentShift) {
             alert("Добавьте позиции в заказ!");
             return;
@@ -677,6 +722,12 @@ ${reportText}
 
         const total = totalOrderAmount;
 
+        if (paymentType === "cash" && cashReceived == null) {
+            setCashPaymentError("");
+            setCashPaymentDialog({ mode: "create", total });
+            return;
+        }
+
         try {
             let debtPayment = null;
             if (isDebt && debtPaymentDate) {
@@ -696,8 +747,11 @@ ${reportText}
                 deliveryAddress: requiresContactDetails ? effectiveAddress : null,
                 paymentType,
                 paid: paymentType !== "unpaid",
+                cashReceived: paymentType === "cash" ? cashReceived : null,
                 debt_payment_date: debtPayment,
-                items: orderItemsForApi
+                items: orderItemsForApi,
+                personCount,
+                consumables: orderConsumables
             };
 
             console.log("Отправляем заказ на сервер:", orderPayload);
@@ -715,6 +769,8 @@ ${reportText}
             console.log("Создан заказ с orderId:", order.orderId);
             order.paymentType = paymentType;
             order.paid = paymentType !== "unpaid";
+            order.cashReceived = order.cashReceived ?? cashReceived;
+            order.cashChange = order.cashChange ?? Math.max(0, Number(cashReceived || 0) - Number(order.amount || total));
             order.deliveryCost = orderType ? Number(deliveryCost || 0) : 0;
             order.deliveryPhone = requiresContactDetails ? effectivePhone : "";
             order.deliveryAddress = requiresContactDetails ? effectiveAddress : "";
@@ -734,6 +790,9 @@ ${reportText}
 
             // Очищаем форму
             setCurrentOrderItems([]);
+            setPersonCount(1);
+            setOrderConsumables([]);
+            setConsumableOverrides({});
             setOrderType(false);
             setDeliveryCost(0);
             setPaymentType("cash");
@@ -751,7 +810,7 @@ ${reportText}
 
         } catch (e) {
             console.error("Ошибка создания заказа:", e);
-            alert("Ошибка при создании заказа. Проверьте подключение к серверу.");
+            throw e;
         }
     };
 
@@ -819,13 +878,14 @@ ${reportText}
             .catch(e => console.error("Ошибка обновления статуса заказа:", e));
     };
 
-    const updateOrderPayment = async (orderId, nextPaymentType) => {
+    const updateOrderPayment = async (orderId, nextPaymentType, cashReceived = null) => {
         const res = await fetch(`${API_ORDERS}/${orderId}/payment`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 paymentType: nextPaymentType,
-                paid: nextPaymentType !== "unpaid"
+                paid: nextPaymentType !== "unpaid",
+                cashReceived: nextPaymentType === "cash" ? cashReceived : null
             })
         });
 
@@ -845,12 +905,41 @@ ${reportText}
                 ? {
                     ...o,
                     paymentType: body?.paymentType || nextPaymentType,
-                    paid: body?.paid ?? (nextPaymentType !== "unpaid")
+                    paid: body?.paid ?? (nextPaymentType !== "unpaid"),
+                    cashReceived: body?.cashReceived ?? null,
+                    cashChange: body?.cashChange ?? null
                 }
                 : o
         )));
 
         return body;
+    };
+
+    const requestCashPayment = (order) => {
+        setCashPaymentError("");
+        setCashPaymentDialog({
+            mode: "existing",
+            orderId: order.orderId,
+            total: Number(order.amount || 0)
+        });
+    };
+
+    const confirmCashPayment = async (cashReceived) => {
+        if (!cashPaymentDialog) return;
+        setCashPaymentBusy(true);
+        setCashPaymentError("");
+        try {
+            if (cashPaymentDialog.mode === "create") {
+                await createOrder(cashReceived);
+            } else {
+                await updateOrderPayment(cashPaymentDialog.orderId, "cash", cashReceived);
+            }
+            setCashPaymentDialog(null);
+        } catch (error) {
+            setCashPaymentError(error?.message || "Не удалось провести оплату");
+        } finally {
+            setCashPaymentBusy(false);
+        }
     };
 
     const issueOrder = async (orderId) => {
@@ -936,7 +1025,7 @@ ${reportText}
         ""
     ]);
 
-    const printLinesInWindow = (title, lines, style = {}) => {
+    const printLinesInWindow = async (title, lines, style = {}) => {
         const fontSize = style.fontSize || 18;
         const fontWeight = style.fontWeight || 700;
         const align = style.align || "left";
@@ -990,17 +1079,10 @@ ${reportText}
             </html>
         `;
 
-        const w = window.open("", "_blank", "width=500,height=800");
-        if (!w) {
-            throw new Error("Не удалось открыть окно печати");
-        }
-        w.document.write(html);
-        w.document.close();
-        w.focus();
-        w.print();
+        await openPrintDocument({ html, title, width: 500, height: 800 });
     };
 
-    const printKitchenTicketWindow = (order, rawItems = []) => {
+    const printKitchenTicketWindow = async (order, rawItems = []) => {
         const items = normalizeTicketItems(rawItems);
         const paymentRaw = (order.paymentType || "").toLowerCase();
         const paymentLabel = paymentRaw === "cash"
@@ -1039,6 +1121,21 @@ ${reportText}
             }).join("")
             : `<div style="padding:10px 0;font-size:15px;font-weight:700;">Состав заказа не найден</div>`;
 
+        const consumables = Array.isArray(order.consumables) ? order.consumables : [];
+        const consumableRows = consumables.length > 0
+            ? `
+                <div style="margin-top:9px;border-top:1px dashed #888;padding-top:7px;">
+                    <div style="font-size:13px;font-weight:900;">КОМПЛЕКТАЦИЯ · ${escapeHtml(String(order.personCount || 1))} перс.</div>
+                    ${consumables.map((item) => `
+                        <div style="display:flex;justify-content:space-between;gap:8px;margin-top:4px;font-size:13px;font-weight:700;">
+                            <span>${escapeHtml(item.name || item.productName || "Расходник")}</span>
+                            <strong>${escapeHtml(Number(item.quantity ?? item.actualQuantity ?? 0).toLocaleString("ru-RU"))} ${escapeHtml(item.unit || item.baseUnit || "")}</strong>
+                        </div>
+                    `).join("")}
+                </div>
+            `
+            : "";
+
         const contactPhone = order.deliveryPhone || order.clientPhone || order.client_number || order.clientNumber || "";
         const contactAddress = order.deliveryAddress || order.delivery_address || order.clientAddress || order.client_address || "";
         const createdAt = order.created_at || order.createdAt || "";
@@ -1069,6 +1166,7 @@ ${reportText}
                     ${createdAt ? `<div style="margin-top:6px;font-size:13px;font-weight:700;">Время: ${escapeHtml(String(createdAt))}</div>` : ""}
                     <div style="margin:8px 0;border-top:1px solid #000;"></div>
                     ${itemRows}
+                    ${consumableRows}
                     <div style="margin-top:8px;border-top:1px solid #000;padding-top:8px;">
                         <div style="display:flex;justify-content:space-between;font-size:17px;font-weight:900;">
                             <span>ИТОГО</span>
@@ -1077,6 +1175,8 @@ ${reportText}
                         <div style="margin-top:6px;font-size:14px;font-weight:700;">Тип: ${isDelivery ? "Доставка" : "В зале"}</div>
                         ${isDelivery ? `<div style="margin-top:4px;font-size:14px;font-weight:700;">Доставка: ${escapeHtml(formatTicketMoney(deliveryCost))} ₽</div>` : ""}
                         <div style="margin-top:4px;font-size:14px;font-weight:700;">Оплата: ${escapeHtml(paymentLabel)}</div>
+                        ${paymentRaw === "cash" && order.cashReceived != null ? `<div style="margin-top:4px;font-size:14px;font-weight:700;">Получено: ${escapeHtml(formatTicketMoney(order.cashReceived))} ₽</div>` : ""}
+                        ${paymentRaw === "cash" && order.cashChange != null ? `<div style="margin-top:4px;font-size:14px;font-weight:900;">Сдача: ${escapeHtml(formatTicketMoney(order.cashChange))} ₽</div>` : ""}
                         ${contactPhone ? `<div style="margin-top:6px;font-size:14px;font-weight:700;word-break:break-word;">Телефон: ${escapeHtml(contactPhone)}</div>` : ""}
                         ${contactAddress ? `<div style="margin-top:4px;font-size:14px;font-weight:700;word-break:break-word;">Адрес: ${escapeHtml(contactAddress)}</div>` : ""}
                     </div>
@@ -1084,22 +1184,18 @@ ${reportText}
             </html>
         `;
 
-        const w = window.open("", "_blank", "width=420,height=820");
-        if (!w) {
-            throw new Error("Не удалось открыть окно печати");
-        }
-        w.document.write(html);
-        w.document.close();
-        w.focus();
-        window.setTimeout(() => {
-            w.print();
-        }, 180);
+        await openPrintDocument({
+            html,
+            title: `Чек заказа №${order.orderId}`,
+            width: 420,
+            height: 820
+        });
     };
 
     const printOrderNumberTicket = async (order) => {
         const title = `Чек заказа №${order.orderId}`;
         const numberLines = buildOrderNumberTicketLines(order.orderId);
-        printLinesInWindow(`${title} - Номер`, numberLines, {
+        await printLinesInWindow(`${title} - Номер`, numberLines, {
             fontSize: 44,
             fontWeight: 800,
             align: "center",
@@ -1140,9 +1236,13 @@ ${reportText}
                     deliveryPhone: payload?.deliveryPhone ?? order.deliveryPhone,
                     deliveryAddress: payload?.deliveryAddress ?? order.deliveryAddress,
                     created_at: payload?.createdAt ?? order.created_at ?? order.createdAt,
-                    createdAt: payload?.createdAt ?? order.createdAt ?? order.created_at
+                    createdAt: payload?.createdAt ?? order.createdAt ?? order.created_at,
+                    personCount: payload?.personCount ?? order.personCount ?? 1,
+                    consumables: Array.isArray(payload?.consumables) ? payload.consumables : (order.consumables || []),
+                    cashReceived: payload?.cashReceived ?? order.cashReceived,
+                    cashChange: payload?.cashChange ?? order.cashChange
                 };
-                printKitchenTicketWindow(payloadOrder, payloadItems);
+                await printKitchenTicketWindow(payloadOrder, payloadItems);
                 return { status: "order_details_printed_only" };
             }
         } catch (payloadError) {
@@ -1171,7 +1271,7 @@ ${reportText}
             items = order.items;
         }
 
-        printKitchenTicketWindow(order, items);
+        await printKitchenTicketWindow(order, items);
         return { status: "order_details_printed_only" };
     };
 
@@ -1191,7 +1291,13 @@ ${reportText}
         (sum, i) => sum + (Number(i.qty || 1) * Number(i.price || 0)),
         0
     );
-    const totalOrderAmount = orderItemsTotal + (orderType ? Number(deliveryCost || 0) : 0);
+    const consumableSurchargeTotal = orderConsumables.reduce(
+        (sum, row) => sum + Number(row.surchargeAmount || 0),
+        0
+    );
+    const totalOrderAmount = orderItemsTotal
+        + consumableSurchargeTotal
+        + (orderType ? Number(deliveryCost || 0) : 0);
     const orderItemsForApi = expandOrderItemsForApi(currentOrderItems);
 
     // Функция для разделения заказов на группы
@@ -1253,13 +1359,19 @@ ${reportText}
                 isLoading={isLoading}
                 onShowDebts={() => setShowDebtNotification(true)}
                 onPrintReport={printZReport}
-                onOpenKitchen={() => {
+                onOpenKitchen={async () => {
                     if (!currentShift?.shiftId) return;
-                    window.open(
-                        `${window.location.origin}/kitchen-display/${currentShift.shiftId}`,
-                        "_blank",
-                        "noopener,noreferrer"
-                    );
+                    try {
+                        await openAppWindow({
+                            label: `kitchen-${currentShift.shiftId}`,
+                            path: `/kitchen-display/${currentShift.shiftId}`,
+                            title: `Кухня · смена №${currentShift.shiftId}`,
+                            width: 1440,
+                            height: 900
+                        });
+                    } catch (error) {
+                        alert(error.message || "Не удалось открыть экран кухни");
+                    }
                 }}
             />
 
@@ -1291,6 +1403,10 @@ ${reportText}
                         showDatePicker={showDatePicker}
                         debtPaymentDate={debtPaymentDate}
                         preparationTime={preparationTime}
+                        personCount={personCount}
+                        consumables={orderConsumables}
+                        consumablesLoading={consumablesLoading}
+                        consumableSurchargeTotal={consumableSurchargeTotal}
                         itemsTotal={orderItemsTotal}
                         total={totalOrderAmount}
                         isLoading={isLoading}
@@ -1346,7 +1462,29 @@ ${reportText}
                         onDebtChange={handleDebtCheckboxChange}
                         onDebtDateChange={setDebtPaymentDate}
                         onPreparationTimeChange={(value) => setPreparationTime(Math.max(1, parseInt(value, 10) || 30))}
-                        onCreateOrder={createOrder}
+                        onPersonCountChange={(value) => setPersonCount(Math.max(1, parseInt(value, 10) || 1))}
+                        onConsumableChange={(productId, field, value) => {
+                            const row = orderConsumables.find((item) => Number(item.productId) === Number(productId));
+                            if (!row) return;
+                            setConsumableOverrides((current) => ({
+                                ...current,
+                                [productId]: {
+                                    productId: Number(productId),
+                                    actualQuantity: field === "actualQuantity"
+                                        ? Math.max(0, Number(value || 0))
+                                        : Number(current[productId]?.actualQuantity ?? row.actualQuantity ?? 0),
+                                    surchargeAmount: field === "surchargeAmount"
+                                        ? Math.max(0, Number(value || 0))
+                                        : Number(current[productId]?.surchargeAmount ?? row.surchargeAmount ?? 0)
+                                }
+                            }));
+                        }}
+                        onConsumableReset={(productId) => setConsumableOverrides((current) => {
+                            const next = { ...current };
+                            delete next[productId];
+                            return next;
+                        })}
+                        onCreateOrder={() => createOrder()}
                         onCloseShift={closeShift}
                     />
                     <OrdersBoard
@@ -1363,6 +1501,7 @@ ${reportText}
                             onPrintOrderNumber: printOrderNumberTicket,
                             onPrintOrderDetails: printOrderDetailsTicket,
                             onUpdatePayment: updateOrderPayment,
+                            onRequestCashPayment: requestCashPayment,
                             onIssueOrder: issueOrder
                         }}
                     />
@@ -1424,6 +1563,20 @@ ${reportText}
                         })}
                     </div>
                 </CashierModal>
+            )}
+
+            {cashPaymentDialog && (
+                <CashPaymentModal
+                    total={cashPaymentDialog.total}
+                    busy={cashPaymentBusy}
+                    error={cashPaymentError}
+                    onClose={() => {
+                        if (cashPaymentBusy) return;
+                        setCashPaymentDialog(null);
+                        setCashPaymentError("");
+                    }}
+                    onConfirm={confirmCashPayment}
+                />
             )}
 
             {showClientModal && (

@@ -15,6 +15,10 @@ export default function OrderComposer({
     showDatePicker,
     debtPaymentDate,
     preparationTime,
+    personCount,
+    consumables,
+    consumablesLoading,
+    consumableSurchargeTotal,
     itemsTotal,
     total,
     isLoading,
@@ -37,6 +41,9 @@ export default function OrderComposer({
     onDebtChange,
     onDebtDateChange,
     onPreparationTimeChange,
+    onPersonCountChange,
+    onConsumableChange,
+    onConsumableReset,
     onCreateOrder,
     onCloseShift
 }) {
@@ -144,6 +151,73 @@ export default function OrderComposer({
                                     aria-label={`Удалить ${item.dishName || "позицию"}`}
                                 >
                                     ×
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            <div className={styles.composerBlock}>
+                <div className={styles.blockHeading}>
+                    <div>
+                        <h3>Комплектация</h3>
+                        <small>Количество можно изменить, доплату сотрудник указывает вручную.</small>
+                    </div>
+                    <label className={styles.personCountField} htmlFor="order-person-count">
+                        <span>Персон</span>
+                        <input
+                            id="order-person-count"
+                            type="number"
+                            min="1"
+                            max="1000"
+                            value={personCount}
+                            onChange={(event) => onPersonCountChange(event.target.value)}
+                        />
+                    </label>
+                </div>
+
+                {consumablesLoading ? (
+                    <div className={styles.compactEmpty}>Пересчитываем комплектацию…</div>
+                ) : consumables.length === 0 ? (
+                    <div className={styles.compactEmpty}>Для заказа пока не настроены расходники.</div>
+                ) : (
+                    <div className={styles.consumableLines}>
+                        {consumables.map((item) => (
+                            <div className={styles.consumableLine} key={item.productId}>
+                                <div className={styles.consumableIdentity}>
+                                    <span>{item.itemType === "packaging" ? "Упаковка" : "Расходник"}</span>
+                                    <strong>{item.productName}</strong>
+                                    <small>
+                                        По умолчанию: {Number(item.suggestedQuantity || 0).toLocaleString("ru-RU")} {item.baseUnit}
+                                    </small>
+                                </div>
+                                <label>
+                                    <span>Положить, {item.baseUnit}</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.001"
+                                        value={item.actualQuantity ?? 0}
+                                        onChange={(event) => onConsumableChange(item.productId, "actualQuantity", event.target.value)}
+                                    />
+                                </label>
+                                <label>
+                                    <span>Доплата, ₽</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        value={item.surchargeAmount ?? 0}
+                                        onChange={(event) => onConsumableChange(item.productId, "surchargeAmount", event.target.value)}
+                                    />
+                                </label>
+                                <button
+                                    type="button"
+                                    className={styles.consumableReset}
+                                    onClick={() => onConsumableReset(item.productId)}
+                                >
+                                    По умолчанию
                                 </button>
                             </div>
                         ))}
@@ -292,6 +366,12 @@ export default function OrderComposer({
                         <strong>{formatMoney(deliveryCost)}</strong>
                     </div>
                 )}
+                {Number(consumableSurchargeTotal || 0) > 0 ? (
+                    <div>
+                        <span>Доплаты</span>
+                        <strong>{formatMoney(consumableSurchargeTotal)}</strong>
+                    </div>
+                ) : null}
                 <div className={styles.grandTotal}>
                     <span>Итого</span>
                     <strong>{formatMoney(total)}</strong>
@@ -305,6 +385,7 @@ export default function OrderComposer({
                 disabled={
                     items.length === 0 ||
                     isLoading ||
+                    consumablesLoading ||
                     (requiresContactDetails && (!effectivePhone || !effectiveAddress))
                 }
             >

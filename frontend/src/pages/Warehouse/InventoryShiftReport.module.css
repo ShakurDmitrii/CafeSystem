@@ -356,6 +356,95 @@
     }
 }
 
+@media (max-width: 760px) {
+    .tableWrap {
+        overflow-x: hidden;
+        padding-top: 12px;
+    }
+
+    .table {
+        min-width: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+    }
+
+    .table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .table,
+    .table tbody,
+    .table tr,
+    .table td {
+        display: block;
+        width: 100%;
+    }
+
+    .table tbody {
+        display: grid;
+        gap: 12px;
+    }
+
+    .table tr {
+        overflow: hidden;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-sm);
+        background: #fff;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .table td {
+        display: grid;
+        grid-template-columns: minmax(112px, 42%) minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+        padding: 10px 12px;
+        text-align: right;
+    }
+
+    .table td::before {
+        content: attr(data-label);
+        color: var(--color-accent-strong);
+        font-family: var(--font-data);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-align: left;
+        text-transform: uppercase;
+    }
+
+    .table td > * {
+        min-width: 0;
+        justify-self: end;
+    }
+
+    .table td:first-child {
+        background: #eff5f1;
+    }
+
+    .table td:last-child {
+        border-bottom: 0;
+    }
+
+    .table .input {
+        width: min(180px, 100%);
+    }
+
+    .productName,
+    .productMeta {
+        overflow-wrap: anywhere;
+        text-align: right;
+    }
+}
+
 @media (max-width: 560px) {
     .header,
     .toolbar,
