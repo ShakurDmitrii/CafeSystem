@@ -2,6 +2,7 @@ package com.shakur.cafehelp.Controller.PyController;
 
 import com.shakur.cafehelp.DTO.MlDTO.*;
 import com.shakur.cafehelp.Service.MlServices.PredictionService;
+import com.shakur.cafehelp.exception.PythonServiceException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -26,6 +27,8 @@ public class MlPredictionController {
         try {
             var result = predictionService.predictSales(request);
             return ResponseEntity.ok(result);
+        } catch (PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(
                     RollPredictionResponseDTO.builder()
@@ -45,6 +48,8 @@ public class MlPredictionController {
         try {
             var results = predictionService.batchPredict(request);
             return ResponseEntity.ok(results);
+        } catch (PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(
                     BatchPredictionResponseDTO.builder()
@@ -64,6 +69,8 @@ public class MlPredictionController {
         try {
             var result = predictionService.optimizeRolls(request);
             return ResponseEntity.accepted().body(result);
+        } catch (PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(
                     OptimizationResponseDTO.builder()
@@ -80,6 +87,8 @@ public class MlPredictionController {
         try {
             GenerateDishRequestDTO effectiveRequest = request != null ? request : new GenerateDishRequestDTO();
             return ResponseEntity.ok(predictionService.generateNewDish(effectiveRequest));
+        } catch (PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(
                     Map.of(

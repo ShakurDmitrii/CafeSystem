@@ -1,17 +1,12 @@
 package com.shakur.cafehelp.Service.MlServices;
 
 import com.shakur.cafehelp.DTO.MlDTO.SalesRecordDTO;
-import jooqdata.tables.Order;
-import jooqdata.tables.records.OrderRecord;
 import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 
-import com.shakur.cafehelp.DTO.MlDTO.SalesRecordDTO;
 import lombok.RequiredArgsConstructor;
-import org.jooq.DSLContext;
-import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -32,6 +27,7 @@ public class SalesService {
             DSL.field(DSL.name("cancelled_at"), LocalDateTime.class);
 
     private final DSLContext dsl;
+    private final MenuService menuService;
 
     /**
      * Получить историю продаж для ML обучения
@@ -40,55 +36,35 @@ public class SalesService {
      * @return список записей о продажах
      */
     public List<SalesRecordDTO> getSalesForML(LocalDate startDate, LocalDate endDate) {
-        // 1. Получаем все завершенные заказы за период
-        var orders = dsl.selectFrom(ORDER)
+        Map<Integer, List<String>> ingredientsByDish = new java.util.HashMap<>();
+        return dsl.select(ORDER.DATE, ORDER.ORDERID, DISH.DISHID, DISH.DISHNAME,
+                        DISH.PRICE, DISH.FIRSTCOST, ORDERDISH.QTY)
+                .from(ORDER)
+                .join(ORDERDISH).on(ORDER.ORDERID.eq(ORDERDISH.ORDERID))
+                .join(DISH).on(ORDERDISH.DISHID.eq(DISH.DISHID))
                 .where(ORDER.DATE.between(startDate, endDate))
-                .and(ORDER.STATUS.eq(true)) // только завершенные
+                .and(ORDER.STATUS.eq(true))
                 .and(ORDER_CANCELLED_AT.isNull())
-                .fetch();
-
-        return orders.stream()
-                .flatMap(order -> {
-                    // 2. Для каждого заказа получаем его позиции
-                    var orderItems = dsl.selectFrom(ORDERDISH)
-                            .where(ORDERDISH.ORDERID.eq(order.getOrderid()))
-                            .fetch();
-
-                    return orderItems.stream().map(orderItem -> {
-                        // 3. Получаем информацию о блюде
-                        var dish = dsl.selectFrom(DISH)
-                                .where(DISH.DISHID.eq(orderItem.getDishid()))
-                                .fetchOne();
-
-                        if (dish == null) {
-                            return null;
-                        }
-
-                        // 4. Получаем состав блюда (ингредиенты)
-                        var ingredients = dsl.select(PRODUCT.PRODUCTNAME)
-                                .from(TECHPRODUCT)
-                                .join(PRODUCT).on(PRODUCT.PRODUCTID.eq(TECHPRODUCT.PRODUCTID))
-                                .where(TECHPRODUCT.DISHID.eq(dish.getDishid()))
-                                .fetch()
-                                .map(record -> record.get(PRODUCT.PRODUCTNAME));
-
-                        // 5. Создаем DTO для ML
-                        return SalesRecordDTO.builder()
-                                .rollId(String.valueOf(dish.getDishid()))
-                                .rollName(dish.getDishname())
-                                .ingredients(ingredients)
-                                .saleDate(order.getDate())
-                                .quantity(orderItem.getQty())
-                                .totalAmount(calculateTotal(orderItem, dish))
-                                .pricePerUnit(dish.getPrice())
-                                .unitCost(dish.getFirstcost())
-                                .totalCost(orderItem.getQty() * dish.getFirstcost())
-                                .locationId(getLocationFromOrder(order))
-                                .build();
-                    });
-                })
-                .filter(record -> record != null)
-                .collect(Collectors.toList());
+                .orderBy(ORDER.DATE, ORDER.ORDERID, ORDERDISH.ID)
+                .fetch(record -> {
+                    Integer dishId = record.get(DISH.DISHID);
+                    int quantity = record.get(ORDERDISH.QTY);
+                    Double price = record.get(DISH.PRICE);
+                    Double cost = record.get(DISH.FIRSTCOST);
+                    // Legacy orders have no recipe/price snapshots. These are CURRENT reference values.
+                    return SalesRecordDTO.builder()
+                            .rollId(String.valueOf(dishId))
+                            .rollName(record.get(DISH.DISHNAME))
+                            .ingredients(ingredientsByDish.computeIfAbsent(dishId, menuService::getDishIngredients))
+                            .saleDate(record.get(ORDER.DATE))
+                            .quantity(quantity)
+                            .pricePerUnit(price)
+                            .unitCost(cost)
+                            .totalAmount(price == null ? null : quantity * price)
+                            .totalCost(cost == null ? null : quantity * cost)
+                            .locationId("default_location")
+                            .build();
+                });
     }
 
     /**
@@ -143,72 +119,10 @@ public class SalesService {
                 ));
     }
 
-    // Вспомогательные методы
-
-    private Double calculateTotal(jooqdata.tables.records.OrderdishRecord orderItem, jooqdata.tables.records.DishRecord dish) {
-        if (orderItem.getQty() != null && dish.getPrice() != null) {
-            return orderItem.getQty() * dish.getPrice();
-        }
-        return 0.0;
-    }
-
-    private String getLocationFromOrder(OrderRecord order) {
-        // Если есть информация о локации в заказе
-        // Иначе возвращаем дефолтное значение
-        return "default_location";
-    }
-
     /**
      * Оптимизированный запрос для больших объемов данных
      */
     public List<SalesRecordDTO> getSalesForMLOptimized(LocalDate startDate, LocalDate endDate) {
-        // Один большой запрос вместо множества маленьких
-        return dsl.select(
-                        ORDER.DATE,
-                        ORDER.ORDERID,
-                        DISH.DISHID,
-                        DISH.DISHNAME,
-                        DISH.PRICE,
-                        ORDERDISH.QTY,
-                        PRODUCT.PRODUCTNAME
-                )
-                .from(ORDER)
-                .join(ORDERDISH).on(ORDER.ORDERID.eq(ORDERDISH.ORDERID))
-                .join(DISH).on(ORDERDISH.DISHID.eq(DISH.DISHID))
-                .join(TECHPRODUCT).on(DISH.DISHID.eq(TECHPRODUCT.DISHID))
-                .join(PRODUCT).on(TECHPRODUCT.PRODUCTID.eq(PRODUCT.PRODUCTID))
-                .where(ORDER.DATE.between(startDate, endDate))
-                .and(ORDER.STATUS.eq(true))
-                .and(ORDER_CANCELLED_AT.isNull())
-                .orderBy(ORDER.ORDERID, DISH.DISHID)
-                .fetch()
-                .stream()
-                .collect(Collectors.groupingBy(
-                        record -> record.get(ORDER.ORDERID) + "_" + record.get(DISH.DISHID),
-                        Collectors.collectingAndThen(
-                                Collectors.toList(),
-                                records -> {
-                                    var firstRecord = records.get(0);
-                                    var ingredients = records.stream()
-                                            .map(r -> r.get(PRODUCT.PRODUCTNAME))
-                                            .distinct()
-                                            .collect(Collectors.toList());
-
-                                    return SalesRecordDTO.builder()
-                                            .rollId(String.valueOf(firstRecord.get(DISH.DISHID)))
-                                            .rollName(firstRecord.get(DISH.DISHNAME))
-                                            .ingredients(ingredients)
-                                            .saleDate(firstRecord.get(ORDER.DATE))
-                                            .quantity(firstRecord.get(ORDERDISH.QTY))
-                                            .totalAmount(firstRecord.get(ORDERDISH.QTY) * firstRecord.get(DISH.PRICE))
-                                            .pricePerUnit(firstRecord.get(DISH.PRICE))
-                                            .unitCost(firstRecord.get(DISH.FIRSTCOST))
-                                            .totalCost(firstRecord.get(ORDERDISH.QTY) * firstRecord.get(DISH.FIRSTCOST))
-                                            .build();
-                                }
-                        )
-                ))
-                .values().stream()
-                .collect(Collectors.toList());
+        return getSalesForML(startDate, endDate);
     }
 }

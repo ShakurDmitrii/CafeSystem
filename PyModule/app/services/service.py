@@ -56,7 +56,7 @@ def _normalize_ingredients(values: Sequence[str]) -> list[str]:
     normalized = [
         str(value).strip().lower()
         for value in values
-        if str(value).strip()
+        if value is not None and str(value).strip()
     ]
     if not normalized:
         raise ValueError("Список ингредиентов не может быть пустым")
@@ -174,14 +174,16 @@ def get_model_info() -> dict[str, Any]:
         "validationMae": metadata.get("validationMae"),
         "validationR2": metadata.get("validationR2"),
         "ingredientFeatureCount": feature_count,
+        "target": metadata.get("target", "legacy_quantity"),
+        "warnings": metadata.get("warnings", ["Модель старого формата: требуется переобучение."]),
+        "baselineMae": metadata.get("baselineMae"),
+        "validationStartDate": metadata.get("validationStartDate"),
     }
 
 
 def get_confidence_score() -> float | None:
-    score = get_model_info().get("validationR2")
-    if score is None or not math.isfinite(float(score)):
-        return None
-    return round(max(0.0, min(1.0, float(score))), 4)
+    # R² describes validation fit, not a calibrated probability for a new recipe.
+    return None
 
 
 def get_popular_ingredient_pairs(limit: int = 10) -> list[str]:
@@ -197,7 +199,10 @@ def predict_single(ingredients: List[str], sale_date: str | None = None) -> floa
         current_model=current_model,
         current_mlb=current_mlb,
     )
-    return float(current_model.predict(features)[0])
+    prediction = float(current_model.predict(features)[0])
+    if not math.isfinite(prediction):
+        raise RuntimeError("Модель вернула некорректное числовое значение")
+    return max(0.0, prediction)
 
 
 def predict_batch(rolls: List[Union[List[str], Dict[str, Any]]]) -> list[dict[str, Any]]:
@@ -250,6 +255,11 @@ def _prepare_training_frame(records: list[dict[str, Any]]) -> pd.DataFrame:
         raise ValueError("sales должен быть конечным неотрицательным числом")
     if frame["date"].isna().any():
         raise ValueError("date должен быть корректной ISO-датой")
+    frame["date"] = frame["date"].dt.normalize()
+    if frame["date"].nunique() < 3:
+        raise ValueError("Для проверки прогноза нужны продажи минимум за 3 разные даты")
+    if frame["sales"].nunique() < 2:
+        raise ValueError("Все значения продаж одинаковы: недостаточно разнообразных данных для обучения")
 
     return frame.sort_values("date", kind="stable").reset_index(drop=True)
 
@@ -288,8 +298,17 @@ def train_model(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     try:
         frame = _prepare_training_frame(records)
+        dates = frame["date"].drop_duplicates().to_list()
+        validation_start = dates[max(1, int(len(dates) * 0.8))]
+        split_index = int((frame["date"] < validation_start).sum())
+        if frame.iloc[:split_index]["sales"].nunique() < 2:
+            raise ValueError("Продажи до проверочного периода одинаковы: накопите больше данных")
         local_mlb = MultiLabelBinarizer()
-        ingredient_features = local_mlb.fit_transform(frame["ingredients"])
+        local_mlb.fit(frame.iloc[:split_index]["ingredients"])
+        known = set(local_mlb.classes_)
+        ingredient_features = local_mlb.transform(frame["ingredients"].map(
+            lambda ingredients: [name for name in ingredients if name in known]
+        ))
         date_features = np.column_stack(
             [
                 frame["date"].dt.isocalendar().day.astype(float).to_numpy(),
@@ -299,7 +318,6 @@ def train_model(records: list[dict[str, Any]]) -> dict[str, Any]:
         features = np.hstack([ingredient_features, date_features])
         target = frame["sales"].astype(float).to_numpy()
 
-        split_index = max(1, min(len(frame) - 2, int(len(frame) * 0.8)))
         x_train, x_test = features[:split_index], features[split_index:]
         y_train, y_test = target[:split_index], target[split_index:]
 
@@ -314,6 +332,7 @@ def train_model(records: list[dict[str, Any]]) -> dict[str, Any]:
             objective="reg:squarederror",
             eval_metric="rmse",
             random_state=42,
+            n_jobs=2,
         )
         local_model.fit(
             x_train,
@@ -322,12 +341,27 @@ def train_model(records: list[dict[str, Any]]) -> dict[str, Any]:
             verbose=False,
         )
 
-        predictions = local_model.predict(x_test)
+        predictions = np.maximum(0, local_model.predict(x_test))
         rmse = float(mean_squared_error(y_test, predictions) ** 0.5)
         mae = float(mean_absolute_error(y_test, predictions))
         validation_r2 = (
-            float(r2_score(y_test, predictions)) if len(y_test) >= 2 else None
+            float(r2_score(y_test, predictions)) if len(y_test) >= 2 and np.ptp(y_test) > 0 else None
         )
+        baseline_mae = float(mean_absolute_error(y_test, np.full_like(y_test, y_train.mean())))
+        warnings = [
+            "Прогноз для дней, когда блюдо продавалось. Нет истории доступности для учёта дней без продаж.",
+            "Новый состав, граммовки и влияние цены на спрос отдельно не проверены.",
+        ]
+        if mae >= baseline_mae:
+            warnings.append("На проверочном периоде модель не превзошла прогноз средним значением.")
+        if validation_r2 is None:
+            warnings.append("R² не определён: в проверочном периоде мало данных или продажи одинаковы.")
+        if any(set(row) - known for row in frame.iloc[split_index:]["ingredients"]):
+            warnings.append("В проверочном периоде встречались ингредиенты, отсутствовавшие в обучении.")
+        # Validation uses past-only features; the released model is then fitted on all available days.
+        local_mlb = MultiLabelBinarizer()
+        features = np.hstack([local_mlb.fit_transform(frame["ingredients"]), date_features])
+        local_model.fit(features, target, verbose=False)
         version = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         metadata = {
             "modelVersion": version,
@@ -337,7 +371,10 @@ def train_model(records: list[dict[str, Any]]) -> dict[str, Any]:
             "validationRmse": rmse,
             "validationMae": mae,
             "validationR2": validation_r2,
-            "target": "quantity",
+            "target": "daily_quantity_on_sale_days",
+            "validationStartDate": validation_start.date().isoformat(),
+            "baselineMae": baseline_mae,
+            "warnings": warnings,
         }
         pairs = _build_popular_pairs(frame["ingredients"])
         bundle = {
@@ -366,11 +403,13 @@ def train_model(records: list[dict[str, Any]]) -> dict[str, Any]:
             "status": "trained",
             "records": len(frame),
             "modelVersion": version,
-            "target": "quantity",
+            "target": metadata["target"],
+            "warnings": warnings,
             "validation": {
                 "rmse": rmse,
                 "mae": mae,
                 "r2": validation_r2,
+                "baselineMae": baseline_mae,
             },
         }
     finally:

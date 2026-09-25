@@ -5,6 +5,7 @@ import com.shakur.cafehelp.DTO.MlDTO.SalesRecordDTO;
 import com.shakur.cafehelp.Service.MlServices.MenuService;
 import com.shakur.cafehelp.Service.MlServices.MlTrainingService;
 import com.shakur.cafehelp.Service.MlServices.SalesService;
+import com.shakur.cafehelp.exception.PythonServiceException;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -57,9 +58,13 @@ public class MlTrainingController {
                     "trainingResult", result
             ));
 
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (PythonServiceException e) {
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.status(500)
-                    .body(Map.of("error", e.getMessage()));
+                    .body(Map.of("error", "Не удалось подготовить данные для обучения"));
         }
     }
 

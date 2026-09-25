@@ -17,6 +17,8 @@ public class RollMenuItemDTO {
     private String name;
     private String description;
     private List<String> ingredients;
+    // Raw product requirements in grams, including recipe losses; not finished dish yield.
+    private java.util.Map<String, Double> ingredientQuantities;
     private String category; // "classic", "premium", "vegetarian", "spicy", "special"
     private Double price;
     private Double cost; // себестоимость

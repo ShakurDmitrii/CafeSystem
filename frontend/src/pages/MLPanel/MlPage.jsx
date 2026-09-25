@@ -10,7 +10,7 @@ import { useSearchParams } from 'react-router-dom';
 import { API_BASE_URL } from '../../auth';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { ApiClient } from './api';
-import { formatCurrency, formatInteger, formatNumber, formatPercent } from './formatters';
+import { formatCurrency, formatInteger, formatNumber, formatPercent, formatUnitCost } from './formatters';
 import styles from './MlPage.module.css';
 import OptimizationResults from './OptimizationResults';
 import PredictRollPage from './PredictRollPage';
@@ -29,6 +29,8 @@ const DEFAULT_DISH_PARAMS = {
     populationSize: 80,
     generations: 40,
     markup: 2.35,
+    sellingPrice: '',
+    totalWeightGrams: 140,
     mustIncludeText: 'рис, нори',
     excludedIngredientsText: ''
 };
@@ -92,7 +94,7 @@ export default function MlPage() {
                 ?? result.trainingResult?.ingredientsCount;
             setTrainingStatus({
                 type: 'success',
-                text: `Модель обновлена: ${formatInteger(recordsCount, '—')} записей, ${formatInteger(ingredientsCount, '—')} ингредиентов.`
+                text: `Модель обновлена: ${formatInteger(recordsCount, '—')} суточных записей, ${formatInteger(ingredientsCount, '—')} ингредиентов. ${(result.trainingResult?.warnings || []).join(' ')}`
             });
         } catch (error) {
             setTrainingStatus({
@@ -122,6 +124,8 @@ export default function MlPage() {
                 populationSize: Number(dishParams.populationSize) || 80,
                 generations: Number(dishParams.generations) || 40,
                 markup: Number(dishParams.markup) || 2.35,
+                sellingPrice: dishParams.sellingPrice === '' ? null : Number(dishParams.sellingPrice),
+                totalWeightGrams: Number(dishParams.totalWeightGrams),
                 mustInclude: parseCsv(dishParams.mustIncludeText),
                 excludedIngredients: parseCsv(dishParams.excludedIngredientsText)
             });
@@ -303,10 +307,22 @@ function GenerateDishPanel({
                         <span>01</span>
                         <div>
                             <h3>Параметры поиска</h3>
-                            <p>Укажите рамки для нового рецепта.</p>
+                            <p>Расчёт по основному складу. Если остатка нет, используется цена по умолчанию с предупреждением.</p>
                         </div>
                     </div>
                     <div className={styles.formGrid}>
+                        <label className={styles.field} htmlFor="dish-selling-price">
+                            <span>Цена для сравнения, ₽</span>
+                            <input id="dish-selling-price" type="number" min="0.01" step="0.01"
+                                placeholder="Медианная цена меню" value={dishParams.sellingPrice}
+                                onChange={(event) => updateDishParam('sellingPrice', event.target.value)} />
+                        </label>
+                        <label className={styles.field} htmlFor="dish-raw-weight">
+                            <span>Общий вес сырья, г</span>
+                            <input id="dish-raw-weight" type="number" min="1" step="0.1"
+                                value={dishParams.totalWeightGrams}
+                                onChange={(event) => updateDishParam('totalWeightGrams', event.target.value)} />
+                        </label>
                         {fields.map((field) => (
                             <label key={field.name} className={styles.field} htmlFor={`dish-${field.name}`}>
                                 <span>{field.label}</span>
@@ -367,7 +383,7 @@ function GenerateDishPanel({
                     <article className={styles.resultCard}>
                         <div className={styles.resultHeading}>
                             <div>
-                                <p className={styles.eyebrow}>Рецепт готов</p>
+                                <p className={styles.eyebrow}>Предварительная рецептура</p>
                                 <h3>{dish.name}</h3>
                             </div>
                             <span>{formatPercent(dish.noveltyScore, { fraction: true })} новизна</span>
@@ -375,10 +391,14 @@ function GenerateDishPanel({
 
                         <div className={styles.metrics}>
                             <div><span>Себестоимость</span><strong>{formatCurrency(dish.estimatedCost)}</strong></div>
-                            <div><span>Цена</span><strong>{formatCurrency(dish.recommendedPrice)}</strong></div>
-                            <div><span>Продажи</span><strong>{formatNumber(dish.predictedSales)}</strong></div>
-                            <div><span>Прибыль</span><strong>{formatCurrency(dish.estimatedProfit)}</strong></div>
+                            <div><span>Цена для сравнения</span><strong>{formatCurrency(dish.recommendedPrice)}</strong></div>
+                            <div><span>{dish.salesSource === 'ml' ? 'Порций в день с продажами' : 'Продажи не прогнозировались'}</span><strong>{formatNumber(dish.predictedSales)}</strong></div>
+                            <div><span>Расчётная маржа в рублях</span><strong>{formatCurrency(dish.estimatedProfit)}</strong></div>
                         </div>
+                        <p>{dish.salesSource === 'ml' ? 'Оценка ML, не гарантия спроса' : 'Эвристический подбор, не прогноз продаж'}</p>
+                        <ul className={styles.reasonList}>
+                            {(dish.warnings || []).map((warning) => <li key={warning}>{warning}</li>)}
+                        </ul>
 
                         <h4>Состав</h4>
                         <div className={styles.tags}>
@@ -393,7 +413,7 @@ function GenerateDishPanel({
                                 <thead>
                                     <tr>
                                         <th>Ингредиент</th>
-                                        <th>Граммы</th>
+                                        <th>Сырьё, г</th>
                                         <th>Цена ед.</th>
                                         <th>Сумма</th>
                                     </tr>
@@ -403,7 +423,7 @@ function GenerateDishPanel({
                                         <tr key={row.ingredientName}>
                                             <td>{row.ingredientName}</td>
                                             <td>{formatNumber(row.quantityGrams)}</td>
-                                            <td>{formatCurrency(row.unitCost)}</td>
+                                            <td>{formatUnitCost(row.unitCost)} ₽/{row.unit}</td>
                                             <td>{formatCurrency(row.totalCost)}</td>
                                         </tr>
                                     ))}

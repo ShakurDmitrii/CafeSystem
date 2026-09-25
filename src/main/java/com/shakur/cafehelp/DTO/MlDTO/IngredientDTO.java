@@ -17,6 +17,8 @@ public class IngredientDTO {
     private String category; // "fish", "seafood", "vegetable", "fruit", "sauce", "rice", "wrap", "topping"
     private String unit; // "kg", "piece", "liter", "package"
     private Double costPerUnit;
+    private String costSource;
+    private Integer warehouseId;
     private Double currentStock;
     private Double minStockLevel;
     private Double maxStockLevel;

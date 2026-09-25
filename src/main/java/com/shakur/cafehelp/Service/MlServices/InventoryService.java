@@ -1,7 +1,10 @@
 package com.shakur.cafehelp.Service.MlServices;
 
 import com.shakur.cafehelp.DTO.MlDTO.IngredientDTO;
-import jooqdata.tables.records.ProductRecord;
+import com.shakur.cafehelp.DTO.ProductDTO;
+import com.shakur.cafehelp.DTO.ProductWarehouseDTO;
+import com.shakur.cafehelp.Service.ProductService;
+import com.shakur.cafehelp.Service.WareHouseService;
 import lombok.RequiredArgsConstructor;
 import org.jooq.DSLContext;
 import org.jooq.Field;
@@ -22,103 +25,103 @@ public class InventoryService {
             DSL.field(DSL.name("cancelled_at"), LocalDateTime.class);
 
     private final DSLContext dsl;
+    private final ProductService productService;
+    private final WareHouseService wareHouseService;
 
     /**
      * Получить все ингредиенты
      */
     public List<IngredientDTO> getAllIngredients() {
-        return dsl.selectFrom(PRODUCT)
-                .where(PRODUCT.PRODUCTNAME.isNotNull())
-                .fetch()
-                .stream()
-                .map(this::mapToDTO)
-                .collect(Collectors.toList());
+        return getAllIngredients(null);
+    }
+
+    public List<IngredientDTO> getAllIngredients(Integer requestedWarehouseId) {
+        Integer warehouseId = requestedWarehouseId != null ? requestedWarehouseId : wareHouseService.getMainWarehouseId();
+        if (requestedWarehouseId != null && wareHouseService.getById(requestedWarehouseId) == null) {
+            throw new IllegalArgumentException("Склад не найден");
+        }
+        var stocks = warehouseId == null ? java.util.Map.<Integer, ProductWarehouseDTO>of()
+                : wareHouseService.getProductsOnWarehouse(warehouseId).stream().collect(Collectors.toMap(
+                        ProductWarehouseDTO::getProductId, stock -> stock));
+        return productService.getProducts().stream()
+                .filter(product -> product.getProductName() != null && !product.getProductName().isBlank())
+                .filter(product -> !"consumable".equalsIgnoreCase(product.getItemType()))
+                .map(product -> mapStockToDTO(product, stocks.get(product.getProductId()), warehouseId))
+                .toList();
     }
 
     /**
      * Получить ингредиент по ID
      */
     public IngredientDTO getIngredientById(Integer productId) {
-        var record = dsl.selectFrom(PRODUCT)
-                .where(PRODUCT.PRODUCTID.eq(productId))
-                .fetchOne();
-
-        return record != null ? mapToDTO(record) : null;
+        return getAllIngredients().stream().filter(item -> item.getId().equals(String.valueOf(productId)))
+                .findFirst().orElse(null);
     }
 
     /**
      * Получить ингредиенты по названию (поиск)
      */
     public List<IngredientDTO> searchIngredients(String query) {
-        return dsl.selectFrom(PRODUCT)
-                .where(PRODUCT.PRODUCTNAME.containsIgnoreCase(query))
-                .fetch()
-                .stream()
-                .map(this::mapToDTO)
-                .collect(Collectors.toList());
+        String normalized = query == null ? "" : query.toLowerCase(java.util.Locale.ROOT);
+        return getAllIngredients().stream()
+                .filter(item -> item.getName().toLowerCase(java.util.Locale.ROOT).contains(normalized)).toList();
     }
 
     /**
      * Получить ингредиенты по категории (если будет таблица категорий)
      */
     public List<IngredientDTO> getIngredientsByCategory(String category) {
-        // У вас нет категории в таблице Product, но можно добавить если нужно
-        return dsl.selectFrom(PRODUCT)
-                .where(PRODUCT.PRODUCTNAME.isNotNull())
-                .fetch()
-                .stream()
-                .map(this::mapToDTO)
-                .collect(Collectors.toList());
+        return getAllIngredients().stream().filter(item -> item.getCategory().equalsIgnoreCase(category)).toList();
     }
 
     /**
      * Получить ингредиенты с низким запасом
      */
     public List<IngredientDTO> getLowStockIngredients(Double threshold) {
-        // У вас нет currentStock в таблице, но можно добавить логику если появится
-        return getAllIngredients(); // временно возвращаем все
+        return getAllIngredients().stream().filter(item -> item.getCurrentStock() != null
+                && item.getCurrentStock() <= (threshold == null ? 0 : threshold)).toList();
     }
 
     /**
      * Получить ингредиенты по цене (дешевые/дорогие)
      */
     public List<IngredientDTO> getIngredientsByPriceRange(Double minPrice, Double maxPrice) {
-        var query = dsl.selectFrom(PRODUCT)
-                .where(PRODUCT.PRODUCTNAME.isNotNull());
-
-        if (minPrice != null) {
-            query = query.and(PRODUCT.PRODUCTPRICE.ge(BigDecimal.valueOf(minPrice)));
-        }
-        if (maxPrice != null) {
-            query = query.and(PRODUCT.PRODUCTPRICE.le(BigDecimal.valueOf(maxPrice)));
-        }
-
-        return query.fetch()
-                .stream()
-                .map(this::mapToDTO)
-                .collect(Collectors.toList());
+        return getAllIngredients().stream().filter(item -> item.getCostPerUnit() != null)
+                .filter(item -> minPrice == null || item.getCostPerUnit() >= minPrice)
+                .filter(item -> maxPrice == null || item.getCostPerUnit() <= maxPrice).toList();
     }
 
     /**
      * Маппинг Record -> DTO
      */
-    private IngredientDTO mapToDTO(ProductRecord record) {
-        Double price = record.getProductprice() != null
-                ? record.getProductprice().doubleValue()
-                : 0.0;
+    private IngredientDTO mapStockToDTO(ProductDTO product, ProductWarehouseDTO stock, Integer warehouseId) {
+        double quantity = stock != null && stock.getQuantity() != null ? stock.getQuantity() : 0;
+        BigDecimal factor = product.getUnitFactor();
+        Double price = null;
+        String source = "unavailable";
+        if (quantity > 0 && stock.getInventoryValue() != null) {
+            price = stock.getInventoryValue().divide(BigDecimal.valueOf(quantity), 8,
+                    java.math.RoundingMode.HALF_UP).doubleValue();
+            source = "warehouse_average";
+        } else if (product.getProductPrice() != null && factor != null && factor.signum() > 0) {
+            price = product.getProductPrice().divide(factor, 8, java.math.RoundingMode.HALF_UP).doubleValue();
+            source = "default_price_no_stock";
+        }
 
         return IngredientDTO.builder()
-                .id(String.valueOf(record.getProductid()))
-                .name(record.getProductname())
-                .displayName(record.getProductname())
-                .category(getIngredientCategory(record.getProductname())) // Определяем категорию по названию
-                .unit("кг") // Дефолтное значение
+                .id(String.valueOf(product.getProductId()))
+                .name(product.getProductName())
+                .displayName(product.getProductName())
+                .category(getIngredientCategory(product.getProductName()))
+                .unit(product.getBaseUnit())
                 .costPerUnit(price)
-                .currentStock(0.0) // Нет данных о запасах
+                .currentStock(warehouseId == null ? null : quantity)
+                .warehouseId(warehouseId)
+                .costSource(source)
                 .minStockLevel(0.0)
                 .isActive(true)
                 .isSeasonal(false)
-                .allergies(getAllergiesByIngredient(record.getProductname()))
+                .allergies(getAllergiesByIngredient(product.getProductName()))
                 .build();
     }
 

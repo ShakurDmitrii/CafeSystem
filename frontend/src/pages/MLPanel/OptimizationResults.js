@@ -9,11 +9,13 @@ import { ApiClient } from './api';
 import { formatCurrency, formatNumber, formatPercent, formatTime } from './formatters';
 import styles from './mlStyles.module.css';
 
-const OPT_CACHE_KEY = 'ml.optimization.cache.v1';
+const OPT_CACHE_KEY = 'ml.optimization.cache.v2';
 const DEFAULT_CONSTRAINTS = {
     minIngredients: 3,
     maxIngredients: 6,
     maxCost: 350,
+    sellingPrice: '',
+    totalWeightGrams: 140,
     mustInclude: ['рис', 'лосось'],
     exclude: [],
     minProfitMargin: 0.3,
@@ -30,12 +32,8 @@ function readCachedOptimization() {
 }
 
 function getScore(roll) {
-    const value = Number(
-        roll.score
-        ?? roll.fitnessScore
-        ?? roll.confidenceScore
-        ?? roll.noveltyScore
-    );
+    if (roll.score == null) return null;
+    const value = Number(roll.score);
     if (!Number.isFinite(value)) return null;
     return value > 1 ? Math.min(value / 100, 1) : Math.min(value, 1);
 }
@@ -134,7 +132,7 @@ export default function OptimizationResults() {
                 <div>
                     <p className={styles.eyebrow}>Оптимизация меню</p>
                     <h2 id="optimization-heading">Найдите состав с лучшей экономикой</h2>
-                    <p>Задайте ограничения — алгоритм сравнит рецепты по спросу, марже и себестоимости.</p>
+                    <p>Задайте ограничения. Себестоимость рассчитывается по основному складу; ограничения оценки указаны у каждого варианта.</p>
                 </div>
                 <span className={styles.stepBadge}><ExperimentOutlined /> Генетический алгоритм</span>
             </div>
@@ -150,6 +148,17 @@ export default function OptimizationResults() {
                     </div>
 
                     <div className={styles.constraintsGrid}>
+                        <label className={styles.constraintItem} htmlFor="selling-price">
+                            <span>Цена для сравнения, ₽</span>
+                            <input id="selling-price" type="number" min="0.01" step="0.01"
+                                placeholder="Медианная цена меню" value={constraints.sellingPrice}
+                                onChange={(event) => updateConstraint('sellingPrice', event.target.value === '' ? '' : Number(event.target.value))} />
+                        </label>
+                        <label className={styles.constraintItem} htmlFor="raw-weight">
+                            <span>Общий вес сырья, г</span>
+                            <input id="raw-weight" type="number" min="1" step="0.1" value={constraints.totalWeightGrams}
+                                onChange={(event) => updateConstraint('totalWeightGrams', Number(event.target.value))} />
+                        </label>
                         <label className={styles.constraintItem} htmlFor="min-ingredients">
                             <span>Минимум ингредиентов</span>
                             <input id="min-ingredients" name="minIngredients" type="number" min="2" max="10" autoComplete="off"
@@ -275,7 +284,7 @@ export default function OptimizationResults() {
                                             <h4>{roll.name || `Вариант ${index + 1}`}</h4>
                                             <span className={`${styles.scoreBadge} ${scoreClass}`}>
                                                 <SafetyCertificateOutlined aria-hidden="true" />
-                                                Оценка {formatPercent(score, { fraction: true })}
+                                                Относительный рейтинг {formatPercent(score, { fraction: true })}
                                             </span>
                                         </div>
                                     </div>
@@ -292,11 +301,11 @@ export default function OptimizationResults() {
                                             <strong>{formatCurrency(roll.estimatedCost ?? roll.cost)}</strong>
                                         </div>
                                         <div>
-                                            <span>Продажи в день</span>
+                                            <span>{roll.salesSource === 'ml' ? 'Порций в день с продажами' : 'Продажи не прогнозировались'}</span>
                                             <strong>{formatNumber(roll.predictedSales)}</strong>
                                         </div>
                                         <div>
-                                            <span>Прибыль</span>
+                                            <span>Расчётная маржа в рублях</span>
                                             <strong>{formatCurrency(roll.estimatedProfit ?? roll.profit)}</strong>
                                         </div>
                                         <div>
@@ -305,6 +314,9 @@ export default function OptimizationResults() {
                                         </div>
                                     </div>
 
+                                    <p>{roll.salesSource === 'ml' ? 'Оценка ML, не гарантия спроса' : 'Эвристический подбор, не прогноз продаж'}</p>
+                                    <p>Цена для сравнения: {formatCurrency(roll.recommendedPrice)}</p>
+                                    {(roll.warnings || []).map((warning) => <p key={warning}>{warning}</p>)}
                                     {(roll.explanation || roll.reasons) && (
                                         <div className={styles.reasons}>
                                             <strong>Почему этот вариант</strong>

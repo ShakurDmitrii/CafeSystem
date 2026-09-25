@@ -32,12 +32,13 @@ public class  MenuService {
      * Получить все блюда (роллы) из меню
      */
     public List<RollMenuItemDTO> getAllMenuItems() {
+        var products = productService.getProducts();
         return dsl.selectFrom(DISH)
                 .where(DISH.PRICE.isNotNull())
                 .and(DISH.DISHNAME.isNotNull())
                 .fetch()
                 .stream()
-                .map(this::mapToDTO)
+                .map(record -> mapToDTO(record, products))
                 .collect(Collectors.toList());
     }
 
@@ -119,14 +120,31 @@ public class  MenuService {
      * Маппинг Record -> DTO
      */
     private RollMenuItemDTO mapToDTO(DishRecord record) {
-        // Получаем состав блюда
-        List<String> ingredients = getDishIngredients(record.getDishid());
+        return mapToDTO(record, productService.getProducts());
+    }
+
+    private RollMenuItemDTO mapToDTO(DishRecord record, List<com.shakur.cafehelp.DTO.ProductDTO> products) {
+        var requirements = recipeExpansionService.buildRequirementsForDish(record.getDishid(), 1);
+        List<String> ingredients = products.stream()
+                .filter(product -> requirements.containsKey(product.getProductId()))
+                .map(com.shakur.cafehelp.DTO.ProductDTO::getProductName)
+                .filter(name -> name != null && !name.isBlank())
+                .sorted(String.CASE_INSENSITIVE_ORDER).distinct().toList();
+        Map<String, Double> quantities = new java.util.LinkedHashMap<>();
+        for (var product : products) {
+            Double quantity = requirements.get(product.getProductId());
+            if (quantity != null && quantity > 0 && "g".equals(product.getBaseUnit())
+                    && product.getProductName() != null) {
+                quantities.merge(product.getProductName().trim().toLowerCase(Locale.ROOT), quantity, Double::sum);
+            }
+        }
 
         return RollMenuItemDTO.builder()
                 .id(String.valueOf(record.getDishid()))
                 .name(record.getDishname())
                 .description("") // У вас нет description в таблице
                 .ingredients(ingredients)
+                .ingredientQuantities(quantities)
                 .category(record.getCategory())
                 .price(record.getPrice())
                 .cost(record.getFirstcost())
@@ -146,4 +164,5 @@ public class  MenuService {
                 .fetch()
                 .map(record -> record.get(DISH.CATEGORY));
     }
+
 }

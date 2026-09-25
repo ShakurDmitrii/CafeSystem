@@ -1,5 +1,7 @@
 import random
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
+from app.services.recipe_evaluation import RecipeEvaluation
 from typing import Any
 
 DEFAULT_TOTAL_WEIGHT_GRAMS = 140.0
@@ -9,12 +11,17 @@ DEFAULT_TOTAL_WEIGHT_GRAMS = 140.0
 class Candidate:
     ingredients: list[str]
     fitness: float
-    predicted_sales: float
+    predicted_sales: float | None
     estimated_cost: float
     recommended_price: float
-    estimated_profit: float
+    estimated_profit: float | None
     novelty_score: float
     generation_found: int
+    sales_source: str = "heuristic"
+    price_source: str = "cost_markup"
+    model_version: str | None = None
+    warnings: list[str] = field(default_factory=list)
+    tech_card: list[dict] = field(default_factory=list)
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -23,7 +30,8 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
             return default
         if isinstance(value, str):
             value = value.replace(",", ".").strip()
-        return float(value)
+        parsed = float(value)
+        return parsed if math.isfinite(parsed) else default
     except Exception:
         return default
 
@@ -54,7 +62,7 @@ def _normalize_ingredients(raw: Any) -> list[str]:
 
 def _normalize_unit(value: Any) -> str:
     if value is None:
-        return "kg"
+        return ""
     unit = str(value).strip().lower()
     return unit
 
@@ -62,21 +70,12 @@ def _normalize_unit(value: Any) -> str:
 def _grams_per_unit(unit: str) -> float:
     kg_aliases = {"kg", "кг", "kilogram", "kilograms", "килограмм", "килограммы"}
     g_aliases = {"g", "гр", "г", "gram", "grams", "грамм", "граммы"}
-    l_aliases = {"l", "л", "liter", "liters", "литр", "литры"}
-    ml_aliases = {"ml", "мл", "milliliter", "milliliters"}
-    piece_aliases = {"pc", "pcs", "piece", "pieces", "шт", "штука", "штук"}
-
     if unit in kg_aliases:
         return 1000.0
     if unit in g_aliases:
         return 1.0
-    if unit in l_aliases:
-        return 1000.0
-    if unit in ml_aliases:
-        return 1.0
-    if unit in piece_aliases:
-        return 1.0
-    return 1000.0
+    # Volume/pieces need an explicit mass conversion, never assume water density or 1 g per piece.
+    return 0.0
 
 
 def _ingredient_pool(ingredients: list[dict]) -> tuple[list[str], dict[str, float], dict[str, float], dict[str, str]]:
@@ -92,8 +91,12 @@ def _ingredient_pool(ingredients: list[dict]) -> tuple[list[str], dict[str, floa
             continue
         unit = _normalize_unit(item.get("unit"))
         cost = _safe_float(item.get("costPerUnit"), 0.0)
-        if cost <= 0:
-            cost = 10.0
+        if name in costs:
+            raise ValueError("Повторяющееся название ингредиента: " + name)
+        if item.get("costPerUnit") is None or not math.isfinite(_safe_float(item.get("costPerUnit"), float("nan"))) or cost < 0:
+            continue
+        if _grams_per_unit(unit) <= 0:
+            continue
         names.append(name)
         costs[name] = cost
         units[name] = unit
@@ -109,7 +112,7 @@ def _build_sales_weights(sales_records: list[dict]) -> dict[str, float]:
             continue
         qty = _safe_int(record.get("quantity"), 0)
         if qty <= 0:
-            qty = 1
+            continue
         for ingredient in _normalize_ingredients(record.get("ingredients")):
             weights[ingredient] = weights.get(ingredient, 0.0) + float(qty)
     return weights
@@ -156,37 +159,43 @@ def _evaluate_candidate(
     markup: float,
     generation_idx: int,
     total_weight_grams: float,
+    context: RecipeEvaluation,
 ) -> Candidate:
-    unique_ingredients = list(dict.fromkeys(ingredients))
-    current_set = set(unique_ingredients)
-
-    per_ingredient_grams = total_weight_grams / max(1, len(unique_ingredients))
-    estimated_cost = sum(
-        ingredient_costs.get(ing, 10.0) * (per_ingredient_grams / max(1.0, ingredient_grams_per_unit.get(ing, 1000.0)))
-        for ing in unique_ingredients
-    )
-    recommended_price = round(max(estimated_cost * markup, estimated_cost + 20.0), 2)
-    margin = max(recommended_price - estimated_cost, 0.0)
-
-    popularity = sum(sales_weights.get(ing, 0.0) for ing in unique_ingredients)
-    predicted_sales = round(8.0 + popularity / 10.0, 2)
-
-    max_similarity = _max_similarity(current_set, existing_dishes)
-    novelty_score = round(max(0.0, 1.0 - max_similarity), 4)
-
-    estimated_profit = round(predicted_sales * margin, 2)
-    fitness = round(estimated_profit * (0.6 + 0.4 * novelty_score), 4)
-
+    names = list(dict.fromkeys(ingredients))
+    quantities = context.quantities(names, total_weight_grams)
+    tech_card = _build_tech_card(names, ingredient_costs, ingredient_grams_per_unit,
+                                 {name: "g" if ingredient_grams_per_unit[name] == 1 else "kg" for name in names},
+                                 total_weight_grams, quantities)
+    cost = round(sum(row["totalCost"] for row in tech_card), 2)
+    price = round(context.reference_price if context.reference_price is not None else max(cost * markup, cost + 20), 2)
+    novelty = round(max(0.0, 1.0 - _max_similarity(set(names), existing_dishes)), 4)
+    sales = round(context.predictor(names), 2) if context.predictor else None
+    profit = round(sales * (price - cost), 2) if sales is not None and context.reference_price is not None else None
+    # An internal ranking score is NOT a demand forecast.
+    popularity = sum(sales_weights.get(name, 0) for name in names) / len(names)
+    demand_weight = sales if sales is not None else 0.1 + popularity / max(1.0, max(sales_weights.values(), default=0))
+    economic_weight = max(0.0, price - cost) if context.reference_price is not None else 1 / (1 + cost)
+    fitness = round(demand_weight * economic_weight * (0.6 + 0.4 * novelty), 6)
     return Candidate(
-        ingredients=unique_ingredients,
-        fitness=fitness,
-        predicted_sales=predicted_sales,
-        estimated_cost=round(estimated_cost, 2),
-        recommended_price=recommended_price,
-        estimated_profit=estimated_profit,
-        novelty_score=novelty_score,
-        generation_found=generation_idx,
+        ingredients=names, fitness=fitness, predicted_sales=sales, estimated_cost=cost,
+        recommended_price=price, estimated_profit=profit, novelty_score=novelty,
+        generation_found=generation_idx, sales_source="ml" if sales is not None else "heuristic",
+        price_source=context.price_source, model_version=context.model_version,
+        warnings=context.candidate_warnings(names), tech_card=tech_card,
     )
+
+
+def _prepare_evaluation(context, names, all_ingredients, must_include, excluded, minimum, maximum):
+    valid = context.prepare_pool(names)
+    omitted = sorted({str(item.get("name", "")).strip().lower() for item in all_ingredients} - set(names))
+    if omitted:
+        context.warnings.add("Нет цены или перевода единицы в граммы, исключены: " + ", ".join(omitted))
+    invalid_required = set(must_include) - (set(valid) - excluded)
+    if invalid_required:
+        raise ValueError("Обязательные ингредиенты недоступны для расчёта: " + ", ".join(sorted(invalid_required)))
+    if len(must_include) > maximum or len(set(valid) - excluded) < minimum:
+        raise ValueError("Недостаточно допустимых ингредиентов для заданных ограничений")
+    return valid
 
 
 def _make_random_candidate(
@@ -289,7 +298,8 @@ def _enforce_constraints(
             break
         result.remove(random.choice(removable))
 
-    return list(dict.fromkeys(result))
+    result = list(dict.fromkeys(result))
+    return result if min_ingredients <= len(result) <= max_ingredients and set(must_include) <= set(result) else []
 
 
 def _crossover(parent_a: list[str], parent_b: list[str], min_ingredients: int, max_ingredients: int) -> list[str]:
@@ -305,15 +315,15 @@ def _build_tech_card(
     ingredient_grams_per_unit: dict[str, float],
     ingredient_units: dict[str, str],
     total_weight_grams: float,
+    quantities: dict[str, float],
 ) -> list[dict[str, Any]]:
     if not ingredients:
         return []
-    base_gram = total_weight_grams / len(ingredients)
     rows: list[dict[str, Any]] = []
     for ingredient in ingredients:
-        qty = round(base_gram, 1)
-        unit_cost = round(ingredient_costs.get(ingredient, 10.0), 2)
-        grams_in_unit = max(1.0, ingredient_grams_per_unit.get(ingredient, 1000.0))
+        qty = quantities[ingredient]
+        unit_cost = ingredient_costs[ingredient]
+        grams_in_unit = ingredient_grams_per_unit[ingredient]
         total = round(unit_cost * (qty / grams_in_unit), 2)
         rows.append(
             {
@@ -347,6 +357,8 @@ def generate_new_dish(
     if not ingredient_names:
         return {"status": "failed", "errorMessage": "Нет данных по ингредиентам"}
 
+    context = RecipeEvaluation(menu_items, ingredients, constraints)
+    ingredient_names = _prepare_evaluation(context, ingredient_names, ingredients, must_include, excluded, min_ingredients, max_ingredients)
     sales_weights = _build_sales_weights(sales_records)
     existing_dishes = _existing_dish_sets(menu_items)
 
@@ -418,6 +430,7 @@ def generate_new_dish(
                 markup,
                 generation_idx + 1,
                 total_weight_grams,
+                context,
             )
             for candidate in population
         ]
@@ -494,12 +507,7 @@ def generate_new_dish(
     keyword = best.ingredients[0].capitalize() if best.ingredients else "Chef"
     dish_name = f"Авторский ролл {keyword}"
 
-    reasoning = [
-        "Комбинация содержит ингредиенты с высоким спросом по истории продаж",
-        "Итоговая себестоимость удерживается в рабочем диапазоне",
-        "Набор отличается от текущих блюд меню и сохраняет новизну",
-    ]
-
+    reasoning = ["Генетический поиск по составу, затратам и отличию от меню. Результат требует проверки."]
     return {
         "status": "completed",
         "dish": {
@@ -509,19 +517,19 @@ def generate_new_dish(
             "recommendedPrice": best.recommended_price,
             "predictedSales": best.predicted_sales,
             "estimatedProfit": best.estimated_profit,
+            "confidenceScore": None,
+            "salesSource": best.sales_source,
+            "priceSource": best.price_source,
+            "modelVersion": best.model_version,
+            "warnings": best.warnings,
             "noveltyScore": best.novelty_score,
             "fitnessScore": best.fitness,
             "generationFound": best.generation_found,
             "totalWeightGrams": total_weight_grams,
             "reasoning": reasoning,
-            "techCard": _build_tech_card(
-                best.ingredients,
-                ingredient_costs,
-                ingredient_grams_per_unit,
-                ingredient_units,
-                total_weight_grams,
-            ),
+            "techCard": best.tech_card,
         },
+
         "stats": {
             "populationSize": population_size,
             "generations": generations,
@@ -575,25 +583,8 @@ def optimize_rolls(
     sales_weights = _build_sales_weights(sales_records or [])
     existing_dishes = _existing_dish_sets(menu_items or [])
 
-    # Optional: use trained ML model (XGBoost) to estimate sales instead of heuristic.
-    use_trained_model = bool(constraints.get("useTrainedModelSales", True))
-    ml_predict = None
-    if use_trained_model:
-        try:
-            # Local import to avoid import-time cycles.
-            from app.services import service as ml_service  # type: ignore
-
-            if getattr(ml_service, "model", None) is None or getattr(ml_service, "mlb", None) is None:
-                # Try loading if not loaded yet.
-                try:
-                    ml_service.load_model()
-                except Exception:
-                    pass
-
-            if getattr(ml_service, "model", None) is not None and getattr(ml_service, "mlb", None) is not None:
-                ml_predict = ml_service.predict_single
-        except Exception:
-            ml_predict = None
+    context = RecipeEvaluation(menu_items or [], ingredients or [], constraints)
+    ingredient_names = _prepare_evaluation(context, ingredient_names, ingredients or [], must_include, excluded, min_ingredients, max_ingredients)
 
     # Similarity protection (reuse same knobs as generator)
     protection = constraints.get("existingDishProtection")
@@ -650,49 +641,12 @@ def optimize_rolls(
             markup,
             generation_idx,
             total_weight_grams,
+            context,
         )
 
-        # Replace heuristic predicted sales with trained model prediction when available.
-        if ml_predict is not None:
-            try:
-                ml_sales = float(ml_predict(c.ingredients, None))
-                # Keep it non-negative and within a sane range.
-                if ml_sales < 0:
-                    ml_sales = 0.0
-                margin = max(c.recommended_price - c.estimated_cost, 0.0)
-                est_profit = round(ml_sales * margin, 2)
-                # Recompute fitness using the same novelty weighting as in _evaluate_candidate
-                fitness = round(est_profit * (0.6 + 0.4 * c.novelty_score), 4)
-                c = Candidate(
-                    ingredients=c.ingredients,
-                    fitness=fitness,
-                    predicted_sales=round(ml_sales, 2),
-                    estimated_cost=c.estimated_cost,
-                    recommended_price=c.recommended_price,
-                    estimated_profit=est_profit,
-                    novelty_score=c.novelty_score,
-                    generation_found=c.generation_found,
-                )
-            except Exception:
-                # If ML model isn't trained/compatible, silently keep heuristic.
-                pass
-
-        # Shift fitness from "novelty" to "similarity to existing menu" when focus is enabled.
         if focus_enabled:
-            # Original: profit * (0.6 + 0.4 * novelty)
-            # Focused: profit * (0.65 + focus_weight * similarity + (0.35 - focus_weight) * novelty)
-            novelty = c.novelty_score
-            focused_multiplier = 0.65 + focus_weight * similarity + max(0.0, (0.35 - focus_weight)) * novelty
-            c = Candidate(
-                ingredients=c.ingredients,
-                fitness=round(c.estimated_profit * focused_multiplier, 4),
-                predicted_sales=c.predicted_sales,
-                estimated_cost=c.estimated_cost,
-                recommended_price=c.recommended_price,
-                estimated_profit=c.estimated_profit,
-                novelty_score=c.novelty_score,
-                generation_found=c.generation_found,
-            )
+            focused_multiplier = 0.65 + focus_weight * similarity + max(0.0, 0.35 - focus_weight) * c.novelty_score
+            c.fitness = round(c.fitness / (0.6 + 0.4 * c.novelty_score) * focused_multiplier, 6)
 
         # Apply hard business constraints.
         if max_cost > 0 and c.estimated_cost > max_cost:
@@ -744,18 +698,15 @@ def optimize_rolls(
             if s:
                 scored.append(s)
         if not scored:
-            # if constraints too strict, relax similarity protection a bit for this generation
-            if protect_enabled and max_allowed_similarity < 0.99:
-                max_allowed_similarity = min(0.99, max_allowed_similarity + 0.02)
-                continue
-            if focus_enabled and min_focus_similarity > 0.0:
-                # relax focus if too strict
-                min_focus_similarity = max(0.0, min_focus_similarity - 0.05)
-                continue
             return {"status": "failed", "errorMessage": "Слишком строгие ограничения: не осталось допустимых вариантов"}
 
         scored.sort(key=lambda x: x.fitness, reverse=True)
-        best_candidates = scored[: max(num_results * 10, 30)]
+        archive = {frozenset(candidate.ingredients): candidate for candidate in best_candidates}
+        for candidate in scored:
+            key = frozenset(candidate.ingredients)
+            if key not in archive or candidate.fitness > archive[key].fitness:
+                archive[key] = candidate
+        best_candidates = sorted(archive.values(), key=lambda candidate: candidate.fitness, reverse=True)[:max(num_results * 10, 30)]
 
         elite = [c.ingredients for c in scored[: max(2, population_size // 10)]]
         next_population = list(elite)
@@ -797,21 +748,12 @@ def optimize_rolls(
                 break
 
     # If still not enough results, actively generate more candidates by mutating the best ones.
-    # We keep hard business constraints, but gradually relax "focus on existing dishes" and diversity.
+    # Relax only result-to-result diversity; requested menu similarity and business bounds stay fixed.
     if len(final) < num_results:
         base_parents = final_sorted[: max(10, num_results * 10)] if final_sorted else []
-        relax_steps = [
-            # (min_focus_similarity_delta, diversity_threshold)
-            (0.0, 0.95),
-            (-0.05, 0.97),
-            (-0.10, 0.99),
-            (-0.20, 1.0),
-        ]
-        for delta, diversity_th in relax_steps:
+        for diversity_th in (0.95, 0.97, 0.99, 1.0):
             if len(final) >= num_results:
                 break
-            local_min_focus = min_focus_similarity + delta
-            local_min_focus = max(0.0, min(1.0, local_min_focus))
 
             attempts = 0
             max_attempts = 800
@@ -828,17 +770,13 @@ def optimize_rolls(
                 if s is None:
                     continue
 
-                if focus_enabled:
-                    sim = _max_similarity(set(s.ingredients), existing_dishes) if existing_dishes else 0.0
-                    if sim < local_min_focus:
-                        continue
-
                 if any(frozenset(s.ingredients) == frozenset(x.ingredients) for x in final):
                     continue
                 if diversity_th < 1.0 and any(_jaccard(set(s.ingredients), set(x.ingredients)) >= diversity_th for x in final):
                     continue
                 final.append(s)
 
+    final.sort(key=lambda candidate: candidate.fitness, reverse=True)
     optimized_rolls = []
     for idx, c in enumerate(final, start=1):
         margin = 0.0
@@ -850,16 +788,22 @@ def optimize_rolls(
                 "name": f"Оптимизированный ролл {idx}",
                 "ingredients": c.ingredients,
                 "predictedSales": c.predicted_sales,
-                "confidenceScore": 0.85,
+                "confidenceScore": None,
+                "salesSource": c.sales_source,
+                "priceSource": c.price_source,
+                "recommendedPrice": c.recommended_price,
+                "modelVersion": c.model_version,
+                "warnings": c.warnings,
+                "techCard": c.tech_card,
                 "cost": c.estimated_cost,
                 "estimatedCost": c.estimated_cost,
                 "estimatedProfit": c.estimated_profit,
                 "profitMargin": round(margin, 4),
                 "noveltyScore": c.novelty_score,
-                "score": round(min(1.0, c.fitness / max(1.0, final[0].fitness if final else 1.0)), 4),
+                "score": round(c.fitness / final[0].fitness, 4) if final[0].fitness > 0 else 0.0,
                 "fitnessScore": c.fitness,
                 "generationFound": c.generation_found,
-                "explanation": "Подобрано по максимуму прибыли с учетом новизны и ограничений",
+                "explanation": "Генетический поиск по составу и затратам; эвристическая оценка не является прогнозом продаж.",
             }
         )
 
@@ -872,5 +816,6 @@ def optimize_rolls(
         "statistics": {
             "populationSize": population_size,
             "generations": generations,
+            "uniqueSolutionsFound": len(final),
         },
     }

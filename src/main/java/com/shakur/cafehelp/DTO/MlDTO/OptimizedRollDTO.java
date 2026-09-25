@@ -19,6 +19,14 @@ public class OptimizedRollDTO {
     private Double predictedSales;
     private Double adjustedSales;
     private Double confidenceScore;
+    private String salesSource;
+    private String priceSource;
+    private String modelVersion;
+    private Double recommendedPrice;
+    private Double score;
+    private String explanation;
+    private List<String> warnings;
+    private List<java.util.Map<String, Object>> techCard;
     private Double lowerBound; // нижняя граница доверительного интервала
     private Double upperBound; // верхняя граница доверительного интервала
 

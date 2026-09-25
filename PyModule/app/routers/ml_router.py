@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date as Date
 from typing import Any
 
@@ -47,11 +48,25 @@ def _validate_algorithm_boundary(constraints: dict[str, Any]) -> dict[str, Any]:
         if value is None:
             continue
         try:
+            if isinstance(value, bool) or not math.isfinite(float(value)) or float(value) != int(value):
+                raise ValueError(f"{key} должен быть целым числом")
             numeric_value = int(value)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"{key} должен быть целым числом") from exc
-        if numeric_value > maximum:
-            raise ValueError(f"{key} не может быть больше {maximum}")
+        minimum = {"populationSize": 20, "generations": 5, "minIngredients": 2, "maxIngredients": 2}.get(key, 1)
+        if numeric_value < minimum or numeric_value > maximum:
+            raise ValueError(f"{key}: допустимый диапазон {minimum}–{maximum}")
+    if int(constraints.get("minIngredients") or 3) > int(constraints.get("maxIngredients") or 6):
+        raise ValueError("minIngredients не может превышать maxIngredients")
+    for key in ("sellingPrice", "totalWeightGrams", "markup", "maxCost", "minProfitMargin"):
+        value = constraints.get(key)
+        if value is not None:
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+                raise ValueError(f"{key} должен быть конечным неотрицательным числом")
+            if key in {"sellingPrice", "totalWeightGrams", "markup"} and value <= 0:
+                raise ValueError(f"{key} должен быть больше нуля")
+            if key == "minProfitMargin" and value > 1:
+                raise ValueError("minProfitMargin должен быть от 0 до 1")
     return constraints
 
 
@@ -90,7 +105,7 @@ class TrainingRequest(StrictRequest):
     records: list[TrainingRecord] = Field(min_length=10, max_length=100_000)
 
 
-def _prediction_metadata() -> tuple[float, str | None]:
+def _prediction_metadata() -> tuple[float | None, str | None]:
     info = service.get_model_info()
     return service.get_confidence_score(), info.get("modelVersion")
 
@@ -109,9 +124,11 @@ async def predict_single_endpoint(request: MLRequest) -> dict[str, Any]:
             "ingredients": request.ingredients,
             "confidenceScore": confidence,
             "modelVersion": version,
+            "target": service.get_model_info().get("target"),
+            "warnings": service.get_model_info().get("warnings", []),
         }
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail={"code": "ML_INPUT_INVALID", "message": str(exc)}) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
@@ -145,6 +162,8 @@ async def predict_batch_endpoint(request: BatchMLRequest) -> dict[str, Any]:
                         "predictedSales": result.get("predicted_sales"),
                         "confidenceScore": confidence,
                         "modelVersion": version,
+                        "target": service.get_model_info().get("target"),
+                        "warnings": service.get_model_info().get("warnings", []),
                     }
                 )
         return {"results": normalized, "modelVersion": version}
@@ -169,7 +188,7 @@ async def train_endpoint(data: TrainingRequest) -> dict[str, Any]:
     except service.TrainingInProgressError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail={"code": "ML_INPUT_INVALID", "message": str(exc)}) from exc
     except Exception as exc:
         logger.exception("Model training failed")
         raise HTTPException(
@@ -210,7 +229,7 @@ async def generate_dish_endpoint(request: GenerateDishRequest) -> dict[str, Any]
             request.constraints,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail={"code": "ML_INPUT_INVALID", "message": str(exc)}) from exc
     except Exception as exc:
         logger.exception("Dish generation failed")
         raise HTTPException(
@@ -232,7 +251,7 @@ async def optimize_endpoint(request: OptimizeRequest) -> dict[str, Any]:
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail={"code": "ML_INPUT_INVALID", "message": str(exc)}) from exc
     except Exception as exc:
         logger.exception("Roll optimization failed")
         raise HTTPException(
