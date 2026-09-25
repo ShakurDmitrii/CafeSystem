@@ -29,12 +29,17 @@ public class OrderDTO {
     public String deliveryAddress;
     public String paymentType;
     public Boolean paid;
+    public BigDecimal cashReceived;
+    public BigDecimal cashChange;
     public BigDecimal debtOriginalAmount;
     public BigDecimal debtRemainingAmount;
     public LocalDateTime cancelledAt;
     public String cancelReason;
     public Integer version;
     public List<OrderDishDTO> items;
+    public Integer personCount;
+    public List<OrderConsumableDTO> consumables;
+    public String createdBy;
 
     public LocalDate getDebt_payment_date() {
         return debt_payment_date;
@@ -172,6 +177,11 @@ public class OrderDTO {
         this.paid = paid;
     }
 
+    public BigDecimal getCashReceived() { return cashReceived; }
+    public void setCashReceived(BigDecimal cashReceived) { this.cashReceived = cashReceived; }
+    public BigDecimal getCashChange() { return cashChange; }
+    public void setCashChange(BigDecimal cashChange) { this.cashChange = cashChange; }
+
     public BigDecimal getDebtOriginalAmount() { return debtOriginalAmount; }
     public void setDebtOriginalAmount(BigDecimal debtOriginalAmount) { this.debtOriginalAmount = debtOriginalAmount; }
     public BigDecimal getDebtRemainingAmount() { return debtRemainingAmount; }
@@ -208,5 +218,12 @@ public class OrderDTO {
     public void setItems(List<OrderDishDTO> items) {
         this.items = items;
     }
+
+    public Integer getPersonCount() { return personCount; }
+    public void setPersonCount(Integer personCount) { this.personCount = personCount; }
+    public List<OrderConsumableDTO> getConsumables() { return consumables; }
+    public void setConsumables(List<OrderConsumableDTO> consumables) { this.consumables = consumables; }
+    public String getCreatedBy() { return createdBy; }
+    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
 
 }

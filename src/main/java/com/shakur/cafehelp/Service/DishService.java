@@ -449,19 +449,6 @@ public class DishService {
 
         double calculatedCost = recipeCostService.calculateDishCost(dish.getDishId());
         dish.setFirstCost(calculatedCost);
-
-        Double storedCost = dsl.select(DISH.FIRSTCOST)
-                .from(DISH)
-                .where(DISH.DISHID.eq(dish.getDishId()))
-                .fetchOne(DISH.FIRSTCOST);
-
-        if (storedCost == null || Math.abs(storedCost - calculatedCost) > 0.009) {
-            dsl.update(DISH)
-                    .set(DISH.FIRSTCOST, calculatedCost)
-                    .where(DISH.DISHID.eq(dish.getDishId()))
-                    .execute();
-        }
-
         return dish;
     }
 }

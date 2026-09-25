@@ -64,6 +64,8 @@ public class InventoryShiftReportService {
     private static final Field<Integer> MOVEMENT_PRODUCT_ID = DSL.field(DSL.name("product_id"), Integer.class);
     private static final Field<java.math.BigDecimal> MOVEMENT_QTY_IN = DSL.field(DSL.name("qty_in"), java.math.BigDecimal.class);
     private static final Field<java.math.BigDecimal> MOVEMENT_QTY_OUT = DSL.field(DSL.name("qty_out"), java.math.BigDecimal.class);
+    private static final Field<String> MOVEMENT_SOURCE_TYPE = DSL.field(DSL.name("source_type"), String.class);
+    private static final Field<Integer> MOVEMENT_SOURCE_ID = DSL.field(DSL.name("source_id"), Integer.class);
 
     private static final org.jooq.Table<?> REPORT = DSL.table(DSL.name("sales", "inventory_shift_report"));
     private static final Field<Integer> REPORT_ID = DSL.field(DSL.name("id"), Integer.class);
@@ -94,16 +96,19 @@ public class InventoryShiftReportService {
 
     private final DSLContext dsl;
     private final WareHouseService wareHouseService;
+    private final InventoryValuationService inventoryValuationService;
     private final RecipeExpansionService recipeExpansionService;
     private volatile Boolean baseUnitPresent = null;
 
     public InventoryShiftReportService(
             DSLContext dsl,
             WareHouseService wareHouseService,
+            InventoryValuationService inventoryValuationService,
             RecipeExpansionService recipeExpansionService
     ) {
         this.dsl = dsl;
         this.wareHouseService = wareHouseService;
+        this.inventoryValuationService = inventoryValuationService;
         this.recipeExpansionService = recipeExpansionService;
     }
 
@@ -208,7 +213,15 @@ public class InventoryShiftReportService {
                     .set(REPORT_LINE_SORT_ORDER, sortOrder - 1)
                     .execute();
 
-            wareHouseService.setProductQuantity(resolvedWarehouseId, productId, actualQty);
+            inventoryValuationService.setPhysicalQuantity(
+                    resolvedWarehouseId,
+                    productId,
+                    java.math.BigDecimal.valueOf(actualQty),
+                    "inventory_shift_report",
+                    reportId,
+                    "Фактический остаток по инвентаризации смены #" + shift.id(),
+                    "inventory-report"
+            );
         }
 
         if (liveProductIds.isEmpty()) {
@@ -267,7 +280,7 @@ public class InventoryShiftReportService {
         Map<Integer, Double> snapshotByProduct = loadOpeningSnapshot(warehouseId, shift.id());
         boolean snapshotAvailable = !snapshotByProduct.isEmpty();
 
-        MovementData movementData = loadMovementData(warehouseId, window);
+        MovementData movementData = loadMovementData(warehouseId, shift.id(), window);
         SalesData salesData = loadSalesData(shift.id(), window.start());
         Map<Integer, Double> currentByProduct = loadCurrentStockByProduct(warehouseId);
 
@@ -357,18 +370,38 @@ public class InventoryShiftReportService {
         return result;
     }
 
-    private MovementData loadMovementData(int warehouseId, ShiftWindow window) {
+    private MovementData loadMovementData(int warehouseId, int shiftId, ShiftWindow window) {
         Map<Integer, Double> inByProduct = new HashMap<>();
         Map<Integer, Double> outByProduct = new HashMap<>();
         List<StockEvent> events = new ArrayList<>();
 
-        dsl.select(MOVEMENT_PRODUCT_ID, MOVEMENT_DATE, MOVEMENT_QTY_IN, MOVEMENT_QTY_OUT)
+        Set<Integer> activeOrderIds = new LinkedHashSet<>(dsl.select(Order.ORDER.ORDERID)
+                .from(Order.ORDER)
+                .where(Order.ORDER.SHIFTID.eq(shiftId))
+                .and(ORDER_CANCELLED_AT.isNull())
+                .fetch(Order.ORDER.ORDERID));
+
+        dsl.select(
+                        MOVEMENT_PRODUCT_ID,
+                        MOVEMENT_DATE,
+                        MOVEMENT_QTY_IN,
+                        MOVEMENT_QTY_OUT,
+                        MOVEMENT_SOURCE_TYPE,
+                        MOVEMENT_SOURCE_ID
+                )
                 .from(STOCK_MOVEMENTS)
                 .where(MOVEMENT_WAREHOUSE_ID.eq(warehouseId))
                 .and(MOVEMENT_DATE.ge(window.start()))
                 .and(MOVEMENT_DATE.le(window.end()))
                 .fetch()
                 .forEach(record -> {
+                    String sourceType = record.get(MOVEMENT_SOURCE_TYPE);
+                    Integer sourceId = record.get(MOVEMENT_SOURCE_ID);
+                    if ("order".equalsIgnoreCase(sourceType) && activeOrderIds.contains(sourceId)) {
+                        // The recipe sale below already subtracts this stock. Counting its
+                        // physical write-off as a movement would subtract the same order twice.
+                        return;
+                    }
                     Integer productId = record.get(MOVEMENT_PRODUCT_ID);
                     if (productId == null) {
                         return;

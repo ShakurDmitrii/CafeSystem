@@ -20,6 +20,14 @@ import java.util.List;
 @Configuration
 public class SecurityConfig {
 
+    public static final List<String> CORS_ALLOWED_ORIGINS = List.of(
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://tauri.localhost",
+            "https://tauri.localhost",
+            "tauri://localhost"
+    );
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ServiceTokenAuthenticationFilter serviceTokenAuthenticationFilter;
 
@@ -45,6 +53,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/bootstrap",
+                                "/api/health",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
@@ -52,6 +61,11 @@ public class SecurityConfig {
                                 "/error"
                         ).permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
+
+                        // Изображения доступны на чтение по непредсказуемому UUID,
+                        // загрузка и любые будущие операции изменения — только OWNER.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/files/images/**").permitAll()
+                        .requestMatchers("/api/v1/files/**", "/api/files/**").hasRole("OWNER")
 
                         // OWNER only: справочники/склады/движения/аналитика/админка
                         .requestMatchers("/api/user-accounts/**").hasRole("OWNER")
@@ -81,6 +95,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/dish-categories/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers("/api/dish-categories/**").hasRole("OWNER")
                         .requestMatchers(HttpMethod.GET, "/api/product/**").hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers(HttpMethod.GET, "/api/consumables/**").hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers(HttpMethod.POST, "/api/consumables/preview").hasAnyRole("WORKER", "OWNER")
+                        .requestMatchers("/api/consumables/**").hasRole("OWNER")
                         .requestMatchers(HttpMethod.GET, "/api/shifts/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers(HttpMethod.POST, "/api/shifts/open", "/api/shifts/*/close").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers("/api/tech-products/**").hasAnyRole("WORKER", "OWNER")
@@ -102,7 +119,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:3000"));
+        config.setAllowedOrigins(CORS_ALLOWED_ORIGINS);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

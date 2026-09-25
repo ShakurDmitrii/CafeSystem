@@ -1,10 +1,14 @@
 package com.shakur.cafehelp.DTO;
 
+import java.math.BigDecimal;
+
 public class PreparationWarehouseDTO {
     private Integer preparationWarehouseId;
     private Integer preparationId;
     private Integer warehouseId;
     private Double quantity;
+    private BigDecimal inventoryValue;
+    private BigDecimal averageUnitCost;
 
     public Integer getPreparationWarehouseId() {
         return preparationWarehouseId;
@@ -36,5 +40,21 @@ public class PreparationWarehouseDTO {
 
     public void setQuantity(Double quantity) {
         this.quantity = quantity;
+    }
+
+    public BigDecimal getInventoryValue() {
+        return inventoryValue;
+    }
+
+    public void setInventoryValue(BigDecimal inventoryValue) {
+        this.inventoryValue = inventoryValue;
+    }
+
+    public BigDecimal getAverageUnitCost() {
+        return averageUnitCost;
+    }
+
+    public void setAverageUnitCost(BigDecimal averageUnitCost) {
+        this.averageUnitCost = averageUnitCost;
     }
 }

@@ -3,6 +3,7 @@ package com.shakur.cafehelp.Service;
 import com.shakur.cafehelp.DTO.OrderDTO;
 import com.shakur.cafehelp.DTO.OrderDishDTO;
 import com.shakur.cafehelp.DTO.OrderEditRequestDTO;
+import com.shakur.cafehelp.DTO.OrderConsumableDTO;
 import com.shakur.cafehelp.config.BusinessTimeProvider;
 import com.shakur.cafehelp.exception.InvalidOrderRequestException;
 import com.shakur.cafehelp.exception.OrderNotFoundException;
@@ -44,6 +45,9 @@ public class OrderService {
     private static final Field<BigDecimal> DEBT_REMAINING_AMOUNT_FIELD = DSL.field(DSL.name("debt_remaining_amount"), BigDecimal.class);
     private static final Field<Boolean> INVENTORY_CONSUMED_FIELD = DSL.field(DSL.name("inventory_consumed"), Boolean.class);
     private static final Field<LocalDateTime> PAID_AT_FIELD = DSL.field(DSL.name("paid_at"), LocalDateTime.class);
+    private static final Field<Integer> PERSON_COUNT_FIELD = DSL.field(DSL.name("person_count"), Integer.class);
+    private static final Field<BigDecimal> CASH_RECEIVED_FIELD = DSL.field(DSL.name("cash_received"), BigDecimal.class);
+    private static final Field<BigDecimal> CASH_CHANGE_FIELD = DSL.field(DSL.name("cash_change"), BigDecimal.class);
     private static final Field<Integer> ORDERDISH_SET_ID = DSL.field(DSL.name("set_id"), Integer.class);
     private static final Field<Double> ORDERDISH_UNIT_PRICE = DSL.field(DSL.name("unit_price"), Double.class);
     private static final Field<Double> ORDERDISH_UNIT_COST = DSL.field(DSL.name("unit_cost"), Double.class);
@@ -59,22 +63,28 @@ public class OrderService {
 
     private final DSLContext dsl;
     private final WareHouseService wareHouseService;
+    private final InventoryValuationService inventoryValuationService;
     private final RecipeRequirementService recipeRequirementService;
     private final BusinessTimeProvider businessTime;
     private final TaxOutboxWriterService taxOutboxWriterService;
+    private final ConsumableService consumableService;
 
     public OrderService(
             DSLContext dsl,
             WareHouseService wareHouseService,
+            InventoryValuationService inventoryValuationService,
             RecipeRequirementService recipeRequirementService,
             BusinessTimeProvider businessTime,
-            TaxOutboxWriterService taxOutboxWriterService
+            TaxOutboxWriterService taxOutboxWriterService,
+            ConsumableService consumableService
     ) {
         this.dsl = dsl;
         this.wareHouseService = wareHouseService;
+        this.inventoryValuationService = inventoryValuationService;
         this.recipeRequirementService = recipeRequirementService;
         this.businessTime = businessTime;
         this.taxOutboxWriterService = taxOutboxWriterService;
+        this.consumableService = consumableService;
     }
 
     @Transactional
@@ -88,6 +98,9 @@ public class OrderService {
             lockOpenShift(orderDTO.getShiftId());
 
             List<ValidatedOrderItem> items = validateOrderItems(orderDTO.getItems());
+            ConsumableService.PreparedConsumables consumables = consumableService.prepare(
+                    orderDTO.getPersonCount(), orderDTO.getItems(), orderDTO.getConsumables(), orderDTO.getCreatedBy()
+            );
             boolean delivery = Boolean.TRUE.equals(orderDTO.getType());
             double itemsTotal = items.stream()
                     .map(ValidatedOrderItem::lineTotal)
@@ -97,8 +110,11 @@ public class OrderService {
             double requestedTotal = orderDTO.getAmount() != null
                     ? normalizeNonNegative(orderDTO.getAmount(), "Сумма заказа")
                     : itemsTotal;
-            double deliveryCost = delivery ? Math.max(0.0, requestedTotal - itemsTotal) : 0.0;
+            double deliveryCost = delivery
+                    ? Math.max(0.0, requestedTotal - itemsTotal - consumables.surchargeTotal().doubleValue())
+                    : 0.0;
             double serverTotal = BigDecimal.valueOf(itemsTotal)
+                    .add(consumables.surchargeTotal())
                     .add(BigDecimal.valueOf(deliveryCost))
                     .setScale(2, RoundingMode.HALF_UP)
                     .doubleValue();
@@ -106,6 +122,9 @@ public class OrderService {
             String normalizedPaymentType = normalizePaymentType(orderDTO.getPaymentType());
             boolean paid = orderDTO.getPaid() != null ? orderDTO.getPaid() : false;
             String storedPaymentType = paid ? normalizedPaymentType : "unpaid";
+            CashPaymentCalculator.Settlement cashSettlement = paid && "cash".equals(normalizedPaymentType)
+                    ? CashPaymentCalculator.calculate(BigDecimal.valueOf(serverTotal), orderDTO.getCashReceived())
+                    : null;
             boolean debt = Boolean.TRUE.equals(orderDTO.getDuty());
 
             Integer clientId = orderDTO.getClientId();
@@ -136,6 +155,9 @@ public class OrderService {
                     .set(DEBT_REMAINING_AMOUNT_FIELD, debtAmount)
                     .set(INVENTORY_CONSUMED_FIELD, false)
                     .set(PAID_AT_FIELD, paid ? now : null)
+                    .set(PERSON_COUNT_FIELD, consumables.personCount())
+                    .set(CASH_RECEIVED_FIELD, cashSettlement != null ? cashSettlement.received() : null)
+                    .set(CASH_CHANGE_FIELD, cashSettlement != null ? cashSettlement.change() : null)
                     .returningResult(ORDER.ORDERID)
                     .fetchOne();
 
@@ -144,6 +166,7 @@ public class OrderService {
             }
 
             Integer orderId = result.get(ORDER.ORDERID);
+            consumableService.replaceForOrder(orderId, consumables);
             System.out.println("Created order with ID: " + orderId);
 
             if (!items.isEmpty()) {
@@ -210,7 +233,10 @@ public class OrderService {
                         CANCEL_REASON_FIELD,
                         VERSION_FIELD,
                         DEBT_ORIGINAL_AMOUNT_FIELD,
-                        DEBT_REMAINING_AMOUNT_FIELD
+                        DEBT_REMAINING_AMOUNT_FIELD,
+                        PERSON_COUNT_FIELD,
+                        CASH_RECEIVED_FIELD,
+                        CASH_CHANGE_FIELD
                 )
                 .from(ORDER)
                 .where(ORDER.ORDERID.eq(id))
@@ -231,6 +257,8 @@ public class OrderService {
                     order.deliveryAddress = record.get(DELIVERY_ADDRESS_FIELD);
                     order.paymentType = record.get(PAYMENT_TYPE_FIELD);
                     order.paid = record.get(IS_PAID_FIELD);
+                    order.cashReceived = record.get(CASH_RECEIVED_FIELD);
+                    order.cashChange = record.get(CASH_CHANGE_FIELD);
                     order.duty = record.get(ORDER.DUTY);
                     order.debt_payment_date = record.get(ORDER.DEBT_PAYMENT_DATE);
                     order.debtOriginalAmount = record.get(DEBT_ORIGINAL_AMOUNT_FIELD);
@@ -239,6 +267,8 @@ public class OrderService {
                     order.cancelReason = record.get(CANCEL_REASON_FIELD);
                     order.version = record.get(VERSION_FIELD);
                     order.items = buildOrderDishDtos(record.get(ORDER.ORDERID));
+                    order.personCount = record.get(PERSON_COUNT_FIELD);
+                    order.consumables = consumableService.getForOrder(record.get(ORDER.ORDERID));
                     return order;
                 });
     }
@@ -353,12 +383,17 @@ public class OrderService {
                 });
     }
 public List<OrderDTO> getOrders() {
-        return dsl.select(ORDER.fields())
-                .select(DELIVERY_PHONE_FIELD, DELIVERY_ADDRESS_FIELD, PAYMENT_TYPE_FIELD, IS_PAID_FIELD)
+        var records = dsl.select(ORDER.fields())
+                .select(DELIVERY_PHONE_FIELD, DELIVERY_ADDRESS_FIELD, PAYMENT_TYPE_FIELD, IS_PAID_FIELD,
+                        CASH_RECEIVED_FIELD, CASH_CHANGE_FIELD)
                 .from(ORDER)
                 .where(CANCELLED_AT_FIELD.isNull())
-                .fetch()
-                .stream()
+                .fetch();
+        Map<Integer, List<OrderLineItem>> itemsByOrderId = loadOrderLineItems(
+                records.getValues(ORDER.ORDERID)
+        );
+
+        List<OrderDTO> result = records.stream()
                 .map(record ->{
                     OrderDTO order = new OrderDTO();
                     order.setClientId(record.get(ORDER.CLIENTID));
@@ -376,9 +411,15 @@ public List<OrderDTO> getOrders() {
                     order.setDeliveryAddress(record.get(DELIVERY_ADDRESS_FIELD));
                     order.setPaymentType(record.get(PAYMENT_TYPE_FIELD));
                     order.setPaid(record.get(IS_PAID_FIELD));
-                    order.setItems(buildOrderDishDtos(record.get(ORDER.ORDERID)));
+                    order.setCashReceived(record.get(CASH_RECEIVED_FIELD));
+                    order.setCashChange(record.get(CASH_CHANGE_FIELD));
+                    order.setItems(buildOrderDishDtos(
+                            itemsByOrderId.getOrDefault(record.get(ORDER.ORDERID), List.of())
+                    ));
                     return order;
                 }).toList();
+        attachConsumables(result);
+        return result;
 }
     private OrderDTO mapToDTO(OrderRecord record) {
         OrderDTO order = new OrderDTO();
@@ -421,6 +462,17 @@ public List<OrderDTO> getOrders() {
         OrderRecord order = lockOrderForMutation(orderId);
         ensureEditableOrder(order, request.getExpectedVersion());
         List<ValidatedOrderItem> items = validateOrderItems(request.getItems());
+        int requestedPersonCount = request.getPersonCount() != null
+                ? request.getPersonCount()
+                : currentPersonCount(orderId);
+        ConsumableService.PreparedConsumables consumables = consumableService.prepare(
+                requestedPersonCount,
+                request.getItems(),
+                request.getConsumables() != null
+                        ? request.getConsumables()
+                        : consumableService.getForOrder(orderId),
+                "order-api"
+        );
 
         boolean delivery = request.getType() != null ? request.getType() : Boolean.TRUE.equals(order.getType());
         double deliveryCost = request.getDeliveryCost() != null
@@ -432,6 +484,7 @@ public List<OrderDTO> getOrders() {
                 .setScale(2, RoundingMode.HALF_UP)
                 .doubleValue();
         double total = BigDecimal.valueOf(itemsTotal)
+                .add(consumables.surchargeTotal())
                 .add(BigDecimal.valueOf(delivery ? deliveryCost : 0.0))
                 .setScale(2, RoundingMode.HALF_UP)
                 .doubleValue();
@@ -459,6 +512,7 @@ public List<OrderDTO> getOrders() {
                 .set(DELIVERY_PHONE_FIELD, trimToNull(request.getDeliveryPhone()))
                 .set(DELIVERY_ADDRESS_FIELD, trimToNull(request.getDeliveryAddress()))
                 .set(VERSION_FIELD, currentVersion + 1)
+                .set(PERSON_COUNT_FIELD, consumables.personCount())
                 .where(ORDER.ORDERID.eq(orderId))
                 .execute();
 
@@ -478,6 +532,7 @@ public List<OrderDTO> getOrders() {
             }
             insert.execute();
         }
+        consumableService.replaceForOrder(orderId, consumables);
 
         return getOrderById(orderId);
     }
@@ -538,6 +593,11 @@ public List<OrderDTO> getOrders() {
 
     @Transactional
     public OrderDTO updateOrderPayment(int orderId, String paymentType, Boolean paid) {
+        return updateOrderPayment(orderId, paymentType, paid, null);
+    }
+
+    @Transactional
+    public OrderDTO updateOrderPayment(int orderId, String paymentType, Boolean paid, BigDecimal cashReceived) {
         OrderRecord record = lockOrderForMutation(orderId);
         ensureOrderActive(orderId);
 
@@ -547,6 +607,9 @@ public List<OrderDTO> getOrders() {
 
         String normalizedPaymentType = normalizePaymentType(paymentType);
         boolean nextPaid = paid != null ? paid : !"unpaid".equals(normalizedPaymentType);
+        CashPaymentCalculator.Settlement cashSettlement = nextPaid && "cash".equals(normalizedPaymentType)
+                ? CashPaymentCalculator.calculate(BigDecimal.valueOf(record.getAmount()), cashReceived)
+                : null;
         boolean wasPaid = Boolean.TRUE.equals(record.get(IS_PAID_FIELD));
         LocalDateTime previousPaidAt = dsl.select(PAID_AT_FIELD)
                 .from(ORDER)
@@ -560,6 +623,8 @@ public List<OrderDTO> getOrders() {
                 .set(PAYMENT_TYPE_FIELD, nextPaid ? normalizedPaymentType : "unpaid")
                 .set(IS_PAID_FIELD, nextPaid)
                 .set(PAID_AT_FIELD, nextPaidAt)
+                .set(CASH_RECEIVED_FIELD, cashSettlement != null ? cashSettlement.received() : null)
+                .set(CASH_CHANGE_FIELD, cashSettlement != null ? cashSettlement.change() : null)
                 .where(ORDER.ORDERID.eq(orderId))
                 .execute();
 
@@ -612,7 +677,7 @@ public List<OrderDTO> getOrders() {
                 .set(ORDERDISH_UNIT_COST, item.unitCost())
                 .execute();
         if (paid) {
-            applyWarehouseWriteoffForDish(dishId, qty);
+            applyWarehouseWriteoffForDish(orderId, dishId, qty);
         }
         System.out.println("Блюдо добавлено в заказ: " + orderId + ", " + dishId + ", qty=" + qty);
     }
@@ -659,15 +724,21 @@ public List<OrderDTO> getOrders() {
             mergeRequirements(requiredByPreparation, set.preparationRequirements());
         }
 
-        applyWarehouseWriteoffForRequirements(mainWarehouseId, requiredByProduct, requiredByPreparation);
+        applyWarehouseWriteoffForRequirements(mainWarehouseId, requiredByProduct, requiredByPreparation, orderId);
+        consumableService.writeOffForOrder(orderId);
     }
 
-    private void applyWarehouseWriteoffForDish(int dishId, int qty) {
+    private void applyWarehouseWriteoffForDish(int orderId, int dishId, int qty) {
         if (qty <= 0) return;
         Integer mainWarehouseId = wareHouseService.getMainWarehouseId();
         if (mainWarehouseId == null) return;
         RecipeRequirementService.RequirementSet set = buildRequirementsForDish(dishId, qty);
-        applyWarehouseWriteoffForRequirements(mainWarehouseId, set.productRequirements(), set.preparationRequirements());
+        applyWarehouseWriteoffForRequirements(
+                mainWarehouseId,
+                set.productRequirements(),
+                set.preparationRequirements(),
+                orderId
+        );
     }
 
     private RecipeRequirementService.RequirementSet buildRequirementsForDish(int dishId, int qty) {
@@ -706,7 +777,8 @@ public List<OrderDTO> getOrders() {
     private void applyWarehouseWriteoffForRequirements(
             Integer warehouseId,
             Map<Integer, Double> requiredByProduct,
-            Map<Integer, Double> requiredByPreparation
+            Map<Integer, Double> requiredByPreparation,
+            Integer orderId
     ) {
         if (warehouseId == null) return;
         boolean noProducts = requiredByProduct == null || requiredByProduct.isEmpty();
@@ -717,23 +789,47 @@ public List<OrderDTO> getOrders() {
             Integer productId = e.getKey();
             double required = e.getValue() != null ? e.getValue() : 0.0;
             if (required <= 0) continue;
-            wareHouseService.consumeAvailableQuantity(warehouseId, productId, required);
+            inventoryValuationService.issueAvailableAndRecord(
+                    warehouseId,
+                    productId,
+                    BigDecimal.valueOf(required),
+                    "order",
+                    orderId,
+                    "order-service"
+            );
         }
 
         for (Map.Entry<Integer, Double> e : (requiredByPreparation != null ? requiredByPreparation.entrySet() : java.util.Collections.<Map.Entry<Integer, Double>>emptySet())) {
             Integer preparationId = e.getKey();
             double required = e.getValue() != null ? e.getValue() : 0.0;
             if (required <= 0) continue;
-            wareHouseService.consumeAvailablePreparationQuantity(warehouseId, preparationId, required);
+            inventoryValuationService.issuePreparationAvailable(
+                    warehouseId,
+                    preparationId,
+                    BigDecimal.valueOf(required),
+                    "order",
+                    orderId,
+                    "order-service"
+            );
         }
     }
 
     private List<OrderLineItem> loadOrderLineItems(int orderId) {
+        return loadOrderLineItems(List.of(orderId)).getOrDefault(orderId, List.of());
+    }
+
+    private Map<Integer, List<OrderLineItem>> loadOrderLineItems(List<Integer> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return Map.of();
+        }
+
         Field<Double> dishPriceField = DISH.PRICE.as("dish_price");
         Field<Double> setPriceField = DISH_SET_PRICE.as("set_price");
         Field<String> setNameField = DISH_SET_NAME.as("set_name");
 
-        return dsl.select(
+        Map<Integer, List<OrderLineItem>> itemsByOrderId = new HashMap<>();
+        dsl.select(
+                        ORDERDISH.ORDERID,
                         ORDERDISH.DISHID,
                         ORDERDISH_SET_ID,
                         ORDERDISH.QTY,
@@ -746,8 +842,11 @@ public List<OrderDTO> getOrders() {
                 .from(ORDERDISH)
                 .leftJoin(DISH).on(DISH.DISHID.eq(ORDERDISH.DISHID))
                 .leftJoin(DISH_SET).on(DISH_SET_ID.eq(ORDERDISH_SET_ID))
-                .where(ORDERDISH.ORDERID.eq(orderId))
-                .fetch(record -> {
+                .where(ORDERDISH.ORDERID.in(orderIds))
+                .orderBy(ORDERDISH.ORDERID.asc())
+                .fetch()
+                .forEach(record -> {
+                    Integer orderId = record.get(ORDERDISH.ORDERID);
                     Integer dishId = record.get(ORDERDISH.DISHID);
                     Integer setId = record.get(ORDERDISH_SET_ID);
                     Integer qty = record.get(ORDERDISH.QTY);
@@ -760,18 +859,25 @@ public List<OrderDTO> getOrders() {
                                 ? record.get(dishPriceField)
                                 : record.get(setPriceField);
                     }
-                    return new OrderLineItem(
+                    OrderLineItem item = new OrderLineItem(
                             dishId,
                             setId,
                             name != null ? name : "Позиция",
                             price != null ? price : 0.0,
                             qty != null ? qty : 0
                     );
+                    itemsByOrderId.computeIfAbsent(orderId, ignored -> new java.util.ArrayList<>())
+                            .add(item);
                 });
+        return itemsByOrderId;
     }
 
     private List<OrderDishDTO> buildOrderDishDtos(int orderId) {
-        return loadOrderLineItems(orderId).stream().map(row -> {
+        return buildOrderDishDtos(loadOrderLineItems(orderId));
+    }
+
+    private List<OrderDishDTO> buildOrderDishDtos(List<OrderLineItem> rows) {
+        return rows.stream().map(row -> {
             OrderDishDTO item = new OrderDishDTO();
             item.setDishID(row.dishId);
             item.setSetId(row.setId);
@@ -853,7 +959,7 @@ public List<OrderDTO> getOrders() {
             throw new RuntimeException("В заказе нет позиций для печати");
         }
 
-        List<Map<String, Object>> items = rows.stream().map(r -> {
+        List<Map<String, Object>> items = new java.util.ArrayList<>(rows.stream().map(r -> {
             String name = r.name != null ? r.name : "Позиция";
             Integer qty = r.qty != null ? r.qty : 0;
             Double price = r.price != null ? r.price : 0.0;
@@ -865,7 +971,21 @@ public List<OrderDTO> getOrders() {
             item.put("price", price);
             item.put("sum", sum);
             return item;
-        }).toList();
+        }).toList());
+
+        List<OrderConsumableDTO> consumables = consumableService.getForOrder(orderId);
+        for (OrderConsumableDTO consumable : consumables) {
+            BigDecimal surcharge = consumable.getSurchargeAmount() != null
+                    ? consumable.getSurchargeAmount()
+                    : BigDecimal.ZERO;
+            if (surcharge.signum() <= 0) continue;
+            Map<String, Object> paidExtra = new HashMap<>();
+            paidExtra.put("name", "Доплата: " + consumable.getProductName());
+            paidExtra.put("quantity", 1);
+            paidExtra.put("price", surcharge.doubleValue());
+            paidExtra.put("sum", surcharge.doubleValue());
+            items.add(paidExtra);
+        }
 
         double computedTotal = items.stream()
                 .mapToDouble(i -> ((Number) i.get("sum")).doubleValue())
@@ -883,7 +1003,7 @@ public List<OrderDTO> getOrders() {
                 .fetchOne();
         String dbDeliveryPhone = deliveryData != null ? deliveryData.get(DELIVERY_PHONE_FIELD) : null;
         String dbDeliveryAddress = deliveryData != null ? deliveryData.get(DELIVERY_ADDRESS_FIELD) : null;
-        Record paymentData = dsl.select(PAYMENT_TYPE_FIELD, IS_PAID_FIELD)
+        Record paymentData = dsl.select(PAYMENT_TYPE_FIELD, IS_PAID_FIELD, CASH_RECEIVED_FIELD, CASH_CHANGE_FIELD)
                 .from(ORDER)
                 .where(ORDER.ORDERID.eq(orderId))
                 .fetchOne();
@@ -900,6 +1020,17 @@ public List<OrderDTO> getOrders() {
         payload.put("orderId", orderId);
         payload.put("createdAt", order.getCreatedAt() != null ? order.getCreatedAt().toString() : null);
         payload.put("items", items);
+        payload.put("personCount", currentPersonCount(orderId));
+        payload.put("consumables", consumables.stream().map(consumable -> {
+            Map<String, Object> row = new HashMap<>();
+            row.put("productId", consumable.getProductId());
+            row.put("name", consumable.getProductName());
+            row.put("quantity", consumable.getActualQuantity());
+            row.put("suggestedQuantity", consumable.getSuggestedQuantity());
+            row.put("unit", consumable.getBaseUnit());
+            row.put("surcharge", consumable.getSurchargeAmount());
+            return row;
+        }).toList());
         payload.put("total", total);
         payload.put("isDelivery", isDelivery);
         payload.put("deliveryCost", deliveryCost);
@@ -910,6 +1041,8 @@ public List<OrderDTO> getOrders() {
             resolvedPayment = "unpaid";
         }
         payload.put("paymentType", resolvedPayment);
+        payload.put("cashReceived", paymentData != null ? paymentData.get(CASH_RECEIVED_FIELD) : null);
+        payload.put("cashChange", paymentData != null ? paymentData.get(CASH_CHANGE_FIELD) : null);
         payload.put(
                 "deliveryPhone",
                 deliveryPhone != null && !deliveryPhone.trim().isEmpty()
@@ -931,6 +1064,35 @@ public List<OrderDTO> getOrders() {
             case "cash", "transfer", "unpaid" -> raw;
             default -> "cash";
         };
+    }
+
+    private int currentPersonCount(int orderId) {
+        Integer value = dsl.select(PERSON_COUNT_FIELD)
+                .from(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .fetchOne(PERSON_COUNT_FIELD);
+        return value != null ? value : 1;
+    }
+
+    private void attachConsumables(List<OrderDTO> orders) {
+        if (orders == null || orders.isEmpty()) return;
+        if (consumableService == null) {
+            orders.forEach(order -> {
+                order.setPersonCount(1);
+                order.setConsumables(List.of());
+            });
+            return;
+        }
+        List<Integer> ids = orders.stream().map(OrderDTO::getOrderId).toList();
+        Map<Integer, Integer> persons = dsl.select(ORDER.ORDERID, PERSON_COUNT_FIELD)
+                .from(ORDER)
+                .where(ORDER.ORDERID.in(ids))
+                .fetchMap(ORDER.ORDERID, PERSON_COUNT_FIELD);
+        Map<Integer, List<OrderConsumableDTO>> consumables = consumableService.getForOrders(ids);
+        for (OrderDTO order : orders) {
+            order.setPersonCount(persons.getOrDefault(order.getOrderId(), 1));
+            order.setConsumables(consumables.getOrDefault(order.getOrderId(), List.of()));
+        }
     }
 
     private OrderRecord lockOrder(int orderId) {
@@ -1150,7 +1312,12 @@ public List<OrderDTO> getOrders() {
         double itemsTotal = loadOrderLineItems(orderId).stream()
                 .mapToDouble(item -> safeDouble(item.price, 0.0) * (item.qty != null ? item.qty : 0))
                 .sum();
-        return Math.max(0.0, safeDouble(order.getAmount(), 0.0) - itemsTotal);
+        double surchargeTotal = consumableService.getForOrder(orderId).stream()
+                .map(OrderConsumableDTO::getSurchargeAmount)
+                .filter(java.util.Objects::nonNull)
+                .mapToDouble(BigDecimal::doubleValue)
+                .sum();
+        return Math.max(0.0, safeDouble(order.getAmount(), 0.0) - itemsTotal - surchargeTotal);
     }
 
     private double normalizeNonNegative(Double value, String fieldName) {

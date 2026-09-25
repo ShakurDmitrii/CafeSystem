@@ -1,10 +1,12 @@
 package com.shakur.cafehelp.Service;
 
 import com.shakur.cafehelp.DTO.ProductDTO;
+import com.shakur.cafehelp.DTO.ConsumableRuleDTO;
 import jooqdata.tables.Product;
 import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.DSLContext;
+import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,17 +27,28 @@ public class ProductService {
     private static final Field<String> PRODUCT_BASE_UNIT = DSL.field(DSL.name("base_unit"), String.class);
     private static final Field<BigDecimal> PRODUCT_UNIT_FACTOR = DSL.field(DSL.name("unit_factor"), BigDecimal.class);
     private static final Field<String> PRODUCT_IMAGE_URL = DSL.field(DSL.name("image_url"), String.class);
+    private static final Field<String> PRODUCT_ITEM_TYPE = DSL.field(DSL.name("item_type"), String.class);
     private static final org.jooq.Table<?> PRODUCT_SUPPLIER = DSL.table(DSL.name("sales", "product_supplier"));
     private static final Field<Integer> PS_PRODUCT_ID = DSL.field(DSL.name("product_id"), Integer.class);
     private static final Field<Integer> PS_SUPPLIER_ID = DSL.field(DSL.name("supplier_id"), Integer.class);
+    private static final Field<BigDecimal> PS_DEFAULT_PRICE = DSL.field(DSL.name("default_price"), BigDecimal.class);
+    private static final Field<String> PS_PURCHASE_UNIT = DSL.field(DSL.name("purchase_unit"), String.class);
+    private static final Field<BigDecimal> PS_PURCHASE_UNIT_FACTOR = DSL.field(DSL.name("purchase_unit_factor"), BigDecimal.class);
+    private static final Field<String> PS_SUPPLIER_SKU = DSL.field(DSL.name("supplier_sku"), String.class);
     private volatile Boolean unitColumnsPresent = null;
     private volatile Boolean imageColumnPresent = null;
-    private static final Field<Integer> MOVEMENT_PRODUCT_ID = DSL.field(DSL.name("product_id"), Integer.class);
-    private static final Field<BigDecimal> MOVEMENT_QTY_IN = DSL.field(DSL.name("qty_in"), BigDecimal.class);
-    private static final Field<BigDecimal> MOVEMENT_AMOUNT = DSL.field(DSL.name("amount"), BigDecimal.class);
-    private static final org.jooq.Table<?> STOCK_MOVEMENTS = DSL.table(DSL.name("sales", "stock_movements"));
+    private static final org.jooq.Table<?> PRODUCT_WAREHOUSE = DSL.table(DSL.name("sales", "productwarehouse"));
+    private static final Field<Integer> PW_PRODUCT_ID = DSL.field(DSL.name("productid"), Integer.class);
+    private static final Field<Integer> PW_WAREHOUSE_ID = DSL.field(DSL.name("warehouseid"), Integer.class);
+    private static final Field<Double> PW_QUANTITY = DSL.field(DSL.name("quantity"), Double.class);
+    private static final Field<BigDecimal> PW_INVENTORY_VALUE = DSL.field(DSL.name("inventory_value"), BigDecimal.class);
 
-    public ProductService(DSLContext dsl){this.dsl = dsl;}
+    private final ConsumableService consumableService;
+
+    public ProductService(DSLContext dsl, ConsumableService consumableService){
+        this.dsl = dsl;
+        this.consumableService = consumableService;
+    }
 
 
     public List<ProductDTO> getProducts() {
@@ -120,7 +133,7 @@ public class ProductService {
                         dto.imageUrl = null;
                         return dto;
                     }).toList();
-            return enrichWithAverageStockPrice(result);
+            return enrichForSupplier(result, supplierId);
         }
         if (!hasImageColumn()) {
             List<ProductDTO> result = dsl.select(
@@ -142,7 +155,7 @@ public class ProductService {
                     .stream()
                     .map(this::toDto)
                     .toList();
-            return enrichWithAverageStockPrice(result);
+            return enrichForSupplier(result, supplierId);
         }
         List<ProductDTO> result = dsl.select(
                         Product.PRODUCT.PRODUCTID,
@@ -164,7 +177,7 @@ public class ProductService {
                 .stream()
                 .map(this::toDto)
                 .toList();
-        return enrichWithAverageStockPrice(result);
+        return enrichForSupplier(result, supplierId);
 
     }
     public List<ProductDTO> getAllSupplierProducts(int id){
@@ -189,7 +202,7 @@ public class ProductService {
                         dto.imageUrl = null;
                         return dto;
                     }).toList();
-            return enrichWithAverageStockPrice(result);
+            return enrichForSupplier(result, id);
         }
         if (!hasImageColumn()) {
             List<ProductDTO> result = dsl.select(
@@ -210,7 +223,7 @@ public class ProductService {
                     .stream()
                     .map(this::toDto)
                     .toList();
-            return enrichWithAverageStockPrice(result);
+            return enrichForSupplier(result, id);
         }
         List<ProductDTO> result = dsl.select(
                         Product.PRODUCT.PRODUCTID,
@@ -231,7 +244,7 @@ public class ProductService {
                 .stream()
                 .map(this::toDto)
                 .toList();
-        return enrichWithAverageStockPrice(result);
+        return enrichForSupplier(result, id);
     }
     public ProductDTO getProductById(int id) {
         if (!hasUnitColumns()) {
@@ -253,6 +266,7 @@ public class ProductService {
                         return mappedDto;
                     }).orElseThrow();
             dto.setAverageStockPrice(loadAverageStockPriceMap().get(dto.getProductId()));
+            enrichClassification(dto);
             return dto;
         }
         if (!hasImageColumn()) {
@@ -272,6 +286,7 @@ public class ProductService {
                     .fetchOptional()
                     .map(this::toDto).orElseThrow();
             dto.setAverageStockPrice(loadAverageStockPriceMap().get(dto.getProductId()));
+            enrichClassification(dto);
             return dto;
         }
         ProductDTO dto = dsl.select(
@@ -291,6 +306,7 @@ public class ProductService {
                 .fetchOptional()
                 .map(this::toDto).orElseThrow();
         dto.setAverageStockPrice(loadAverageStockPriceMap().get(dto.getProductId()));
+        enrichClassification(dto);
         return dto;
     }
     @Transactional
@@ -312,12 +328,16 @@ public class ProductService {
         if (!normalizedName.isEmpty()) {
             Integer existingId = dsl.select(Product.PRODUCT.PRODUCTID)
                     .from(Product.PRODUCT)
-                    .where(DSL.lower(Product.PRODUCT.PRODUCTNAME).eq(normalizedName.toLowerCase()))
+                    .where(DSL.lower(DSL.trim(Product.PRODUCT.PRODUCTNAME)).eq(normalizedName.toLowerCase()))
                     .limit(1)
                     .fetchOne(Product.PRODUCT.PRODUCTID);
             if (existingId != null) {
                 if (supplierId != null) {
                     linkProductToSupplier(existingId, supplierId);
+                    updateSupplierOffer(existingId, supplierId, dto, false);
+                }
+                if (dto.itemType != null) {
+                    applyConsumableConfiguration(existingId, dto);
                 }
                 ProductDTO existing = getProductById(existingId);
                 if (supplierId != null) {
@@ -362,9 +382,14 @@ public class ProductService {
         dto.productPrice = productPrice;
         dto.waste = waste;
         dto.isFavorite = Boolean.TRUE.equals(dto.isFavorite);
+        dto.itemType = dto.itemType != null ? dto.itemType : "ingredient";
         if (!hasImageColumn()) dto.imageUrl = null;
         if (supplierId != null && dto.productId != 0) {
             linkProductToSupplier(dto.productId, supplierId);
+            updateSupplierOffer(dto.productId, supplierId, dto, true);
+        }
+        if (dto.productId != 0 && dto.itemType != null) {
+            applyConsumableConfiguration(dto.productId, dto);
         }
         return dto;
     }
@@ -427,6 +452,40 @@ public class ProductService {
 
         validateProduct(productName, productPrice, waste, unit, baseUnit, unitFactor, supplierId);
 
+        String existingUnit = existingRecord.get(unitField);
+        String existingBaseUnit = existingRecord.get(baseUnitField);
+        BigDecimal existingFactor = existingRecord.get(unitFactorField) != null
+                ? existingRecord.get(unitFactorField)
+                : BigDecimal.ONE;
+        boolean unitDefinitionChanged = !java.util.Objects.equals(unit, existingUnit)
+                || !java.util.Objects.equals(baseUnit, existingBaseUnit)
+                || unitFactor.compareTo(existingFactor) != 0;
+        if (unitDefinitionChanged) {
+            Double stockQuantity = dsl.select(DSL.sum(PW_QUANTITY))
+                    .from(PRODUCT_WAREHOUSE)
+                    .where(PW_PRODUCT_ID.eq(id))
+                    .fetchOne(0, Double.class);
+            if (stockQuantity != null && stockQuantity > 0.000001d) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Единицы продукта нельзя менять при наличии остатка. Измените единицу предложения поставщика"
+                );
+            }
+        }
+
+        Integer duplicateId = dsl.select(Product.PRODUCT.PRODUCTID)
+                .from(Product.PRODUCT)
+                .where(DSL.lower(DSL.trim(Product.PRODUCT.PRODUCTNAME)).eq(productName.trim().toLowerCase()))
+                .and(Product.PRODUCT.PRODUCTID.ne(id))
+                .limit(1)
+                .fetchOne(Product.PRODUCT.PRODUCTID);
+        if (duplicateId != null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Ингредиент с таким названием уже существует. Добавьте поставщика в существующую карточку"
+            );
+        }
+
         var update = dsl.update(Product.PRODUCT)
                 .set(Product.PRODUCT.SUPPLIERID, supplierId)
                 .set(Product.PRODUCT.PRODUCTNAME, productName)
@@ -446,7 +505,11 @@ public class ProductService {
         update.where(Product.PRODUCT.PRODUCTID.eq(id)).execute();
 
         if (supplierId != null) {
-            syncProductSupplierLinks(id, supplierId);
+            linkProductToSupplier(id, supplierId);
+            updateSupplierOffer(id, supplierId, dto, false);
+        }
+        if (dto.itemType != null) {
+            applyConsumableConfiguration(id, dto);
         }
 
         ProductDTO updated = getProductById(id);
@@ -465,11 +528,57 @@ public class ProductService {
                 .execute();
     }
 
-    private void syncProductSupplierLinks(int productId, int supplierId) {
-        dsl.deleteFrom(PRODUCT_SUPPLIER)
-                .where(PS_PRODUCT_ID.eq(productId))
-                .execute();
-        linkProductToSupplier(productId, supplierId);
+    private void applyConsumableConfiguration(int productId, ProductDTO product) {
+        ConsumableRuleDTO rule = new ConsumableRuleDTO();
+        rule.setItemType(product.itemType);
+        rule.setBasis(product.consumableBasis);
+        rule.setDefaultQuantity(product.consumableDefaultQuantity);
+        rule.setTriggerQuantity(product.consumableTriggerQuantity);
+        rule.setDishCategoryId(product.consumableDishCategoryId);
+        rule.setActive(product.consumableActive);
+        consumableService.configure(productId, rule);
+    }
+
+    private void updateSupplierOffer(int productId, int supplierId, ProductDTO dto, boolean useProductDefaults) {
+        BigDecimal price = dto.supplierPrice != null
+                ? dto.supplierPrice
+                : (useProductDefaults ? dto.productPrice : null);
+        String unit = dto.supplierUnit != null && !dto.supplierUnit.isBlank()
+                ? dto.supplierUnit.trim().toLowerCase()
+                : (useProductDefaults ? dto.unit : null);
+        BigDecimal factor = dto.supplierUnitFactor != null
+                ? dto.supplierUnitFactor
+                : (useProductDefaults ? dto.unitFactor : null);
+        if (price != null && price.signum() < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Цена поставщика не может быть отрицательной");
+        }
+        if (factor != null && factor.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Коэффициент единицы поставщика должен быть больше нуля");
+        }
+
+        var update = dsl.update(PRODUCT_SUPPLIER).set(PS_PRODUCT_ID, PS_PRODUCT_ID);
+        boolean changed = false;
+        if (price != null) {
+            update.set(PS_DEFAULT_PRICE, price);
+            changed = true;
+        }
+        if (unit != null) {
+            update.set(PS_PURCHASE_UNIT, unit);
+            changed = true;
+        }
+        if (factor != null) {
+            update.set(PS_PURCHASE_UNIT_FACTOR, factor);
+            changed = true;
+        }
+        if (dto.supplierSku != null) {
+            update.set(PS_SUPPLIER_SKU, dto.supplierSku.trim().isEmpty() ? null : dto.supplierSku.trim());
+            changed = true;
+        }
+        if (changed) {
+            update.where(PS_PRODUCT_ID.eq(productId))
+                    .and(PS_SUPPLIER_ID.eq(supplierId))
+                    .execute();
+        }
     }
 
     private void validateProduct(
@@ -554,28 +663,82 @@ public class ProductService {
 
     private List<ProductDTO> enrichWithAverageStockPrice(List<ProductDTO> products) {
         Map<Integer, BigDecimal> avgByProduct = loadAverageStockPriceMap();
+        Map<Integer, String> typeByProduct = products.isEmpty()
+                ? Map.of()
+                : dsl.select(Product.PRODUCT.PRODUCTID, PRODUCT_ITEM_TYPE)
+                        .from(Product.PRODUCT)
+                        .where(Product.PRODUCT.PRODUCTID.in(products.stream().map(ProductDTO::getProductId).toList()))
+                        .fetchMap(Product.PRODUCT.PRODUCTID, PRODUCT_ITEM_TYPE);
         for (ProductDTO dto : products) {
             dto.setAverageStockPrice(avgByProduct.get(dto.getProductId()));
+            dto.setItemType(typeByProduct.getOrDefault(dto.getProductId(), "ingredient"));
+        }
+        return products;
+    }
+
+    private void enrichClassification(ProductDTO dto) {
+        String itemType = dsl.select(PRODUCT_ITEM_TYPE)
+                .from(Product.PRODUCT)
+                .where(Product.PRODUCT.PRODUCTID.eq(dto.getProductId()))
+                .fetchOne(PRODUCT_ITEM_TYPE);
+        dto.setItemType(itemType != null ? itemType : "ingredient");
+    }
+
+    private List<ProductDTO> enrichForSupplier(List<ProductDTO> products, int supplierId) {
+        enrichWithAverageStockPrice(products);
+        Map<Integer, ? extends Record> offers = dsl.select(
+                        PS_PRODUCT_ID,
+                        PS_DEFAULT_PRICE,
+                        PS_PURCHASE_UNIT,
+                        PS_PURCHASE_UNIT_FACTOR,
+                        PS_SUPPLIER_SKU
+                )
+                .from(PRODUCT_SUPPLIER)
+                .where(PS_SUPPLIER_ID.eq(supplierId))
+                .fetchMap(PS_PRODUCT_ID);
+        for (ProductDTO product : products) {
+            Record offer = offers.get(product.getProductId());
+            if (offer == null) continue;
+            product.setSupplierId(supplierId);
+            product.setSupplierPrice(offer.get(PS_DEFAULT_PRICE));
+            product.setSupplierUnit(offer.get(PS_PURCHASE_UNIT));
+            product.setSupplierUnitFactor(offer.get(PS_PURCHASE_UNIT_FACTOR));
+            product.setSupplierSku(offer.get(PS_SUPPLIER_SKU));
         }
         return products;
     }
 
     private Map<Integer, BigDecimal> loadAverageStockPriceMap() {
-        var rows = dsl.select(MOVEMENT_PRODUCT_ID, DSL.sum(MOVEMENT_QTY_IN), DSL.sum(MOVEMENT_AMOUNT))
-                .from(STOCK_MOVEMENTS)
-                .where(MOVEMENT_QTY_IN.gt(BigDecimal.ZERO))
-                .groupBy(MOVEMENT_PRODUCT_ID)
+        Field<BigDecimal> quantity = DSL.sum(PW_QUANTITY.cast(BigDecimal.class));
+        Field<BigDecimal> inventoryValue = DSL.sum(PW_INVENTORY_VALUE);
+        Table<?> warehouse = DSL.table(DSL.name("sales", "warehouse"));
+        Field<Integer> warehouseId = DSL.field(DSL.name("warehouseid"), Integer.class);
+        Field<Boolean> isMain = DSL.field(DSL.name("is_main"), Boolean.class);
+        Integer mainWarehouseId = dsl.select(warehouseId)
+                .from(warehouse)
+                .where(isMain.eq(true))
+                .limit(1)
+                .fetchOne(warehouseId);
+        org.jooq.Condition balanceCondition = PW_QUANTITY.gt(0.0);
+        if (mainWarehouseId != null) {
+            balanceCondition = balanceCondition.and(PW_WAREHOUSE_ID.eq(mainWarehouseId));
+        }
+        var rows = dsl.select(PW_PRODUCT_ID, quantity, inventoryValue)
+                .from(PRODUCT_WAREHOUSE)
+                .where(balanceCondition)
+                .groupBy(PW_PRODUCT_ID)
                 .fetch();
 
         Map<Integer, BigDecimal> result = new HashMap<>();
         for (var r : rows) {
-            Integer productId = r.get(MOVEMENT_PRODUCT_ID);
-            BigDecimal qtyIn = r.get(DSL.sum(MOVEMENT_QTY_IN));
-            BigDecimal amount = r.get(DSL.sum(MOVEMENT_AMOUNT));
-            if (productId == null || qtyIn == null || amount == null || qtyIn.compareTo(BigDecimal.ZERO) <= 0) {
+            Integer productId = r.get(PW_PRODUCT_ID);
+            BigDecimal currentQuantity = r.get(quantity);
+            BigDecimal currentValue = r.get(inventoryValue);
+            if (productId == null || currentQuantity == null || currentValue == null
+                    || currentQuantity.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
-            result.put(productId, amount.divide(qtyIn, 4, RoundingMode.HALF_UP));
+            result.put(productId, currentValue.divide(currentQuantity, 6, RoundingMode.HALF_UP));
         }
         return result;
     }

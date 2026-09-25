@@ -137,42 +137,49 @@ public class ClientService {
     }
 
     public List<ClientWithDutyDTO> getClientsWithDutyOrders(boolean duty) {
-        List<ClientDTO> clients = dsl.selectDistinct(CLIENT.CLIENTID, CLIENT.FULLNAME, CLIENT.NUMBER)
+        var rows = dsl.select(
+                        CLIENT.CLIENTID,
+                        CLIENT.FULLNAME,
+                        CLIENT.NUMBER,
+                        ORDER.ORDERID,
+                        ORDER.CLIENTID,
+                        ORDER.DATE,
+                        ORDER.CREATED_AT,
+                        ORDER.STATUS,
+                        ORDER.AMOUNT,
+                        ORDER.DUTY,
+                        ORDER.TIMEDELAY,
+                        ORDER.DEBT_PAYMENT_DATE,
+                        DEBT_ORIGINAL_AMOUNT,
+                        DEBT_REMAINING_AMOUNT
+                )
                 .from(CLIENT)
                 .join(ORDER).on(ORDER.CLIENTID.eq(CLIENT.CLIENTID))
                 .where(ORDER.DUTY.eq(duty))
                 .and(ORDER_CANCELLED_AT.isNull())
-                .orderBy(CLIENT.FULLNAME.asc(), CLIENT.CLIENTID.asc())
-                .fetch(record -> {
-                    ClientDTO client = new ClientDTO();
-                    client.setClientId(record.get(CLIENT.CLIENTID));
-                    client.setFullName(record.get(CLIENT.FULLNAME));
-                    client.setNumber(record.get(CLIENT.NUMBER));
-                    return client;
-                });
+                .orderBy(
+                        CLIENT.FULLNAME.asc(),
+                        CLIENT.CLIENTID.asc(),
+                        ORDER.DEBT_PAYMENT_DATE.asc().nullsLast(),
+                        ORDER.ORDERID.asc()
+                )
+                .fetch();
 
-        List<ClientWithDutyDTO> result = new ArrayList<>();
-        for (ClientDTO client : clients) {
-            List<OrderDTO> orders = dsl.select(
-                            ORDER.ORDERID,
-                            ORDER.DATE,
-                            ORDER.CREATED_AT,
-                            ORDER.AMOUNT,
-                            ORDER.DUTY,
-                            ORDER.TIMEDELAY,
-                            ORDER.DEBT_PAYMENT_DATE,
-                            DEBT_ORIGINAL_AMOUNT,
-                            DEBT_REMAINING_AMOUNT
-                    )
-                    .from(ORDER)
-                    .where(ORDER.CLIENTID.eq(client.getClientId()))
-                    .and(ORDER.DUTY.eq(duty))
-                    .and(ORDER_CANCELLED_AT.isNull())
-                    .orderBy(ORDER.DEBT_PAYMENT_DATE.asc().nullsLast(), ORDER.ORDERID.asc())
-                    .fetch(this::mapDebtOrder);
-            result.add(new ClientWithDutyDTO(client, orders));
+        Map<Integer, ClientDTO> clientsById = new LinkedHashMap<>();
+        Map<Integer, List<OrderDTO>> ordersByClientId = new LinkedHashMap<>();
+        for (Record row : rows) {
+            Integer clientId = row.get(CLIENT.CLIENTID);
+            clientsById.computeIfAbsent(clientId, ignored -> mapClient(row));
+            ordersByClientId.computeIfAbsent(clientId, ignored -> new ArrayList<>())
+                    .add(mapDebtOrder(row));
         }
-        return result;
+
+        return clientsById.entrySet().stream()
+                .map(entry -> new ClientWithDutyDTO(
+                        entry.getValue(),
+                        ordersByClientId.getOrDefault(entry.getKey(), List.of())
+                ))
+                .toList();
     }
 
     public List<ClientDishDTO> getDishesByClientId(int clientId) {

@@ -12,6 +12,8 @@ public class OrderEditRequestDTO {
     private String deliveryPhone;
     private String deliveryAddress;
     private List<OrderDishDTO> items;
+    private Integer personCount;
+    private List<OrderConsumableDTO> consumables;
 
     public Integer getExpectedVersion() {
         return expectedVersion;
@@ -84,5 +86,9 @@ public class OrderEditRequestDTO {
     public void setItems(List<OrderDishDTO> items) {
         this.items = items;
     }
-}
 
+    public Integer getPersonCount() { return personCount; }
+    public void setPersonCount(Integer personCount) { this.personCount = personCount; }
+    public List<OrderConsumableDTO> getConsumables() { return consumables; }
+    public void setConsumables(List<OrderConsumableDTO> consumables) { this.consumables = consumables; }
+}

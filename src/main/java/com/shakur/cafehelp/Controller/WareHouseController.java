@@ -4,9 +4,12 @@ import com.shakur.cafehelp.DTO.PreparationWarehouseDTO;
 import com.shakur.cafehelp.DTO.InventoryShiftReportApplyRequestDTO;
 import com.shakur.cafehelp.DTO.InventoryShiftReportDTO;
 import com.shakur.cafehelp.DTO.ProductWarehouseDTO;
+import com.shakur.cafehelp.DTO.InventoryRevaluationRequestDTO;
 import com.shakur.cafehelp.DTO.WareHouseDTO;
 import com.shakur.cafehelp.Service.InventoryShiftReportService;
 import com.shakur.cafehelp.Service.WareHouseService;
+import com.shakur.cafehelp.Service.InventoryValuationService;
+import com.shakur.cafehelp.Service.UnitConversionService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,13 +21,19 @@ public class WareHouseController {
 
     private final WareHouseService wareHouseService;
     private final InventoryShiftReportService inventoryShiftReportService;
+    private final InventoryValuationService inventoryValuationService;
+    private final UnitConversionService unitConversionService;
 
     public WareHouseController(
             WareHouseService wareHouseService,
-            InventoryShiftReportService inventoryShiftReportService
+            InventoryShiftReportService inventoryShiftReportService,
+            InventoryValuationService inventoryValuationService,
+            UnitConversionService unitConversionService
     ) {
         this.wareHouseService = wareHouseService;
         this.inventoryShiftReportService = inventoryShiftReportService;
+        this.inventoryValuationService = inventoryValuationService;
+        this.unitConversionService = unitConversionService;
     }
 
     // Создание склада
@@ -78,7 +87,20 @@ public class WareHouseController {
             @PathVariable("id") int warehouseId,
             @RequestBody List<ProductWarehouseDTO> products
     ) {
-        wareHouseService.addProductsToWarehouse(warehouseId, products);
+        if (products != null) {
+            for (ProductWarehouseDTO product : products) {
+                if (product == null || product.getQuantity() == null || product.getQuantity() <= 0) continue;
+                inventoryValuationService.adjustAtCurrentCost(
+                        warehouseId,
+                        product.getProductId(),
+                        unitConversionService.toBaseQuantity(product.getProductId(), product.getQuantity()),
+                        "manual_adjustment",
+                        null,
+                        "Добавление продукта на склад",
+                        "warehouse-api"
+                );
+            }
+        }
         return ResponseEntity.ok().build();
     }
 
@@ -128,10 +150,20 @@ public class WareHouseController {
     ) {
         Number deltaNum = body != null ? body.get("delta") : null;
         if (deltaNum == null) return ResponseEntity.badRequest().build();
-        double delta = deltaNum.doubleValue();
-        boolean ok = wareHouseService.adjustQuantity(warehouseId, productId, delta);
-        if (!ok) return ResponseEntity.notFound().build();
-        return ResponseEntity.ok().build();
+        try {
+            inventoryValuationService.adjustAtCurrentCost(
+                    warehouseId,
+                    productId,
+                    java.math.BigDecimal.valueOf(deltaNum.doubleValue()),
+                    "manual_adjustment",
+                    null,
+                    "Ручная корректировка количества",
+                    "warehouse-api"
+            );
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException exception) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @PatchMapping("/{warehouseId}/preparations/{preparationId}/quantity")
@@ -145,6 +177,26 @@ public class WareHouseController {
         boolean ok = wareHouseService.adjustPreparationQuantity(warehouseId, preparationId, deltaNum.doubleValue());
         if (!ok) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{warehouseId}/products/{productId}/revaluation")
+    public ResponseEntity<?> revalueProduct(
+            @PathVariable int warehouseId,
+            @PathVariable int productId,
+            @RequestBody InventoryRevaluationRequestDTO request,
+            java.security.Principal principal
+    ) {
+        try {
+            return ResponseEntity.ok(inventoryValuationService.revalue(
+                    warehouseId,
+                    productId,
+                    request != null ? request.getAverageUnitCost() : null,
+                    request != null ? request.getReason() : null,
+                    principal != null ? principal.getName() : "owner"
+            ));
+        } catch (IllegalArgumentException exception) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("message", exception.getMessage()));
+        }
     }
 
 }
