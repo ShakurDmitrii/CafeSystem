@@ -1,0 +1,65 @@
+openapi: 3.0.3
+info:
+  title: CafeHelp Cash Payment Contract
+  version: 1.0.0
+paths:
+  /api/orders/{orderId}/payment:
+    patch:
+      summary: Mark an existing order as paid
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentUpdateRequest'
+      responses:
+        '200':
+          description: Payment recorded; cash change was calculated by the server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CashSettlement'
+        '400':
+          description: Invalid or insufficient received amount
+        '409':
+          description: Order state does not allow payment
+components:
+  schemas:
+    PaymentUpdateRequest:
+      type: object
+      required: [paymentType, paid]
+      properties:
+        paymentType:
+          type: string
+          enum: [cash, transfer, unpaid]
+        paid:
+          type: boolean
+        cashReceived:
+          type: number
+          format: double
+          minimum: 0
+          description: Required by the cashier UI for cash payments; legacy callers may omit it and exact payment is assumed.
+    CashSettlement:
+      type: object
+      properties:
+        orderId:
+          type: integer
+        amount:
+          type: number
+          format: double
+        paymentType:
+          type: string
+        paid:
+          type: boolean
+        cashReceived:
+          type: number
+          multipleOf: 0.01
+        cashChange:
+          type: number
+          multipleOf: 0.01

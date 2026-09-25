@@ -1,0 +1,125 @@
+openapi: 3.1.0
+info:
+  title: CafeHelp Order Consumables API
+  version: 1.0.0
+paths:
+  /api/consumables:
+    get:
+      summary: Получить каталог расходников и правила комплектации
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Каталог доступен WORKER и OWNER
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ConsumableRule' }
+  /api/consumables/preview:
+    post:
+      summary: Рассчитать комплектацию до создания заказа
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConsumablePreviewRequest' }
+      responses:
+        '200':
+          description: Серверные нормы с применёнными ручными значениями
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [personCount, consumables, surchargeTotal]
+                properties:
+                  personCount: { type: integer, minimum: 1 }
+                  consumables:
+                    type: array
+                    items: { $ref: '#/components/schemas/OrderConsumable' }
+                  surchargeTotal: { type: number, minimum: 0 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /api/consumables/{productId}:
+    put:
+      summary: Назначить тип товара и правило комплектации
+      description: Доступно только OWNER.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: productId
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConsumableRule' }
+      responses:
+        '200':
+          description: Настройки сохранены
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsumableRule' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { description: Складской товар не найден }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    BadRequest:
+      description: Некорректное количество, правило или доплата
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: { type: string }
+  schemas:
+    ConsumablePreviewRequest:
+      type: object
+      required: [personCount, items]
+      properties:
+        personCount: { type: integer, minimum: 1, maximum: 1000, example: 2 }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              dishID: { type: integer }
+              setId: { type: integer }
+              qty: { type: integer, minimum: 1 }
+        consumables:
+          type: array
+          description: Только ручные переопределения; отсутствующие позиции рассчитываются по правилам.
+          items: { $ref: '#/components/schemas/OrderConsumable' }
+    ConsumableRule:
+      type: object
+      properties:
+        productId: { type: integer }
+        productName: { type: string }
+        itemType: { type: string, enum: [ingredient, consumable, packaging] }
+        unit: { type: string }
+        baseUnit: { type: string }
+        unitFactor: { type: number, exclusiveMinimum: 0 }
+        basis: { type: string, enum: [per_person, per_order, per_menu_item] }
+        defaultQuantity: { type: number, minimum: 0 }
+        triggerQuantity: { type: number, exclusiveMinimum: 0 }
+        dishCategoryId: { type: [integer, 'null'] }
+        dishCategoryName: { type: [string, 'null'] }
+        active: { type: boolean }
+    OrderConsumable:
+      type: object
+      required: [productId, actualQuantity, surchargeAmount]
+      properties:
+        productId: { type: integer }
+        productName: { type: string }
+        itemType: { type: string, enum: [consumable, packaging] }
+        baseUnit: { type: string }
+        suggestedQuantity: { type: number, minimum: 0 }
+        actualQuantity: { type: number, minimum: 0, example: 159 }
+        surchargeAmount: { type: number, minimum: 0, example: 50 }
+        inventoryCost: { type: [number, 'null'] }
+        manualOverride: { type: boolean }

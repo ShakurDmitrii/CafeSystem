@@ -1,0 +1,146 @@
+openapi: 3.1.0
+info:
+  title: CafeHelp Inventory Valuation API
+  version: 1.0.0
+  description: Управление оценкой фактического складского остатка по скользящей средней.
+servers:
+  - url: /
+paths:
+  /warehouses/{warehouseId}/products:
+    get:
+      summary: Получить продуктовые остатки склада вместе со стоимостью
+      operationId: getWarehouseProductBalances
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WarehouseId'
+      responses:
+        '200':
+          description: Текущие физические и денежные остатки
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductBalance'
+        '401':
+          description: JWT отсутствует или недействителен
+        '403':
+          description: Недостаточно роли OWNER
+  /warehouses/{warehouseId}/products/{productId}/revaluation:
+    post:
+      summary: Переоценить текущий остаток продукта
+      description: >-
+        Доступно только OWNER. Меняет стоимость текущего остатка выбранного склада,
+        создаёт аудируемое движение и не изменяет прошлые продажи или закрытые смены.
+      operationId: revalueWarehouseProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WarehouseId'
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevaluationRequest'
+            example:
+              averageUnitCost: 14.166667
+              reason: Исправлена ошибочная цена прихода
+      responses:
+        '200':
+          description: Остаток переоценён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevaluationResult'
+        '400':
+          description: Нет остатка, неверная стоимость или не указана причина
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: JWT отсутствует или недействителен
+        '403':
+          description: Недостаточно роли OWNER
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    WarehouseId:
+      name: warehouseId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+  schemas:
+    ProductBalance:
+      type: object
+      required: [productWarehouseId, productId, warehouseId, quantity, inventoryValue, averageUnitCost]
+      properties:
+        productWarehouseId:
+          type: integer
+        productId:
+          type: integer
+        warehouseId:
+          type: integer
+        quantity:
+          type: number
+          format: double
+          description: Количество в базовой единице продукта.
+        inventoryValue:
+          type: number
+          description: Полная стоимость текущего остатка в рублях.
+        averageUnitCost:
+          type: number
+          description: Средняя стоимость одной базовой единицы.
+    BalanceValue:
+      type: object
+      required: [quantity, value, averageUnitCost]
+      properties:
+        quantity:
+          type: number
+        value:
+          type: number
+        averageUnitCost:
+          type: number
+    RevaluationRequest:
+      type: object
+      additionalProperties: false
+      required: [averageUnitCost, reason]
+      properties:
+        averageUnitCost:
+          type: number
+          minimum: 0
+          description: Новая средняя стоимость одной базовой единицы продукта.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+    RevaluationResult:
+      type: object
+      required: [before, after, valueDelta]
+      properties:
+        before:
+          $ref: '#/components/schemas/BalanceValue'
+        after:
+          $ref: '#/components/schemas/BalanceValue'
+        valueDelta:
+          type: number
+    ApiError:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
