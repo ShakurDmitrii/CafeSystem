@@ -54,17 +54,21 @@ export default function DishCard({
                 <Link className={styles.techButton} to={`/tech-card/${dish.dishId}`}>
                     Открыть техкарту
                 </Link>
-                <button type="button" className={styles.secondaryButton} onClick={() => onEdit(dish)}>
-                    Редактировать
-                </button>
-                <button
-                    type="button"
-                    className={styles.dangerButton}
-                    onClick={() => onDelete(dish)}
-                    disabled={isDeleting}
-                >
-                    {isDeleting ? "Удаляем…" : "Удалить"}
-                </button>
+                {onEdit && (
+                    <button type="button" className={styles.secondaryButton} onClick={() => onEdit(dish)}>
+                        Редактировать
+                    </button>
+                )}
+                {onDelete && (
+                    <button
+                        type="button"
+                        className={styles.dangerButton}
+                        onClick={() => onDelete(dish)}
+                        disabled={isDeleting}
+                    >
+                        {isDeleting ? "Удаляем…" : "Удалить"}
+                    </button>
+                )}
             </div>
         </article>
     );
