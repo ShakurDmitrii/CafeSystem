@@ -243,12 +243,12 @@ public class OrderController {
     @PostMapping("/orderToDish")
     public ResponseEntity<?> addDishesToOrder(@RequestBody List<OrderDishDTO> items, @RequestParam int orderId) {
         try {
-            for (OrderDishDTO d : items) {
-                orderService.addDishToOrder(orderId, d.getDishID(), d.getQty());
-            }
+            orderService.addDishesToOrder(orderId, items);
             return ResponseEntity.ok(Map.of("status", "ok"));
         } catch (OrderStateConflictException e) {
             return orderError(HttpStatus.CONFLICT, "ORDER_STATE_CONFLICT", e.getMessage());
+        } catch (InvalidOrderRequestException e) {
+            return orderError(HttpStatus.BAD_REQUEST, "INVALID_ORDER", e.getMessage());
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));

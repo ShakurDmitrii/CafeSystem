@@ -607,10 +607,21 @@ public List<OrderDTO> getOrders() {
 
         String normalizedPaymentType = normalizePaymentType(paymentType);
         boolean nextPaid = paid != null ? paid : !"unpaid".equals(normalizedPaymentType);
+        boolean wasPaid = Boolean.TRUE.equals(record.get(IS_PAID_FIELD));
+        if (wasPaid) {
+            // По оплаченному заказу уже поставлен чек в налоговую и списаны продукты.
+            // Снять оплату или сменить её способ можно только через отмену с возвратом.
+            String currentPaymentType = normalizePaymentType(record.get(PAYMENT_TYPE_FIELD));
+            if (nextPaid && normalizedPaymentType.equals(currentPaymentType)) {
+                return getOrderById(orderId);
+            }
+            throw new OrderStateConflictException(
+                    "Заказ уже оплачен. Чтобы изменить оплату, оформите отмену заказа с возвратом"
+            );
+        }
         CashPaymentCalculator.Settlement cashSettlement = nextPaid && "cash".equals(normalizedPaymentType)
                 ? CashPaymentCalculator.calculate(BigDecimal.valueOf(record.getAmount()), cashReceived)
                 : null;
-        boolean wasPaid = Boolean.TRUE.equals(record.get(IS_PAID_FIELD));
         LocalDateTime previousPaidAt = dsl.select(PAID_AT_FIELD)
                 .from(ORDER)
                 .where(ORDER.ORDERID.eq(orderId))
@@ -659,40 +670,53 @@ public List<OrderDTO> getOrders() {
 
     @Transactional
     public void addDishToOrder(int orderId, int dishId, int qty) {
-        System.out.println("addDishToOrder вызван с параметрами: orderId=" + orderId + ", dishId=" + dishId + ", qty=" + qty);
-
-        lockOrderForMutation(orderId);
-        ensureOrderActive(orderId);
-        boolean paid = isOrderPaid(orderId);
         OrderDishDTO requestedItem = new OrderDishDTO();
         requestedItem.setDishID(dishId);
         requestedItem.setQty(qty);
-        ValidatedOrderItem item = validateOrderItems(List.of(requestedItem)).get(0);
-
-        dsl.insertInto(ORDERDISH)
-                .set(ORDERDISH.ORDERID, orderId)
-                .set(ORDERDISH.DISHID, dishId)
-                .set(ORDERDISH.QTY, qty)
-                .set(ORDERDISH_UNIT_PRICE, item.unitPrice())
-                .set(ORDERDISH_UNIT_COST, item.unitCost())
-                .execute();
-        if (paid) {
-            applyWarehouseWriteoffForDish(orderId, dishId, qty);
-        }
-        System.out.println("Блюдо добавлено в заказ: " + orderId + ", " + dishId + ", qty=" + qty);
+        addDishesToOrder(orderId, List.of(requestedItem));
     }
 
-    private boolean isOrderPaid(int orderId) {
-        Record record = dsl.select(IS_PAID_FIELD, PAYMENT_TYPE_FIELD)
-                .from(ORDER)
+    /**
+     * Дозаказ позиций в ещё не оплаченный заказ. Сумма заказа увеличивается на стоимость
+     * добавленных строк, поэтому доставка и доплаты за расходники сохраняются. Оплаченный,
+     * выданный или долговой заказ так менять нельзя: по нему уже есть чек или списание.
+     */
+    @Transactional
+    public OrderDTO addDishesToOrder(int orderId, List<OrderDishDTO> requestedItems) {
+        if (requestedItems == null || requestedItems.isEmpty()) {
+            throw new InvalidOrderRequestException("Добавьте хотя бы одну позицию");
+        }
+        OrderRecord order = lockOrderForMutation(orderId);
+        ensureEditableOrder(order, null);
+        List<ValidatedOrderItem> items = validateOrderItems(requestedItems);
+
+        for (ValidatedOrderItem item : items) {
+            var insert = dsl.insertInto(ORDERDISH)
+                    .set(ORDERDISH.ORDERID, orderId)
+                    .set(ORDERDISH.QTY, item.qty())
+                    .set(ORDERDISH_UNIT_PRICE, item.unitPrice())
+                    .set(ORDERDISH_UNIT_COST, item.unitCost());
+            if (item.dishId() != null) {
+                insert.set(ORDERDISH.DISHID, item.dishId());
+            } else {
+                insert.set(ORDERDISH_SET_ID, item.setId());
+            }
+            insert.execute();
+        }
+
+        BigDecimal addedTotal = items.stream()
+                .map(ValidatedOrderItem::lineTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        double newAmount = BigDecimal.valueOf(safeDouble(order.getAmount(), 0.0))
+                .add(addedTotal)
+                .setScale(2, RoundingMode.HALF_UP)
+                .doubleValue();
+        dsl.update(ORDER)
+                .set(ORDER.AMOUNT, newAmount)
+                .set(VERSION_FIELD, currentOrderVersion(orderId) + 1)
                 .where(ORDER.ORDERID.eq(orderId))
-                .fetchOne();
-        if (record == null) return false;
-        Boolean paid = record.get(IS_PAID_FIELD);
-        String type = record.get(PAYMENT_TYPE_FIELD);
-        if (Boolean.TRUE.equals(paid)) return true;
-        String normalized = normalizePaymentType(type);
-        return "cash".equals(normalized) || "transfer".equals(normalized);
+                .execute();
+        return getOrderById(orderId);
     }
 
     private void applyWarehouseWriteoffForOrder(int orderId) {
@@ -726,19 +750,6 @@ public List<OrderDTO> getOrders() {
 
         applyWarehouseWriteoffForRequirements(mainWarehouseId, requiredByProduct, requiredByPreparation, orderId);
         consumableService.writeOffForOrder(orderId);
-    }
-
-    private void applyWarehouseWriteoffForDish(int orderId, int dishId, int qty) {
-        if (qty <= 0) return;
-        Integer mainWarehouseId = wareHouseService.getMainWarehouseId();
-        if (mainWarehouseId == null) return;
-        RecipeRequirementService.RequirementSet set = buildRequirementsForDish(dishId, qty);
-        applyWarehouseWriteoffForRequirements(
-                mainWarehouseId,
-                set.productRequirements(),
-                set.preparationRequirements(),
-                orderId
-        );
     }
 
     private RecipeRequirementService.RequirementSet buildRequirementsForDish(int dishId, int qty) {
