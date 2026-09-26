@@ -43,7 +43,8 @@ function getOrderStartTimestamp(order) {
     const raw = String(rawDate).trim();
     const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(raw);
     const normalized = raw.replace(/\.(\d{3})\d+/, ".$1").replace(" ", "T");
-    const timestamp = new Date(hasTimezone ? normalized : `${normalized}Z`).getTime();
+    // Backend пишет created_at в зоне бизнеса (app.business-zone = Europe/Moscow, UTC+3) без смещения.
+    const timestamp = new Date(hasTimezone ? normalized : `${normalized}+03:00`).getTime();
     return Number.isFinite(timestamp) ? timestamp : Date.now();
 }
 

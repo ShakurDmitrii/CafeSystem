@@ -5,6 +5,7 @@ export default function SupplierProductEditor({
     supplierName,
     form,
     unitOptions,
+    dishCategories = [],
     editingProductId,
     saving,
     uploadingImage,
@@ -105,6 +106,100 @@ export default function SupplierProductEditor({
                         />
                     </label>
                 </div>
+
+                <fieldset className={styles.unitFieldset}>
+                    <legend>Назначение товара</legend>
+                    <div className={styles.unitFields}>
+                        <label className={styles.field} htmlFor="supplier-product-item-type">
+                            <span>Тип</span>
+                            <select
+                                id="supplier-product-item-type"
+                                value={form.itemType}
+                                onChange={(event) => onChange("itemType", event.target.value)}
+                                className={styles.select}
+                            >
+                                <option value="ingredient">Ингредиент рецепта</option>
+                                <option value="consumable">Расходник</option>
+                                <option value="packaging">Упаковка</option>
+                            </select>
+                        </label>
+                        {form.itemType !== "ingredient" ? (
+                            <label className={styles.field} htmlFor="supplier-consumable-basis">
+                                <span>Добавлять</span>
+                                <select
+                                    id="supplier-consumable-basis"
+                                    value={form.consumableBasis}
+                                    onChange={(event) => onChange("consumableBasis", event.target.value)}
+                                    className={styles.select}
+                                >
+                                    <option value="per_person">На количество персон</option>
+                                    <option value="per_order">Один раз на заказ</option>
+                                    <option value="per_menu_item">На позиции меню</option>
+                                </select>
+                            </label>
+                        ) : null}
+                    </div>
+
+                    {form.itemType !== "ingredient" ? (
+                        <>
+                            <div className={styles.unitFields}>
+                                <label className={styles.field} htmlFor="supplier-consumable-default-quantity">
+                                    <span>Количество, {form.baseUnit}</span>
+                                    <input
+                                        id="supplier-consumable-default-quantity"
+                                        type="number"
+                                        min="0"
+                                        step="0.001"
+                                        value={form.consumableDefaultQuantity}
+                                        onChange={(event) => onChange("consumableDefaultQuantity", event.target.value)}
+                                        className={styles.input}
+                                    />
+                                </label>
+                                {form.consumableBasis !== "per_order" ? (
+                                    <label className={styles.field} htmlFor="supplier-consumable-trigger-quantity">
+                                        <span>{form.consumableBasis === "per_person" ? "На каждые N персон" : "На каждые N позиций"}</span>
+                                        <input
+                                            id="supplier-consumable-trigger-quantity"
+                                            type="number"
+                                            min="0.001"
+                                            step="0.001"
+                                            value={form.consumableTriggerQuantity}
+                                            onChange={(event) => onChange("consumableTriggerQuantity", event.target.value)}
+                                            className={styles.input}
+                                        />
+                                    </label>
+                                ) : null}
+                            </div>
+                            {form.consumableBasis === "per_menu_item" ? (
+                                <label className={styles.field} htmlFor="supplier-consumable-category">
+                                    <span>Категория блюд</span>
+                                    <select
+                                        id="supplier-consumable-category"
+                                        value={form.consumableDishCategoryId}
+                                        onChange={(event) => onChange("consumableDishCategoryId", event.target.value)}
+                                        className={styles.select}
+                                    >
+                                        <option value="">Все позиции меню</option>
+                                        {dishCategories.map((category) => (
+                                            <option key={category.categoryId} value={category.categoryId}>{category.name}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                            ) : null}
+                            <label className={styles.favoriteField}>
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(form.consumableActive)}
+                                    onChange={(event) => onChange("consumableActive", event.target.checked)}
+                                />
+                                <span>
+                                    <strong>Добавлять в заказ автоматически</strong>
+                                    <small>Сотрудник сможет изменить количество и вручную указать доплату.</small>
+                                </span>
+                            </label>
+                        </>
+                    ) : null}
+                </fieldset>
 
                 <fieldset className={styles.unitFieldset}>
                     <legend>Единицы и пересчёт</legend>
