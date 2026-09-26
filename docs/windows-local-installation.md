@@ -24,6 +24,8 @@ Java, Python, Node.js, PostgreSQL и MinIO на рабочем компьюте�
 
 Скрипт проверяет цифровые подписи драйверов, собирает versioned Docker images, формирует offline image-pack и создаёт NSIS installer.
 
+MinIO больше не публикует community-образы в Docker Hub. Если образа `minio/minio:RELEASE.2025-09-07T16-13-09Z` нет в локальном Docker и он не скачивается, скрипт собирает тот же релиз из исходников по `desktop/minio/Dockerfile` (нужен только Docker и доступ к GitHub).
+
 ## Первый запуск
 
 1. Установить WSL 2 и Docker Desktop, если они отсутствуют; возможна перезагрузка Windows.
