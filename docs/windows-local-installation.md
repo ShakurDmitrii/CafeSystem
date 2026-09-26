@@ -18,7 +18,7 @@ Java, Python, Node.js, PostgreSQL и MinIO на рабочем компьюте�
 
 ```powershell
 .\tools\build-windows-release.ps1 `
-  -Version 0.1.0 `
+  -Version 0.1.1 `
   -PrinterDriverSource "C:\path\to\Thermal Printer Driver（Windows）"
 ```
 

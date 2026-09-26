@@ -331,6 +331,23 @@ fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// Теги образов принадлежат установленной версии launcher, а не пользователю:
+/// после обновления runtime.env должен указывать на образы из нового installer.
+fn apply_managed_image_tags(content: &str, version: &str) -> String {
+    let mut updated = content.to_string();
+    for (key, image) in [
+        ("CAFEHELP_BACKEND_IMAGE", "cafehelp-backend"),
+        ("CAFEHELP_PYMODULE_IMAGE", "cafehelp-pymodule"),
+        ("CAFEHELP_VKBOT_IMAGE", "cafehelp-vkbot"),
+    ] {
+        let tag = format!("{image}:{version}");
+        if read_env_value(&updated, key) != Some(tag.as_str()) {
+            updated = set_env_value(&updated, key, &tag);
+        }
+    }
+    updated
+}
+
 fn ensure_runtime_env(app: &AppHandle) -> Result<PathBuf, String> {
     let path = config_dir(app)?.join("runtime.env");
     if path.is_file() {
@@ -342,10 +359,6 @@ fn ensure_runtime_env(app: &AppHandle) -> Result<PathBuf, String> {
             ("VK_GROUP_ID", String::new()),
             ("VK_GROUP_TOKEN", String::new()),
             ("VK_BOT_API_TOKEN", secret()),
-            (
-                "CAFEHELP_VKBOT_IMAGE",
-                format!("cafehelp-vkbot:{}", env!("CARGO_PKG_VERSION")),
-            ),
         ];
         let original = content.clone();
         for (key, value) in defaults {
@@ -353,6 +366,7 @@ fn ensure_runtime_env(app: &AppHandle) -> Result<PathBuf, String> {
                 content = set_env_value(&content, key, &value);
             }
         }
+        content = apply_managed_image_tags(&content, env!("CARGO_PKG_VERSION"));
         if content != original {
             fs::write(&path, content).map_err(|error| error.to_string())?;
         }
@@ -963,6 +977,31 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upgrade_points_runtime_env_at_new_image_tags() {
+        let env = concat!(
+            "POSTGRES_PASSWORD=secret\n",
+            "CAFEHELP_BACKEND_IMAGE=cafehelp-backend:0.1.0\n",
+            "CAFEHELP_PYMODULE_IMAGE=cafehelp-pymodule:0.1.0\n",
+            "CAFEHELP_VKBOT_IMAGE=cafehelp-vkbot:0.1.0\n"
+        );
+        let updated = apply_managed_image_tags(env, "0.1.1");
+        assert_eq!(read_env_value(&updated, "POSTGRES_PASSWORD"), Some("secret"));
+        assert_eq!(
+            read_env_value(&updated, "CAFEHELP_BACKEND_IMAGE"),
+            Some("cafehelp-backend:0.1.1")
+        );
+        assert_eq!(
+            read_env_value(&updated, "CAFEHELP_PYMODULE_IMAGE"),
+            Some("cafehelp-pymodule:0.1.1")
+        );
+        assert_eq!(
+            read_env_value(&updated, "CAFEHELP_VKBOT_IMAGE"),
+            Some("cafehelp-vkbot:0.1.1")
+        );
+        assert_eq!(apply_managed_image_tags(&updated, "0.1.1"), updated);
+    }
 
     #[test]
     fn runtime_tracks_every_persistent_volume() {
