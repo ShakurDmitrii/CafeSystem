@@ -171,6 +171,35 @@ public class ShiftService {
         return loadOrderLineItems(List.of(orderId)).getOrDefault(orderId, List.of());
     }
 
+    /** Доплаты клиента и себестоимость списанной упаковки по заказам. */
+    private Map<Integer, ConsumableTotals> loadConsumableTotals(List<Integer> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return Map.of();
+        }
+        Field<Integer> orderId = DSL.field(DSL.name("order_id"), Integer.class);
+        Field<BigDecimal> surcharge = DSL.coalesce(
+                DSL.sum(DSL.field(DSL.name("surcharge_amount"), BigDecimal.class)), BigDecimal.ZERO
+        ).as("surcharge");
+        Field<BigDecimal> cost = DSL.coalesce(
+                DSL.sum(DSL.field(DSL.name("inventory_cost"), BigDecimal.class)), BigDecimal.ZERO
+        ).as("cost");
+        Map<Integer, ConsumableTotals> result = new HashMap<>();
+        dsl.select(orderId, surcharge, cost)
+                .from(DSL.table(DSL.name("sales", "order_consumable")))
+                .where(orderId.in(orderIds))
+                .groupBy(orderId)
+                .fetch()
+                .forEach(row -> result.put(
+                        row.get(orderId),
+                        new ConsumableTotals(row.get(surcharge).doubleValue(), row.get(cost).doubleValue())
+                ));
+        return result;
+    }
+
+    private record ConsumableTotals(double surcharge, double cost) {
+        static final ConsumableTotals NONE = new ConsumableTotals(0.0, 0.0);
+    }
+
     private Map<Integer, List<OrderLineItem>> loadOrderLineItems(List<Integer> orderIds) {
         if (orderIds == null || orderIds.isEmpty()) {
             return Map.of();
@@ -260,6 +289,9 @@ public class ShiftService {
         Map<Integer, List<OrderLineItem>> itemsByOrderId = loadOrderLineItems(
                 orders.getValues(Order.ORDER.ORDERID)
         );
+        Map<Integer, ConsumableTotals> consumablesByOrderId = loadConsumableTotals(
+                orders.getValues(Order.ORDER.ORDERID)
+        );
 
         Double income = orders.stream()
                 .mapToDouble(order -> {
@@ -282,7 +314,8 @@ public class ShiftService {
                             double firstCost = item.firstCost() != null ? item.firstCost() : 0.0;
                             return firstCost * item.qty();
                         })
-                        .sum())
+                        .sum()
+                        + consumablesByOrderId.getOrDefault(order.getOrderid(), ConsumableTotals.NONE).cost())
                 .sum();
 
         BigDecimal profit = BigDecimal.valueOf(income)
@@ -373,6 +406,9 @@ public class ShiftService {
         Map<Integer, List<OrderLineItem>> itemsByOrderId = loadOrderLineItems(
                 orderRows.getValues(Order.ORDER.ORDERID)
         );
+        Map<Integer, ConsumableTotals> consumablesByOrderId = loadConsumableTotals(
+                orderRows.getValues(Order.ORDER.ORDERID)
+        );
 
         List<Map<String, Object>> orders = new ArrayList<>();
         double totalRevenue = 0.0;
@@ -423,9 +459,14 @@ public class ShiftService {
                 items.add(item);
             }
 
+            ConsumableTotals consumables = consumablesByOrderId.getOrDefault(orderId, ConsumableTotals.NONE);
+            orderCost += consumables.cost();
             Double orderAmount = orderRow.get(Order.ORDER.AMOUNT) != null ? orderRow.get(Order.ORDER.AMOUNT) : itemsTotal;
             boolean isDelivery = Boolean.TRUE.equals(orderRow.get(Order.ORDER.TYPE));
-            double deliveryExpense = isDelivery ? Math.max(0.0, orderAmount - itemsTotal) : 0.0;
+            // Сумма заказа = позиции + доплаты за упаковку + доставка.
+            double deliveryExpense = isDelivery
+                    ? Math.max(0.0, orderAmount - itemsTotal - consumables.surcharge())
+                    : 0.0;
             boolean currentlyPaid = Boolean.TRUE.equals(orderRow.get(IS_PAID_FIELD));
             LocalDateTime paidAt = orderRow.get(PAID_AT_FIELD);
             boolean isPaid = currentlyPaid && (
