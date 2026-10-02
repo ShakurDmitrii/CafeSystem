@@ -2482,6 +2482,18 @@
     font-size: 11px;
 }
 
+.debtChip {
+    display: inline-block;
+    margin-top: 7px;
+    margin-right: 6px;
+    padding: 4px 6px;
+    border-radius: 999px;
+    color: #6b4a00;
+    background: #fff4d6;
+    font-size: 9px;
+    font-weight: 800;
+}
+
 .delayChip {
     display: inline-block;
     margin-top: 7px;

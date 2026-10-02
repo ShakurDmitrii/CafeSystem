@@ -1097,6 +1097,45 @@ class CafehelpApplicationTests {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void debtRepaidAfterShiftCloseIsMarkedInTheOriginalShiftReport() {
+        OrderFixture fixture = createOrderFixture(10.0, 1.0);
+        OrderDTO debt = orderRequest(fixture.shiftId(), fixture.dishId(), false);
+        debt.setDuty(true);
+        debt.setClientId(createClient("Пометка долга", "+7 999 000-00-12"));
+        debt.setDebt_payment_date(businessTime.today().plusDays(1));
+        int orderId = orderService.createOrder(debt).getOrderId();
+        shiftService.closeShift(fixture.shiftId(), BigDecimal.ZERO);
+
+        var beforeRepayment = shiftService.buildZReport(fixture.shiftId());
+        var openOrder = ((java.util.List<java.util.Map<String, Object>>) beforeRepayment.get("orders")).get(0);
+        assertThat(openOrder.get("isDebt")).isEqualTo(true);
+        assertThat(openOrder.get("debtStatus")).isEqualTo("open");
+
+        clientService.payDebt(orderId, debtPayment("5.00", "cash", "mark-debt-1"));
+        clientService.payDebt(orderId, debtPayment("15.00", "transfer", "mark-debt-2"));
+
+        var report = shiftService.buildZReport(fixture.shiftId());
+        var order = ((java.util.List<java.util.Map<String, Object>>) report.get("orders")).get(0);
+        assertThat(order.get("isDebt")).isEqualTo(true);
+        assertThat(order.get("debtStatus")).isEqualTo("repaid");
+        assertThat((BigDecimal) order.get("debtOriginalAmount")).isEqualByComparingTo("20.00");
+        assertThat((BigDecimal) order.get("debtRepaidAmount")).isEqualByComparingTo("20.00");
+        assertThat((BigDecimal) order.get("debtRemainingAmount")).isEqualByComparingTo("0");
+        var payments = (java.util.List<java.util.Map<String, Object>>) order.get("debtPayments");
+        assertThat(payments).extracting(payment -> payment.get("paymentType"))
+                .containsExactly("cash", "transfer");
+
+        var totals = (java.util.Map<String, Object>) report.get("totals");
+        assertThat((Integer) totals.get("debtOrdersCount")).isEqualTo(1);
+        assertThat((BigDecimal) totals.get("debtAmount")).isEqualByComparingTo("20.00");
+        assertThat((BigDecimal) totals.get("debtRepaidAmount")).isEqualByComparingTo("20.00");
+        assertThat((BigDecimal) totals.get("debtOutstandingAmount")).isEqualByComparingTo("0");
+        // Выручка закрытой смены задним числом не меняется — только пометка у заказа.
+        assertThat((Double) totals.get("revenue")).isZero();
+    }
+
+    @Test
     void vkCodeExpiresCannotBeReusedAndCanOnlyBeClaimedOnceConcurrently() throws Exception {
         int clientId = createClient("VK одноразовый", "+7 999 000-00-08");
         var expired = vkClientLinkService.createLinkCode(clientId);

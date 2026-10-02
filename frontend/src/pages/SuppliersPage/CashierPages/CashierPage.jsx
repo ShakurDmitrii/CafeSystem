@@ -11,6 +11,7 @@ import OrderComposer from "./cashier-page/OrderComposer";
 import OrdersBoard from "./cashier-page/OrdersBoard";
 import ShiftLobby from "./cashier-page/ShiftLobby";
 import ShiftReportModal from "./cashier-page/ShiftReportModal";
+import { describeDebt } from "./cashier-page/cashierUtils";
 import { openAppWindow, openPrintDocument } from "../../../utils/desktopWindows";
 
 const API_ORDERS = `${API_BASE_URL}/api/orders`;
@@ -639,6 +640,10 @@ export default function CashierPage() {
                 if (Number(order.deliveryExpense || 0) > 0) {
                     lines.push(`    Доставка: ${Number(order.deliveryExpense).toFixed(2)} ₽`);
                 }
+                const debtMark = describeDebt(order);
+                if (debtMark) {
+                    lines.push(`    ${debtMark}`);
+                }
                 lines.push("");
             });
 
@@ -651,6 +656,11 @@ export default function CashierPage() {
             lines.push(`Траты на доставку: ${Number(report.totals?.deliveryExpense || 0).toFixed(2)} ₽`);
             lines.push(`Общая выручка: ${Number(report.totals?.revenue || 0).toFixed(2)} ₽`);
             lines.push(`Неоплаченная сумма: ${Number(report.totals?.unpaidAmount || 0).toFixed(2)} ₽`);
+            if (Number(report.totals?.debtOrdersCount || 0) > 0) {
+                lines.push(`В долг: ${Number(report.totals?.debtAmount || 0).toFixed(2)} ₽`);
+                lines.push(`  из них погашено: ${Number(report.totals?.debtRepaidAmount || 0).toFixed(2)} ₽`);
+                lines.push(`  остаток долга: ${Number(report.totals?.debtOutstandingAmount || 0).toFixed(2)} ₽`);
+            }
             lines.push(`Себестоимость: ${Number(report.totals?.cost || 0).toFixed(2)} ₽`);
             lines.push(`Расходы смены: ${Number(report.totals?.expenses || 0).toFixed(2)} ₽`);
             lines.push(`Прибыль: ${Number(report.totals?.profit || 0).toFixed(2)} ₽`);

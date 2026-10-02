@@ -44,6 +44,8 @@ public class ShiftService {
     private static final Field<Boolean> IS_PAID_FIELD = DSL.field(DSL.name("is_paid"), Boolean.class);
     private static final Field<LocalDateTime> PAID_AT_FIELD = DSL.field(DSL.name("paid_at"), LocalDateTime.class);
     private static final Field<LocalDateTime> SHIFT_CLOSED_AT_FIELD = DSL.field(DSL.name("closed_at"), LocalDateTime.class);
+    private static final Field<BigDecimal> DEBT_ORIGINAL_AMOUNT_FIELD = DSL.field(DSL.name("debt_original_amount"), BigDecimal.class);
+    private static final Field<BigDecimal> DEBT_REMAINING_AMOUNT_FIELD = DSL.field(DSL.name("debt_remaining_amount"), BigDecimal.class);
     private static final Field<Integer> ORDERDISH_SET_ID = DSL.field(DSL.name("set_id"), Integer.class);
     private static final Field<Double> ORDERDISH_UNIT_PRICE = DSL.field(DSL.name("unit_price"), Double.class);
     private static final Field<Double> ORDERDISH_UNIT_COST = DSL.field(DSL.name("unit_cost"), Double.class);
@@ -169,6 +171,31 @@ public class ShiftService {
 
     private List<OrderLineItem> loadOrderLineItems(int orderId) {
         return loadOrderLineItems(List.of(orderId)).getOrDefault(orderId, List.of());
+    }
+
+    /** Платежи по долгам заказов смены в порядке поступления. */
+    private Map<Integer, List<Map<String, Object>>> loadDebtPayments(List<Integer> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return Map.of();
+        }
+        Field<Integer> orderId = DSL.field(DSL.name("order_id"), Integer.class);
+        Field<BigDecimal> amount = DSL.field(DSL.name("amount"), BigDecimal.class);
+        Field<String> paymentType = DSL.field(DSL.name("payment_type"), String.class);
+        Field<LocalDateTime> createdAt = DSL.field(DSL.name("created_at"), LocalDateTime.class);
+        Map<Integer, List<Map<String, Object>>> result = new HashMap<>();
+        dsl.select(orderId, amount, paymentType, createdAt)
+                .from(DSL.table(DSL.name("sales", "debt_payment")))
+                .where(orderId.in(orderIds))
+                .orderBy(createdAt.asc(), DSL.field(DSL.name("id")).asc())
+                .fetch()
+                .forEach(row -> {
+                    Map<String, Object> payment = new HashMap<>();
+                    payment.put("amount", row.get(amount));
+                    payment.put("paymentType", row.get(paymentType));
+                    payment.put("paidAt", row.get(createdAt) != null ? row.get(createdAt).toString() : null);
+                    result.computeIfAbsent(row.get(orderId), ignored -> new ArrayList<>()).add(payment);
+                });
+        return result;
     }
 
     /** Доплаты клиента и себестоимость списанной упаковки по заказам. */
@@ -395,7 +422,10 @@ public class ShiftService {
                         Client.CLIENT.NUMBER,
                         PAYMENT_TYPE_FIELD,
                         IS_PAID_FIELD,
-                        PAID_AT_FIELD
+                        PAID_AT_FIELD,
+                        Order.ORDER.DUTY,
+                        DEBT_ORIGINAL_AMOUNT_FIELD,
+                        DEBT_REMAINING_AMOUNT_FIELD
                 )
                 .from(Order.ORDER)
                 .leftJoin(Client.CLIENT).on(Client.CLIENT.CLIENTID.eq(Order.ORDER.CLIENTID))
@@ -409,6 +439,13 @@ public class ShiftService {
         Map<Integer, ConsumableTotals> consumablesByOrderId = loadConsumableTotals(
                 orderRows.getValues(Order.ORDER.ORDERID)
         );
+        Map<Integer, List<Map<String, Object>>> debtPaymentsByOrderId = loadDebtPayments(
+                orderRows.getValues(Order.ORDER.ORDERID)
+        );
+        int debtOrdersCount = 0;
+        BigDecimal totalDebtAmount = BigDecimal.ZERO;
+        BigDecimal totalDebtRepaid = BigDecimal.ZERO;
+        BigDecimal totalDebtOutstanding = BigDecimal.ZERO;
 
         List<Map<String, Object>> orders = new ArrayList<>();
         double totalRevenue = 0.0;
@@ -502,6 +539,34 @@ public class ShiftService {
             orderData.put("clientName", orderRow.get(Client.CLIENT.FULLNAME));
             orderData.put("clientPhone", orderRow.get(Client.CLIENT.NUMBER));
             orderData.put("items", items);
+
+            // Долг остаётся в отчёте смены, где оформлен заказ; погашения, принятые
+            // позже, показываются пометкой и не переписывают выручку закрытой смены.
+            BigDecimal debtOriginal = orderRow.get(DEBT_ORIGINAL_AMOUNT_FIELD);
+            boolean isDebt = Boolean.TRUE.equals(orderRow.get(Order.ORDER.DUTY)) || debtOriginal != null;
+            orderData.put("isDebt", isDebt);
+            if (isDebt) {
+                BigDecimal original = debtOriginal != null ? debtOriginal : BigDecimal.valueOf(orderAmount);
+                List<Map<String, Object>> payments = debtPaymentsByOrderId.getOrDefault(orderId, List.of());
+                BigDecimal repaid = payments.stream()
+                        .map(payment -> (BigDecimal) payment.get("amount"))
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal remaining = orderRow.get(DEBT_REMAINING_AMOUNT_FIELD) != null
+                        ? orderRow.get(DEBT_REMAINING_AMOUNT_FIELD)
+                        : original.subtract(repaid).max(BigDecimal.ZERO);
+                String debtStatus = remaining.signum() == 0
+                        ? "repaid"
+                        : repaid.signum() > 0 ? "partial" : "open";
+                orderData.put("debtOriginalAmount", original);
+                orderData.put("debtRepaidAmount", repaid);
+                orderData.put("debtRemainingAmount", remaining);
+                orderData.put("debtStatus", debtStatus);
+                orderData.put("debtPayments", payments);
+                debtOrdersCount++;
+                totalDebtAmount = totalDebtAmount.add(original);
+                totalDebtRepaid = totalDebtRepaid.add(repaid);
+                totalDebtOutstanding = totalDebtOutstanding.add(remaining);
+            }
             orders.add(orderData);
         }
 
@@ -519,6 +584,10 @@ public class ShiftService {
         totals.put("revenue", totalRevenue);
         totals.put("unpaidAmount", totalUnpaidAmount);
         totals.put("cost", totalCost);
+        totals.put("debtOrdersCount", debtOrdersCount);
+        totals.put("debtAmount", totalDebtAmount);
+        totals.put("debtRepaidAmount", totalDebtRepaid);
+        totals.put("debtOutstandingAmount", totalDebtOutstanding);
         totals.put("expenses", shift.getExpenses() != null ? shift.getExpenses() : BigDecimal.ZERO);
         totals.put(
                 "profit",

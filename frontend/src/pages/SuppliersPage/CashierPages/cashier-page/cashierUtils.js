@@ -20,3 +20,25 @@ export const getInitials = (name) => {
     const parts = String(name || "").trim().split(/\s+/).filter(Boolean).slice(0, 2);
     return parts.length ? parts.map((part) => part[0]?.toUpperCase()).join("") : "С";
 };
+
+/**
+ * Пометка для заказа, оформленного в долг: долг остаётся в отчёте смены,
+ * где был заказ, а погашения показываются здесь, даже если приняты позже.
+ */
+export const describeDebt = (order) => {
+    if (!order?.isDebt) return null;
+    const original = Number(order.debtOriginalAmount ?? order.orderAmount ?? 0);
+    const repaid = Number(order.debtRepaidAmount ?? 0);
+    const remaining = Number(order.debtRemainingAmount ?? Math.max(0, original - repaid));
+    if (order.debtStatus === "repaid" || remaining <= 0) {
+        const payments = Array.isArray(order.debtPayments) ? order.debtPayments : [];
+        const lastPaidAt = payments.length ? payments[payments.length - 1].paidAt : null;
+        return lastPaidAt
+            ? `Долг погашен ${formatDate(lastPaidAt)}`
+            : "Долг погашен";
+    }
+    if (repaid > 0) {
+        return `Долг: погашено ${formatMoney(repaid)} из ${formatMoney(original)}, остаток ${formatMoney(remaining)}`;
+    }
+    return `Долг не погашен: ${formatMoney(remaining)}`;
+};
