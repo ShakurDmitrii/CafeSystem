@@ -1,5 +1,13 @@
+import { useState } from "react";
 import { formatMoney, formatQuantity, getUnitLabel } from "./warehouseUtils";
+import { unitLabel } from "../../../utils/units";
 import styles from "../WarehousePage.module.css";
+
+const STOCK_MODES = [
+    ["in", "Приход"],
+    ["out", "Списание"],
+    ["revalue", "Переоценка"]
+];
 
 export default function WarehouseCard({
     warehouse,
@@ -27,6 +35,8 @@ export default function WarehouseCard({
     onAdjustStock,
     onRevalueStock
 }) {
+    const [activeRow, setActiveRow] = useState(null);
+    const [rowMode, setRowMode] = useState("in");
     const visibleProducts = products.filter((product) => showZeroStock || Number(product.quantityBase) > 0);
     const totalValue = products.reduce(
         (sum, product) => sum + Number(product.inventoryValue ?? 0),
@@ -151,38 +161,94 @@ export default function WarehouseCard({
                     {visibleProducts.map((product) => {
                         const key = `${warehouse.warehouseId}-${product.productId}`;
                         const values = stockInputs[key] ?? {};
+                        const unit = unitLabel(product.unit ?? product.baseUnit);
+                        const isActive = activeRow === key;
                         return (
-                            <div className={styles.stockRow} key={product.productId}>
+                            <div className={styles.stockRowGroup} key={product.productId}>
+                            <div className={styles.stockRow}>
                                 <div className={styles.productIdentity}>
                                     <strong>{product.productName}</strong>
-                                    <span>#{product.productId} · {product.supplierName} · {getUnitLabel(product)}</span>
+                                    <span>#{product.productId} · {product.supplierName}</span>
                                 </div>
                                 <div className={styles.balanceCell}>
                                     <span>В наличии</span>
                                     <strong className={Number(product.quantityBase) <= 0 ? styles.zeroBalance : ""}>
-                                        {formatQuantity(product.quantityDisplay)}
+                                        {formatQuantity(product.quantityDisplay)} {unit}
                                     </strong>
                                 </div>
                                 <div className={styles.priceCell}>
-                                    <span>Средняя / последняя</span>
+                                    <span>Средняя цена за {unit}</span>
                                     <strong>{formatMoney(product.averagePrice)}</strong>
-                                    <small>{product.latestPrice == null ? "нет прихода" : formatMoney(product.latestPrice)}</small>
+                                    <small>
+                                        {product.latestPrice == null
+                                            ? "приходов не было"
+                                            : `последний приход: ${formatMoney(product.latestPrice)}`}
+                                    </small>
                                 </div>
-                                <div className={styles.stockControl}>
-                                    <label>
-                                        <span className={styles.visuallyHidden}>Количество для {product.productName}</span>
-                                        <input name={`quantity-${key}`} inputMode="decimal" autoComplete="off" placeholder="Количество…"
-                                            value={values.quantity ?? ""} onChange={(event) => onStockInput(key, { quantity: event.target.value })} />
-                                    </label>
-                                    <label>
-                                        <span className={styles.visuallyHidden}>Цена прихода для {product.productName}</span>
-                                        <input name={`price-${key}`} inputMode="decimal" autoComplete="off" placeholder="Цена / новая средняя…"
-                                            value={values.unitPrice ?? ""} onChange={(event) => onStockInput(key, { unitPrice: event.target.value })} />
-                                    </label>
-                                    <button type="button" onClick={() => onAdjustStock(product, "in")} disabled={busyKey === `stock-${key}`}>Приход</button>
-                                    <button className={styles.writeoffButton} type="button" onClick={() => onAdjustStock(product, "out")} disabled={busyKey === `stock-${key}`}>Списать</button>
-                                    <button type="button" onClick={() => onRevalueStock(product)} disabled={busyKey === `stock-${key}`}>Переоценить</button>
+                                <div className={styles.rowActionCell}>
+                                    <button
+                                        type="button"
+                                        aria-expanded={isActive}
+                                        onClick={() => {
+                                            setActiveRow(isActive ? null : key);
+                                            setRowMode("in");
+                                        }}
+                                    >
+                                        {isActive ? "Скрыть" : "Изменить остаток"}
+                                    </button>
                                 </div>
+                            </div>
+                            {isActive && (
+                                <div className={styles.rowPanel}>
+                                    <div className={styles.modeSwitch} role="radiogroup" aria-label="Действие с остатком">
+                                        {STOCK_MODES.map(([mode, label]) => (
+                                            <button
+                                                key={mode}
+                                                type="button"
+                                                role="radio"
+                                                aria-checked={rowMode === mode}
+                                                className={rowMode === mode ? styles.modeActive : ""}
+                                                onClick={() => setRowMode(mode)}
+                                            >
+                                                {label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {rowMode !== "revalue" && (
+                                        <label className={styles.field}>
+                                            <span>Количество, {unit}</span>
+                                            <input name={`quantity-${key}`} inputMode="decimal" autoComplete="off" placeholder="0"
+                                                value={values.quantity ?? ""} onChange={(event) => onStockInput(key, { quantity: event.target.value })} />
+                                        </label>
+                                    )}
+                                    {rowMode !== "out" && (
+                                        <label className={styles.field}>
+                                            <span>{rowMode === "in" ? `Цена за ${unit}, ₽` : `Новая средняя цена за ${unit}, ₽`}</span>
+                                            <input name={`price-${key}`} inputMode="decimal" autoComplete="off"
+                                                placeholder={rowMode === "in" ? `по умолчанию ${formatMoney(product.averagePrice)}` : "0"}
+                                                value={values.unitPrice ?? ""} onChange={(event) => onStockInput(key, { unitPrice: event.target.value })} />
+                                        </label>
+                                    )}
+                                    <p className={styles.rowPanelHint}>
+                                        {rowMode === "in" && "Добавит товар на склад и пересчитает среднюю цену."}
+                                        {rowMode === "out" && "Уберёт товар со склада по текущей средней цене (порча, недостача)."}
+                                        {rowMode === "revalue" && "Исправит стоимость текущего остатка без изменения количества. Попросим указать причину."}
+                                    </p>
+                                    <div className={styles.rowPanelActions}>
+                                        <button
+                                            type="button"
+                                            className={rowMode === "out" ? styles.writeoffButton : styles.primaryButton}
+                                            disabled={busyKey === `stock-${key}`}
+                                            onClick={() => (rowMode === "revalue"
+                                                ? onRevalueStock(product)
+                                                : onAdjustStock(product, rowMode))}
+                                        >
+                                            {rowMode === "in" ? "Провести приход" : rowMode === "out" ? "Списать" : "Переоценить"}
+                                        </button>
+                                        <button type="button" onClick={() => setActiveRow(null)}>Отмена</button>
+                                    </div>
+                                </div>
+                            )}
                             </div>
                         );
                     })}

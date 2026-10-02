@@ -628,7 +628,7 @@
 
 .stockRow {
     display: grid;
-    grid-template-columns: minmax(190px, 1.25fr) minmax(95px, 0.35fr) minmax(140px, 0.55fr) minmax(320px, 1.15fr);
+    grid-template-columns: minmax(190px, 1.3fr) minmax(110px, 0.45fr) minmax(170px, 0.7fr) auto;
     gap: 18px;
     align-items: center;
     padding: 15px 24px;
@@ -881,4 +881,111 @@
     .catalogList button {
         transition: none;
     }
+}
+
+.stockRowGroup {
+    border-bottom: 1px solid #edf1ed;
+}
+
+.stockRowGroup:last-child {
+    border-bottom: 0;
+}
+
+.stockRowGroup > .stockRow {
+    border-bottom: 0;
+}
+
+.rowActionCell button {
+    min-height: 40px;
+    padding: 8px 14px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--color-ink);
+    background: #fff;
+    font-weight: 750;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.rowActionCell button[aria-expanded="true"] {
+    background: var(--color-accent-soft);
+}
+
+.rowPanel {
+    display: grid;
+    grid-template-columns: auto minmax(140px, 220px) minmax(140px, 260px) 1fr;
+    align-items: end;
+    gap: 12px 16px;
+    margin: 0 24px 16px;
+    padding: 14px 16px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: #f7faf8;
+}
+
+.modeSwitch {
+    display: inline-flex;
+    align-self: end;
+    padding: 3px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: #fff;
+}
+
+.modeSwitch button {
+    min-height: 38px;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: 7px;
+    color: var(--color-muted);
+    background: transparent;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.modeSwitch .modeActive {
+    color: #fff;
+    background: var(--color-accent-strong);
+}
+
+.rowPanelHint {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--color-muted);
+    font-size: 12px;
+}
+
+.rowPanelActions {
+    display: flex;
+    grid-column: 1 / -1;
+    gap: 8px;
+}
+
+.rowPanelActions button {
+    min-height: 40px;
+    padding: 8px 16px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.rowPanelActions .primaryButton {
+    border-color: var(--color-accent-strong);
+    color: #fff;
+    background: var(--color-accent-strong);
+}
+
+@media (max-width: 900px) {
+    .rowPanel {
+        grid-template-columns: 1fr;
+        margin: 0 16px 16px;
+    }
+}
+
+.rowPanelActions .writeoffButton {
+    border-color: #edc2bb;
+    color: var(--color-danger);
+    background: var(--color-danger-soft);
 }
