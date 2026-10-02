@@ -618,7 +618,8 @@ public class ShiftService {
         dto.data = record.getData();
         dto.expenses = record.getExpenses();
         dto.profit = record.getProfit();
-        dto.income = record.getIncome();
+        // Выручка записывается в смену при закрытии; у открытой показываем текущую
+        dto.income = record.getEndtime() == null ? currentPaidIncome(record.getId()) : record.getIncome();
         dto.startTime = record.getStarttime();
         dto.endTime = record.getEndtime();
         dto.personCode = record.getPersoncode() != null ? record.getPersoncode() : 0;
@@ -631,17 +632,28 @@ public class ShiftService {
         return dto;
     }
 
+    private Double currentPaidIncome(int shiftId) {
+        BigDecimal income = dsl.select(DSL.coalesce(DSL.sum(Order.ORDER.AMOUNT), 0.0).cast(BigDecimal.class))
+                .from(Order.ORDER)
+                .where(Order.ORDER.SHIFTID.eq(shiftId))
+                .and(ORDER_CANCELLED_AT.isNull())
+                .and(IS_PAID_FIELD.eq(true))
+                .fetchOne(0, BigDecimal.class);
+        return income != null ? income.doubleValue() : 0.0;
+    }
+
     private LinkedHashSet<Integer> normalizeWorkerIds(ShiftDTO dto) {
         LinkedHashSet<Integer> workerIds = new LinkedHashSet<>();
         if (dto == null) {
             return workerIds;
         }
-        if (dto.personCode >= 0) {
+        // id сотрудников начинаются с 1: 0 — это непереданный personCode
+        if (dto.personCode > 0) {
             workerIds.add(dto.personCode);
         }
         if (dto.personIds != null) {
             dto.personIds.stream()
-                    .filter(id -> id != null && id >= 0)
+                    .filter(id -> id != null && id > 0)
                     .forEach(workerIds::add);
         }
         return workerIds;

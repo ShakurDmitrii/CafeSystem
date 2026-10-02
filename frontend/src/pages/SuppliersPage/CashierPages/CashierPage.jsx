@@ -105,7 +105,7 @@ export default function CashierPage() {
     const [allShifts, setAllShifts] = useState([]);
     const [preparationTime, setPreparationTime] = useState(30);
     const [deliveryCost, setDeliveryCost] = useState(0);
-    const [paymentType, setPaymentType] = useState("cash"); // cash | transfer | unpaid
+    const [paymentType, setPaymentType] = useState(""); // "" (не выбрано) | cash | transfer | unpaid
     const [deliveryPhone, setDeliveryPhone] = useState("");
     const [deliveryAddress, setDeliveryAddress] = useState("");
     const [dishCategories, setDishCategories] = useState([]);
@@ -244,25 +244,34 @@ export default function CashierPage() {
 
         fetchShifts()
             .then((loadedShifts) => {
-                // Если есть сохраненная смена, восстанавливаем ее
+                const shifts = Array.isArray(loadedShifts) ? loadedShifts : [];
+                const openShifts = shifts.filter((shift) => !shift.endTime);
+                let shiftToEnter = null;
+
+                // Сохранённую в этом браузере смену восстанавливаем, только если она ещё открыта
                 if (savedShiftOpen && savedShiftId && savedShiftData) {
                     try {
                         const savedShift = JSON.parse(savedShiftData);
-                        const restoredShift = Array.isArray(loadedShifts)
-                            ? loadedShifts.find((shift) => Number(shift.shiftId) === Number(savedShiftId)) || savedShift
-                            : savedShift;
-                        setCurrentShift(restoredShift);
-                        setShiftOpen(true);
-                        setSelectedShiftPersons(resolveShiftPersons(restoredShift));
-
-                        // Загружаем заказы для восстановленной смены
-                        loadOrdersForShift(restoredShift.shiftId);
+                        const actual = shifts.find((shift) => Number(shift.shiftId) === Number(savedShiftId));
+                        shiftToEnter = actual ? (actual.endTime ? null : actual) : savedShift;
                     } catch (e) {
                         console.error("Ошибка восстановления смены:", e);
-                        localStorage.removeItem('currentShiftId');
-                        localStorage.removeItem('shiftOpen');
-                        localStorage.removeItem('currentShiftData');
                     }
+                }
+                // Иначе, если на сервере открыта ровно одна смена, сразу входим в неё
+                if (!shiftToEnter && openShifts.length === 1) {
+                    shiftToEnter = openShifts[0];
+                }
+
+                if (shiftToEnter) {
+                    setCurrentShift(shiftToEnter);
+                    setShiftOpen(true);
+                    setSelectedShiftPersons(resolveShiftPersons(shiftToEnter));
+                    loadOrdersForShift(shiftToEnter.shiftId);
+                } else {
+                    localStorage.removeItem('currentShiftId');
+                    localStorage.removeItem('shiftOpen');
+                    localStorage.removeItem('currentShiftData');
                 }
             })
             .finally(() => setIsLoading(false));
@@ -805,7 +814,7 @@ ${reportText}
             setConsumableOverrides({});
             setOrderType(false);
             setDeliveryCost(0);
-            setPaymentType("cash");
+            setPaymentType("");
             setDeliveryPhone("");
             setDeliveryAddress("");
             setPreparationTime(30);
@@ -869,7 +878,7 @@ ${reportText}
             setShowDatePicker(true);
         } else {
             setIsDebt(false);
-            setPaymentType("cash");
+            setPaymentType("");
             setShowDatePicker(false);
         }
     };
@@ -1369,6 +1378,7 @@ ${reportText}
                 isLoading={isLoading}
                 onShowDebts={() => setShowDebtNotification(true)}
                 onPrintReport={printZReport}
+                onCloseShift={closeShift}
                 onOpenKitchen={async () => {
                     if (!currentShift?.shiftId) return;
                     try {
@@ -1495,7 +1505,6 @@ ${reportText}
                             return next;
                         })}
                         onCreateOrder={() => createOrder()}
-                        onCloseShift={closeShift}
                     />
                     <OrdersBoard
                         orders={orders}

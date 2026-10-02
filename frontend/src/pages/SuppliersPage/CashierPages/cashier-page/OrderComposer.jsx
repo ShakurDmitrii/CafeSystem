@@ -44,9 +44,9 @@ export default function OrderComposer({
     onPersonCountChange,
     onConsumableChange,
     onConsumableReset,
-    onCreateOrder,
-    onCloseShift
+    onCreateOrder
 }) {
+    const paymentMissing = !paymentType && !isDebt;
     return (
         <section className={styles.orderComposer}>
             <div className={styles.sectionHeading}>
@@ -124,11 +124,8 @@ export default function OrderComposer({
             <div className={styles.composerBlock}>
                 <div className={styles.blockHeading}>
                     <h3>Позиции</h3>
-                    <button type="button" onClick={onOpenDishPicker}>Добавить</button>
                 </div>
-                {items.length === 0 ? (
-                    <div className={styles.compactEmpty}>Добавьте блюда или наборы из меню.</div>
-                ) : (
+                {items.length === 0 ? null : (
                     <div className={styles.orderLines}>
                         {items.map((item, index) => (
                             <div key={`${item.itemType || "dish"}-${item.dishId || item.setId || index}-${index}`} className={styles.orderLine}>
@@ -156,6 +153,14 @@ export default function OrderComposer({
                         ))}
                     </div>
                 )}
+                <button
+                    className={items.length === 0 ? styles.addDishesButton : styles.addMoreDishesButton}
+                    type="button"
+                    onClick={onOpenDishPicker}
+                    disabled={isLoading}
+                >
+                    {items.length === 0 ? "+ Добавить блюда из меню" : "+ Добавить ещё"}
+                </button>
             </div>
 
             <div className={styles.composerBlock}>
@@ -293,8 +298,8 @@ export default function OrderComposer({
                 </div>
             )}
 
-            <fieldset className={styles.paymentFieldset}>
-                <legend>Оплата</legend>
+            <fieldset className={`${styles.paymentFieldset} ${paymentMissing && items.length > 0 ? styles.paymentFieldsetRequired : ""}`}>
+                <legend>Оплата{paymentMissing ? " — выберите способ" : ""}</legend>
                 {[
                     ["cash", "Наличные"],
                     ["transfer", "Перевод"],
@@ -386,14 +391,15 @@ export default function OrderComposer({
                     items.length === 0 ||
                     isLoading ||
                     consumablesLoading ||
+                    paymentMissing ||
                     (requiresContactDetails && (!effectivePhone || !effectiveAddress))
                 }
             >
                 Отправить заказ на кухню
             </button>
-            <button className={styles.closeShiftButton} type="button" onClick={onCloseShift} disabled={isLoading}>
-                Закрыть смену
-            </button>
+            {items.length > 0 && paymentMissing && (
+                <p className={styles.composerHint}>Выберите способ оплаты, чтобы отправить заказ.</p>
+            )}
         </section>
     );
 }

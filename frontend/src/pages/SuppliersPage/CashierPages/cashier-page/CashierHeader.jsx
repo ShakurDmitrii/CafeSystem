@@ -8,7 +8,8 @@ export default function CashierHeader({
     isLoading,
     onShowDebts,
     onPrintReport,
-    onOpenKitchen
+    onOpenKitchen,
+    onCloseShift
 }) {
     return (
         <header className={styles.shiftConsole}>
@@ -22,13 +23,15 @@ export default function CashierHeader({
                 </p>
             </div>
 
-            <div className={styles.serviceRail} aria-label="Путь заказа">
-                <span>Принят</span>
-                <i aria-hidden="true" />
-                <span>Готовится</span>
-                <i aria-hidden="true" />
-                <span>К выдаче</span>
-            </div>
+            {shiftOpen && (
+                <div className={styles.serviceRail} aria-label="Путь заказа">
+                    <span>Принят</span>
+                    <i aria-hidden="true" />
+                    <span>Готовится</span>
+                    <i aria-hidden="true" />
+                    <span>К выдаче</span>
+                </div>
+            )}
 
             {shiftOpen && (
                 <div className={styles.consoleActions}>
@@ -52,6 +55,14 @@ export default function CashierHeader({
                         disabled={!currentShift || isLoading}
                     >
                         Экран кухни <span aria-hidden="true">↗</span>
+                    </button>
+                    <button
+                        className={styles.closeShiftHeaderButton}
+                        type="button"
+                        onClick={onCloseShift}
+                        disabled={!currentShift || isLoading}
+                    >
+                        Закрыть смену
                     </button>
                 </div>
             )}
