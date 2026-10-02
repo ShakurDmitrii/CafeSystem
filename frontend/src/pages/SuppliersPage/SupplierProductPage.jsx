@@ -11,6 +11,7 @@ import SupplierAssortmentCatalog from "./supplier-products/SupplierAssortmentCat
 import SupplierAssortmentHero from "./supplier-products/SupplierAssortmentHero";
 import SupplierProductEditor from "./supplier-products/SupplierProductEditor";
 import styles from "./SuppliersProductPage.module.css";
+import { unitLabel } from "../../utils/units";
 
 const API_PRODUCTS = `${API_BASE_URL}/api/product`;
 const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
@@ -227,12 +228,12 @@ export default function SupplierProductPage() {
             initial: (product.productName || "П").slice(0, 1).toLocaleUpperCase("ru"),
             imageUrl: product.imageUrl,
             favorite: product.isFavorite,
-            purchasePriceLabel: `${formatMoney(product.productPrice)} ₽/${product.unit}`,
-            basePriceLabel: `${formatMoney(hasStockPrice ? stockPrice : calculatedBasePrice)} ₽/${product.baseUnit}`,
+            purchasePriceLabel: `${formatMoney(product.productPrice)} ₽/${unitLabel(product.unit)}`,
+            basePriceLabel: `${formatMoney(hasStockPrice ? stockPrice : calculatedBasePrice)} ₽/${unitLabel(product.baseUnit)}`,
             hasStockPrice,
             conversionLabel: factor === 1 && product.unit === product.baseUnit
-                ? `Учёт в ${product.baseUnit}`
-                : `1 ${product.unit} = ${formatNumber(factor)} ${product.baseUnit}`,
+                ? `Учёт в ${unitLabel(product.baseUnit)}`
+                : `1 ${unitLabel(product.unit)} = ${formatNumber(factor)} ${unitLabel(product.baseUnit)}`,
             wasteLabel: `${formatNumber(product.waste, 2)}%`,
             source: product
         };
@@ -242,9 +243,9 @@ export default function SupplierProductPage() {
         const price = Number(form.productPrice);
         const factor = Number(form.unitFactor);
         if (!Number.isFinite(price) || price < 0 || !Number.isFinite(factor) || factor <= 0) {
-            return `0 ₽ за 1 ${form.baseUnit}`;
+            return `0 ₽ за 1 ${unitLabel(form.baseUnit)}`;
         }
-        return `${formatMoney(price / factor)} ₽ за 1 ${form.baseUnit}`;
+        return `${formatMoney(price / factor)} ₽ за 1 ${unitLabel(form.baseUnit)}`;
     }, [form.baseUnit, form.productPrice, form.unitFactor]);
 
     const updateSearchParam = (key, value, defaultValue = "") => {

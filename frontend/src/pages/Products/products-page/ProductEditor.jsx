@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import styles from "../ProductsPage.module.css";
+import { unitLabel } from "../../../utils/units";
 
 export default function ProductEditor({
     form,
@@ -91,7 +92,7 @@ export default function ProductEditor({
                         <>
                             <div className={styles.unitFields}>
                                 <label className={styles.field} htmlFor="consumable-default-quantity">
-                                    <span>Количество, {form.baseUnit}</span>
+                                    <span>Количество, {unitLabel(form.baseUnit)}</span>
                                     <input
                                         id="consumable-default-quantity"
                                         type="number"
@@ -279,7 +280,7 @@ export default function ProductEditor({
 
                     <div className={styles.unitPreview} aria-live="polite">
                         <span>
-                            1 {form.unit} = {form.unitFactor || "0"} {form.baseUnit}
+                            1 {unitLabel(form.unit)} = {form.unitFactor || "0"} {unitLabel(form.baseUnit)}
                         </span>
                         <strong>{basePricePreview}</strong>
                     </div>

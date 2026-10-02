@@ -1,5 +1,6 @@
 import styles from "../CashierPage.module.css";
 import { formatMoney, getInitials } from "./cashierUtils";
+import { unitLabel } from "../../../../utils/units";
 
 export default function OrderComposer({
     selectedClient,
@@ -194,11 +195,11 @@ export default function OrderComposer({
                                     <span>{item.itemType === "packaging" ? "Упаковка" : "Расходник"}</span>
                                     <strong>{item.productName}</strong>
                                     <small>
-                                        По умолчанию: {Number(item.suggestedQuantity || 0).toLocaleString("ru-RU")} {item.baseUnit}
+                                        По умолчанию: {Number(item.suggestedQuantity || 0).toLocaleString("ru-RU")} {unitLabel(item.baseUnit)}
                                     </small>
                                 </div>
                                 <label>
-                                    <span>Положить, {item.baseUnit}</span>
+                                    <span>Положить, {unitLabel(item.baseUnit)}</span>
                                     <input
                                         type="number"
                                         min="0"

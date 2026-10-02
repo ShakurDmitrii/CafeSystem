@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL } from "../../../auth";
 import styles from "./CashierPage.module.css";
 import { formatDate, formatMoney } from "./cashier-page/cashierUtils";
+import { unitLabel } from "../../../utils/units";
 
 async function loadOrderDishes(orderId) {
     if (!orderId) return [];
@@ -236,7 +237,7 @@ export default function OrderCard({
                     <strong>Комплектация · {order.personCount || 1} перс.</strong>
                     {order.consumables.map((item) => (
                         <span key={item.productId}>
-                            {item.productName}: {Number(item.actualQuantity || 0).toLocaleString("ru-RU")} {item.baseUnit}
+                            {item.productName}: {Number(item.actualQuantity || 0).toLocaleString("ru-RU")} {unitLabel(item.baseUnit)}
                             {Number(item.surchargeAmount || 0) > 0 ? ` · +${formatMoney(item.surchargeAmount)}` : ""}
                         </span>
                     ))}

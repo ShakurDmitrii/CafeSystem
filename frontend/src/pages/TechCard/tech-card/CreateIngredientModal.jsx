@@ -1,5 +1,6 @@
 import ModalShell from "./ModalShell";
 import styles from "../TechCardPage.module.css";
+import { unitLabel } from "../../../utils/units";
 
 const unitOptions = [
     { value: "g", label: "Граммы (g)" },
@@ -117,7 +118,7 @@ export default function CreateIngredientModal({
                     <div className={`${styles.field} ${styles.unitSummary}`}>
                         <span>Как сохранится цена</span>
                         <div className={styles.unitHint}>
-                            1 {form.unit} = {form.unitFactor} {form.baseUnit}. Расчёт техкарты использует базовую единицу.
+                            1 {unitLabel(form.unit)} = {form.unitFactor} {unitLabel(form.baseUnit)}. Расчёт техкарты использует базовую единицу.
                         </div>
                     </div>
                 </div>

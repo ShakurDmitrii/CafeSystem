@@ -7,6 +7,7 @@ import IngredientList from "./tech-card/IngredientList";
 import IngredientPickerModal from "./tech-card/IngredientPickerModal";
 import TechCardHeader from "./tech-card/TechCardHeader";
 import styles from "./TechCardPage.module.css";
+import { unitLabel } from "../../utils/units";
 
 const API_TECH = `${API_BASE_URL}/api/tech-products`;
 const API_PRODUCTS = `${API_BASE_URL}/api/product`;
@@ -620,9 +621,9 @@ export default function TechCardPage() {
             source: item,
             name: product?.productName || preparation?.preparationName || "Неизвестный ингредиент",
             typeLabel: item.productId != null ? "Продукт" : "Заготовка",
-            quantityLabel: `${formatQuantity(item.weight)} ${itemMeasureUnit}`,
+            quantityLabel: `${formatQuantity(item.weight)} ${unitLabel(itemMeasureUnit)}`,
             wasteLabel: `${formatQuantity(item.waste)}%`,
-            unitCostLabel: `${formatMoney(unitCost)} ₽/${unitCostUnit}`,
+            unitCostLabel: `${formatMoney(unitCost)} ₽/${unitLabel(unitCostUnit)}`,
             costLabel: `${formatMoney(getItemCost(item))} ₽`,
             outputLabel: item.ingredientPreparationId != null && preparation?.outputWeight != null
                 ? `${formatQuantity(preparation.outputWeight)} г`

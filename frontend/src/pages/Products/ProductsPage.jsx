@@ -11,6 +11,7 @@ import ProductEditor from "./products-page/ProductEditor";
 import ProductsCatalog from "./products-page/ProductsCatalog";
 import ProductsHero from "./products-page/ProductsHero";
 import styles from "./ProductsPage.module.css";
+import { unitLabel } from "../../utils/units";
 
 const API_PRODUCTS = `${API_BASE_URL}/api/product`;
 const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
@@ -245,11 +246,11 @@ export default function ProductsPage() {
                     ?? (product.supplierId ? `Поставщик #${product.supplierId}` : "Поставщик не указан"),
                 favorite: product.isFavorite,
                 imageUrl: product.imageUrl,
-                purchasePriceLabel: `${formatMoney(product.productPrice)} ₽/${product.unit}`,
-                basePriceLabel: `${formatMoney(basePrice)} ₽/${product.baseUnit}`,
+                purchasePriceLabel: `${formatMoney(product.productPrice)} ₽/${unitLabel(product.unit)}`,
+                basePriceLabel: `${formatMoney(basePrice)} ₽/${unitLabel(product.baseUnit)}`,
                 conversionLabel: factor === 1 && product.unit === product.baseUnit
-                    ? `Учёт в ${product.baseUnit}`
-                    : `1 ${product.unit} = ${formatNumber(factor)} ${product.baseUnit}`,
+                    ? `Учёт в ${unitLabel(product.baseUnit)}`
+                    : `1 ${unitLabel(product.unit)} = ${formatNumber(factor)} ${unitLabel(product.baseUnit)}`,
                 wasteLabel: `${formatNumber(product.waste, 2)}%`,
                 hasStockPrice,
                 source: product
@@ -268,7 +269,7 @@ export default function ProductsPage() {
         if (!Number.isFinite(price) || !Number.isFinite(factor) || factor <= 0) {
             return "Укажите цену и коэффициент";
         }
-        return `${formatMoney(price / factor)} ₽ за 1 ${form.baseUnit}`;
+        return `${formatMoney(price / factor)} ₽ за 1 ${unitLabel(form.baseUnit)}`;
     }, [form.baseUnit, form.productPrice, form.unitFactor]);
 
     const updateSearchParam = (key, value, defaultValue = "") => {
