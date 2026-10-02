@@ -1,4 +1,5 @@
 import { hasRole } from "../../auth";
+import PageHeader from "../../components/layout/PageHeader";
 import MetricCard from "./components/MetricCard";
 import QuickActions from "./components/QuickActions";
 import StockAlertsPanel from "./components/StockAlertsPanel";
@@ -130,31 +131,10 @@ export default function HomePage({ auth }) {
 
     return (
         <div className={styles.page}>
-            <section className={styles.hero} aria-labelledby="dashboard-title">
-                <div className={styles.heroCopy}>
-                    <p className={styles.heroKicker}>Рабочая сводка</p>
-                    <h1 id="dashboard-title">Добрый день, {name}</h1>
-                    <p>
-                        Самое важное о текущей смене — без лишних отчётов и переходов.
-                    </p>
-                </div>
-
-                <div className={styles.shiftPulse}>
-                    <div className={styles.pulseHeader}>
-                        <span className={styles.liveDot} aria-hidden="true" />
-                        <span>Смена в фокусе</span>
-                    </div>
-                    <time dateTime={data.today}>{formatDate(data.today)}</time>
-                    <p title={workersText}>{workersText}</p>
-                    <div className={styles.pulseTrack} aria-hidden="true">
-                        <span />
-                        <span />
-                        <span />
-                        <span />
-                        <span />
-                    </div>
-                </div>
-            </section>
+            <PageHeader
+                title={`Добрый день, ${name}`}
+                description={`${formatDate(data.today)} · ${workersText}`}
+            />
 
             <QuickActions auth={auth} />
 

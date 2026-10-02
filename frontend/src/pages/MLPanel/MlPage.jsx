@@ -6,6 +6,7 @@ import {
     ThunderboltOutlined
 } from '@ant-design/icons';
 import React, { useEffect, useRef, useState } from 'react';
+import PageHeader from "../../components/layout/PageHeader";
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE_URL } from '../../auth';
 import AnalyticsDashboard from './AnalyticsDashboard';
@@ -184,30 +185,16 @@ export default function MlPage() {
 
     return (
         <div className={styles.mlPage}>
-            <header className={styles.hero}>
-                <div className={styles.heroCopy}>
-                    <p className={styles.eyebrow}>CafeHelp Intelligence</p>
-                    <h1>Решения для меню на основе данных</h1>
-                    <p className={styles.subtitle}>
-                        Прогнозируйте спрос, проверяйте экономику рецептов и находите точки роста.
-                    </p>
-                </div>
-                <div className={styles.heroActions}>
-                    <span className={styles.modelStatus}>
-                        <i aria-hidden="true" />
-                        Модель готова
-                    </span>
-                    <button
-                        type="button"
-                        onClick={sendTrainingData}
-                        disabled={isTraining}
-                        className={styles.trainButton}
-                    >
-                        <SyncOutlined spin={isTraining} aria-hidden="true" />
-                        {isTraining ? 'Обновляем модель…' : 'Обучить на новых данных'}
+            <PageHeader
+                title="AI-аналитика"
+                description="Прогноз спроса, экономика рецептов и подсказки по меню на основе продаж."
+                actions={(
+                    <button type="button" onClick={sendTrainingData} disabled={isTraining}>
+                        <SyncOutlined spin={isTraining} aria-hidden="true" />{" "}
+                        {isTraining ? "Обновляем модель…" : "Обучить на новых данных"}
                     </button>
-                </div>
-            </header>
+                )}
+            />
 
             {trainingStatus && (
                 <div

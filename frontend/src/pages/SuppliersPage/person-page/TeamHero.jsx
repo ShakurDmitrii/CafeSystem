@@ -1,39 +1,16 @@
-import styles from "../PersonPage.module.css";
-import { formatMoney } from "./personUtils";
+import PageHeader from "../../../components/layout/PageHeader";
+import { formatMoney } from "../CashierPages/cashier-page/cashierUtils";
 
 export default function TeamHero({ peopleCount, closedShifts, amountDue }) {
     return (
-        <section className={styles.hero}>
-            <div className={styles.heroCopy}>
-                <p className={styles.eyebrow}>Команда · сменная доска</p>
-                <h1>Люди, на которых держится смена</h1>
-                <p>
-                    Аккаунты сотрудников, отработанные дни и ближайшие выплаты —
-                    в одном спокойном рабочем ритме.
-                </p>
-            </div>
-
-            <div className={styles.shiftRail} aria-label="Сводка команды">
-                <div className={styles.railLine} aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
-                </div>
-                <dl>
-                    <div>
-                        <dt>В команде</dt>
-                        <dd>{peopleCount}</dd>
-                    </div>
-                    <div>
-                        <dt>Закрыто смен</dt>
-                        <dd>{closedShifts}</dd>
-                    </div>
-                    <div>
-                        <dt>К выплате</dt>
-                        <dd>{formatMoney(amountDue)}</dd>
-                    </div>
-                </dl>
-            </div>
-        </section>
+        <PageHeader
+            title="Персонал"
+            description="Сотрудники, их аккаунты, отработанные смены и выплаты."
+            stats={[
+                { label: "В команде", value: peopleCount },
+                { label: "Закрыто смен", value: closedShifts },
+                { label: "К выплате", value: formatMoney(amountDue), tone: amountDue > 0 ? "warning" : undefined }
+            ]}
+        />
     );
 }
