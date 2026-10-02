@@ -2,8 +2,7 @@ import styles from "../DishPage.module.css";
 
 const numericFields = [
     { key: "price", label: "Цена", suffix: "₽", required: true },
-    { key: "weight", label: "Вес", suffix: "г" },
-    { key: "firstCost", label: "Себестоимость", suffix: "₽" }
+    { key: "weight", label: "Вес", suffix: "г" }
 ];
 
 export default function DishFormFields({ form, categories, idPrefix, onChange }) {

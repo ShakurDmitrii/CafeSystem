@@ -79,6 +79,7 @@ export default function DishPage() {
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
     const [createForm, setCreateForm] = useState(createDishForm);
+    const [showCreate, setShowCreate] = useState(false);
     const [createLoading, setCreateLoading] = useState(false);
     const [createError, setCreateError] = useState("");
     const [createImageUploading, setCreateImageUploading] = useState(false);
@@ -352,7 +353,7 @@ export default function DishPage() {
                     aria-labelledby="dishes-tab"
                     className={styles.viewPanel}
                 >
-                    {canManage && (
+                    {canManage && showCreate && (
                     <DishCreatePanel
                         dishCount={dishes.length}
                         form={createForm}
@@ -363,6 +364,7 @@ export default function DishPage() {
                         onFormChange={setCreateForm}
                         onImageChange={handleCreateImageUpload}
                         onCreate={handleCreateDish}
+                        onCancel={() => setShowCreate(false)}
                     />
                     )}
                     <DishList
@@ -375,6 +377,7 @@ export default function DishPage() {
                         onEdit={canManage ? openEditModal : undefined}
                         onDelete={canManage ? deleteDish : undefined}
                         onRetry={loadPage}
+                        onCreate={canManage && !showCreate ? () => setShowCreate(true) : undefined}
                     />
                 </div>
             ) : (
