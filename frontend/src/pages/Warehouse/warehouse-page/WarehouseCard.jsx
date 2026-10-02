@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { formatMoney, formatQuantity, getUnitLabel } from "./warehouseUtils";
 import { unitLabel } from "../../../utils/units";
+import UnitChips from "../../../components/forms/UnitChips";
 import styles from "../WarehousePage.module.css";
 
 const STOCK_MODES = [
@@ -137,6 +138,10 @@ export default function WarehouseCard({
                         <button type="button" onClick={onClosePanel}>Закрыть</button>
                     </div>
                     <div className={styles.newProductGrid}>
+                        <div className={styles.newProductUnit}>
+                            <UnitChips value={newProductForm.unit} name={`new-unit-${warehouse.warehouseId}`}
+                                onChange={(value) => onNewProductForm({ ...newProductForm, unit: value })} />
+                        </div>
                         <label className={styles.field}><span>Название</span><input name="newProductName" autoComplete="off" placeholder="Например, Молоко 3,2%…"
                             value={newProductForm.productName} onChange={(event) => onNewProductForm({ ...newProductForm, productName: event.target.value })} /></label>
                         <label className={styles.field}><span>Поставщик</span><select name="newProductSupplier" value={newProductForm.supplierId}
@@ -144,11 +149,11 @@ export default function WarehouseCard({
                             <option value="">Выберите</option>
                             {suppliers.map((supplier) => <option key={supplier.supplierId ?? supplier.id} value={supplier.supplierId ?? supplier.id}>{supplier.supplierName ?? supplier.name}</option>)}
                         </select></label>
-                        <label className={styles.field}><span>Цена</span><input name="newProductPrice" inputMode="decimal" autoComplete="off" placeholder="0,00 ₽…"
+                        <label className={styles.field}><span>Цена за 1 {unitLabel(newProductForm.unit)}, ₽</span><input name="newProductPrice" inputMode="decimal" autoComplete="off" placeholder="0,00 ₽…"
                             value={newProductForm.productPrice} onChange={(event) => onNewProductForm({ ...newProductForm, productPrice: event.target.value })} /></label>
-                        <label className={styles.field}><span>Отход, %</span><input name="newProductWaste" inputMode="decimal" autoComplete="off" placeholder="Например, 5…"
+                        <label className={styles.field}><span>Отход, % (необязательно)</span><input name="newProductWaste" inputMode="decimal" autoComplete="off" placeholder="Например, 5…"
                             value={newProductForm.waste} onChange={(event) => onNewProductForm({ ...newProductForm, waste: event.target.value })} /></label>
-                        <label className={styles.field}><span>Количество</span><input name="newProductQuantity" inputMode="decimal" autoComplete="off" placeholder="0,000…"
+                        <label className={styles.field}><span>Количество, {unitLabel(newProductForm.unit)}</span><input name="newProductQuantity" inputMode="decimal" autoComplete="off" placeholder="0,000…"
                             value={newProductForm.quantity} onChange={(event) => onNewProductForm({ ...newProductForm, quantity: event.target.value })} /></label>
                         <button className={styles.primaryButton} type="button" onClick={onNewProductSubmit}
                             disabled={busyKey === `new-${warehouse.warehouseId}`}>Создать и принять</button>

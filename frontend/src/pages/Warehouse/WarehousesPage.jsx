@@ -14,6 +14,7 @@ import {
     parseDecimal
 } from "./warehouse-page/warehouseUtils";
 import styles from "./WarehousePage.module.css";
+import { presetForUnit } from "../../components/forms/units";
 
 const API_WAREHOUSES = `${API_BASE_URL}/warehouses`;
 const API_MOVEMENTS = `${API_BASE_URL}/movements`;
@@ -22,6 +23,7 @@ const API_PRODUCTS = `${API_BASE_URL}/api/product`;
 
 const EMPTY_NEW_PRODUCT = {
     productName: "",
+    unit: "kg",
     supplierId: "",
     productPrice: "",
     waste: "",
@@ -330,11 +332,12 @@ export default function WarehousePage() {
     const submitNewProduct = async (warehouseId) => {
         const quantity = parseDecimal(newProductForm.quantity);
         const price = parseDecimal(newProductForm.productPrice);
-        const waste = parseDecimal(newProductForm.waste);
+        const waste = String(newProductForm.waste ?? "").trim() === "" ? 0 : parseDecimal(newProductForm.waste);
+        const unit = presetForUnit(newProductForm.unit) ?? presetForUnit("kg");
         if (!newProductForm.productName.trim() || !newProductForm.supplierId
             || !Number.isFinite(quantity) || quantity <= 0
             || !Number.isFinite(price) || price <= 0 || !Number.isFinite(waste)) {
-            setPageError("Заполните название, поставщика, цену, отход и количество.");
+            setPageError("Заполните название, поставщика, цену и количество.");
             return;
         }
         setBusyKey(`new-${warehouseId}`);
@@ -347,7 +350,10 @@ export default function WarehousePage() {
                     productName: newProductForm.productName.trim(),
                     productPrice: price,
                     waste,
-                    isFavorite: false
+                    isFavorite: false,
+                    unit: unit.value,
+                    baseUnit: unit.baseUnit,
+                    unitFactor: unit.unitFactor
                 })
             });
             if (!response.ok) throw new Error("Не удалось создать продукт.");

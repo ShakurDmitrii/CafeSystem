@@ -1155,3 +1155,52 @@
   font-size: 13px;
   font-weight: 700;
 }
+
+.emptyModalState {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.fieldHint {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.duplicateNotice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-soft);
+  font-size: 13px;
+}
+
+.duplicateNotice button {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.moreOptions {
+  display: grid;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.moreOptions > summary {
+  color: var(--color-accent-strong);
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}

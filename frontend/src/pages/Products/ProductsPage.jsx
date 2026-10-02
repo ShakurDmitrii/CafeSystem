@@ -43,9 +43,9 @@ const createEmptyForm = () => ({
     productPrice: "",
     waste: "0",
     isFavorite: false,
-    unit: "g",
+    unit: "kg",
     baseUnit: "g",
-    unitFactor: "1",
+    unitFactor: "1000",
     imageUrl: "",
     itemType: "ingredient",
     consumableBasis: "per_order",
@@ -133,6 +133,7 @@ export default function ProductsPage() {
 
     const [form, setForm] = useState(createEmptyForm);
     const [editingProductId, setEditingProductId] = useState(null);
+    const [focusKey, setFocusKey] = useState(0);
     const [saving, setSaving] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [formError, setFormError] = useState("");
@@ -287,6 +288,9 @@ export default function ProductsPage() {
     const handleChange = (field, value) => {
         setFormError("");
         setForm((previous) => {
+            if (field === "customUnit") {
+                return { ...previous, unit: String(value).trimStart() };
+            }
             if (field === "unit") {
                 const preset = UNIT_PRESETS[value];
                 if (preset) {
@@ -311,16 +315,12 @@ export default function ProductsPage() {
     const handleSubmit = async (event) => {
         event.preventDefault();
 
-        const supplierId = Number(form.supplierId);
+        const supplierId = Number(form.supplierId) > 0 ? Number(form.supplierId) : null;
         const productName = form.productName.trim();
         const productPrice = Number(form.productPrice);
-        const waste = Number(form.waste);
+        const waste = form.waste === "" ? 0 : Number(form.waste);
         const unitFactor = Number(form.unitFactor);
 
-        if (!Number.isFinite(supplierId) || supplierId <= 0) {
-            setFormError("Выберите поставщика.");
-            return;
-        }
         if (!productName) {
             setFormError("Введите название продукта.");
             return;
@@ -331,6 +331,10 @@ export default function ProductsPage() {
         }
         if (!Number.isFinite(waste) || waste < 0 || waste > 100) {
             setFormError("Отход должен быть от 0 до 100%.");
+            return;
+        }
+        if (!form.unit.trim()) {
+            setFormError("Укажите единицу закупки.");
             return;
         }
         if (!Number.isFinite(unitFactor) || unitFactor <= 0) {
@@ -346,7 +350,7 @@ export default function ProductsPage() {
             productPrice,
             waste,
             isFavorite: Boolean(form.isFavorite),
-            unit: form.unit,
+            unit: form.unit.trim(),
             baseUnit: form.baseUnit,
             unitFactor,
             imageUrl: form.imageUrl || null,
@@ -375,12 +379,24 @@ export default function ProductsPage() {
                 );
             }
 
-            resetEditor();
+            if (editing) {
+                resetEditor();
+            } else {
+                // Для серии новых продуктов оставляем поставщика и единицу, курсор — в название
+                setForm((previous) => ({
+                    ...createEmptyForm(),
+                    supplierId: previous.supplierId,
+                    unit: previous.unit,
+                    baseUnit: previous.baseUnit,
+                    unitFactor: previous.unitFactor
+                }));
+                setFocusKey((key) => key + 1);
+            }
             await loadData();
             setStatusMessage(
                 editing
                     ? `Карточка «${productName}» обновлена.`
-                    : `Продукт «${productName}» добавлен в каталог.`
+                    : `Продукт «${productName}» добавлен. Можно вводить следующий.`
             );
         } catch (error) {
             console.error("Ошибка сохранения продукта:", error);
@@ -487,6 +503,9 @@ export default function ProductsPage() {
                     onSubmit={handleSubmit}
                     onCancel={resetEditor}
                     onUploadImage={handleUploadImage}
+                    products={products}
+                    onEditExisting={startEditing}
+                    focusKey={focusKey}
                 />
                 <ProductsCatalog
                     rows={productRows}

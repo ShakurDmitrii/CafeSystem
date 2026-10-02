@@ -28,9 +28,9 @@ const createEmptyIngredientForm = () => ({
     productName: "",
     productPrice: "",
     waste: "0",
-    unit: "g",
+    unit: "kg",
     baseUnit: "g",
-    unitFactor: "1"
+    unitFactor: "1000"
 });
 
 const toSafeNumber = (value, fallback = 0) => {
@@ -328,8 +328,11 @@ export default function TechCardPage() {
         closeIngredientPicker();
     };
 
-    const openCreateIngredientModal = () => {
-        setCreateIngredientForm(createEmptyIngredientForm());
+    const openCreateIngredientModal = (prefillName) => {
+        setCreateIngredientForm({
+            ...createEmptyIngredientForm(),
+            productName: typeof prefillName === "string" ? prefillName.trim() : ""
+        });
         setCreateIngredientError("");
         setIngredientPickerOpen(false);
         setCreateIngredientOpen(true);
@@ -693,6 +696,13 @@ export default function TechCardPage() {
                 <CreateIngredientModal
                     form={createIngredientForm}
                     suppliers={suppliers}
+                    products={products}
+                    onPickExisting={(product) => {
+                        setItemError("");
+                        setSelectedIngredientType("product");
+                        setSelectedIngredientId(String(product.productId));
+                        setCreateIngredientOpen(false);
+                    }}
                     error={createIngredientError}
                     loading={createIngredientLoading}
                     onChange={handleCreateIngredientChange}

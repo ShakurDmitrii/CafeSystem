@@ -989,3 +989,8 @@
     color: var(--color-danger);
     background: var(--color-danger-soft);
 }
+
+.newProductUnit {
+    flex: 1 1 100%;
+    grid-column: 1 / -1;
+}
