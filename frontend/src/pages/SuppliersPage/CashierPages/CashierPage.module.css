@@ -935,7 +935,7 @@
 .sectionHeading h2,
 .openShiftPanel h2 {
     margin: 0;
-    font-family: Georgia, "Times New Roman", serif;
+    font-family: var(--font-display);
     font-weight: 600;
     letter-spacing: -0.035em;
 }
@@ -1701,7 +1701,7 @@
 }
 
 .queueSummary strong {
-    font-family: Georgia, serif;
+    font-family: var(--font-display);
     font-size: 22px;
 }
 
@@ -1825,7 +1825,7 @@
 }
 
 .orderCardNumber {
-    font-family: Georgia, serif;
+    font-family: var(--font-display);
     font-size: 24px;
 }
 
@@ -2225,7 +2225,7 @@
 }
 
 .shiftCardId strong {
-    font-family: Georgia, serif;
+    font-family: var(--font-display);
     font-size: 18px;
 }
 
@@ -2350,7 +2350,7 @@
 }
 
 .modalHeader h2 {
-    font-family: Georgia, serif;
+    font-family: var(--font-display);
     font-size: 26px;
 }
 
@@ -2424,7 +2424,7 @@
 
 .cashPaymentTotal strong,
 .cashPaymentChange strong {
-    font-family: Georgia, serif;
+    font-family: var(--font-display);
     font-size: 28px;
 }
 
