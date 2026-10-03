@@ -11,7 +11,7 @@ import OrderComposer from "./cashier-page/OrderComposer";
 import OrdersBoard from "./cashier-page/OrdersBoard";
 import ShiftLobby from "./cashier-page/ShiftLobby";
 import ShiftReportModal from "./cashier-page/ShiftReportModal";
-import { describeDebt } from "./cashier-page/cashierUtils";
+import { describeDebt, describeUnpaidOrdersBlock } from "./cashier-page/cashierUtils";
 import { openAppWindow, openPrintDocument } from "../../../utils/desktopWindows";
 
 const API_ORDERS = `${API_BASE_URL}/api/orders`;
@@ -560,6 +560,12 @@ export default function CashierPage() {
 
     const closeShift = () => {
         if (!currentShift?.shiftId) return;
+        // Сервер всё равно не закроет такую смену; предупреждаем до отчёта об остатках.
+        const unpaidBlock = describeUnpaidOrdersBlock(orders);
+        if (unpaidBlock) {
+            alert(unpaidBlock);
+            return;
+        }
         setInventoryReportShiftId(String(currentShift.shiftId));
         setInventoryReportOpen(true);
     };

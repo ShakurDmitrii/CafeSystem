@@ -308,6 +308,24 @@ public class ShiftService {
             return shift;
         }
 
+        // После закрытия неоплаченный заказ уже нельзя ни оплатить, ни отменить,
+        // поэтому каждый заказ смены должен быть оплачен, отменён или оформлен в долг при создании.
+        List<Integer> unpaidOrderIds = dsl.select(Order.ORDER.ORDERID)
+                .from(Order.ORDER)
+                .where(Order.ORDER.SHIFTID.eq(shiftId))
+                .and(ORDER_CANCELLED_AT.isNull())
+                .and(IS_PAID_FIELD.isNull().or(IS_PAID_FIELD.isFalse()))
+                .and(Order.ORDER.DUTY.isNull().or(Order.ORDER.DUTY.isFalse()))
+                .orderBy(Order.ORDER.ORDERID)
+                .fetch(Order.ORDER.ORDERID);
+        if (!unpaidOrderIds.isEmpty()) {
+            throw new ShiftStateConflictException(
+                    "Нельзя закрыть смену: есть неоплаченные заказы № "
+                            + unpaidOrderIds.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(", "))
+                            + ". Примите по ним оплату или отмените их"
+            );
+        }
+
         var orders = dsl.selectFrom(Order.ORDER)
                 .where(Order.ORDER.SHIFTID.eq(shiftId))
                 .and(ORDER_CANCELLED_AT.isNull())

@@ -42,3 +42,15 @@ export const describeDebt = (order) => {
     }
     return `Долг не погашен: ${formatMoney(remaining)}`;
 };
+
+/** Заказы, из-за которых нельзя закрыть смену: не оплачены и не оформлены в долг. */
+export const findUnpaidOrders = (orders) => (orders ?? []).filter(
+    (order) => order && order.paid !== true && !order.duty
+);
+
+export const describeUnpaidOrdersBlock = (orders) => {
+    const unpaid = findUnpaidOrders(orders);
+    if (unpaid.length === 0) return null;
+    const numbers = unpaid.map((order) => `№ ${order.orderId}`).join(", ");
+    return `Нельзя закрыть смену: не оплачены заказы ${numbers}. Примите по ним оплату или отмените их.`;
+};

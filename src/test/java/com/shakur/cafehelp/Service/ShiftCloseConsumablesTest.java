@@ -41,6 +41,10 @@ class ShiftCloseConsumablesTest {
             if (sql.startsWith("update")) {
                 return new MockResult[]{new MockResult(1)};
             }
+            if (sql.startsWith("select \"sales\".\"order\".\"orderid\" from \"sales\".\"order\"")) {
+                // проверка неоплаченных заказов перед закрытием: их нет
+                return new MockResult[]{new MockResult(0, DATA.newResult(Order.ORDER.ORDERID))};
+            }
             if (sql.contains("from \"sales\".\"order_consumable\"")) {
                 var result = DATA.newResult(OC_ORDER_ID, OC_SURCHARGE, OC_COST);
                 result.add(DATA.newRecord(OC_ORDER_ID, OC_SURCHARGE, OC_COST)

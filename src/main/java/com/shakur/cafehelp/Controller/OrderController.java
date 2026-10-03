@@ -1,5 +1,7 @@
 package com.shakur.cafehelp.Controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.shakur.cafehelp.DTO.OrderDTO;
 import com.shakur.cafehelp.DTO.OrderDishDTO;
 import com.shakur.cafehelp.DTO.OrderEditRequestDTO;
@@ -24,6 +26,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/orders")
 public class OrderController {
+    private static final Logger log = LoggerFactory.getLogger(OrderController.class);
 
     private final OrderService orderService;
 
@@ -34,13 +37,6 @@ public class OrderController {
     // Создание нового заказа
     @PostMapping
     public ResponseEntity<?> createOrder(@RequestBody OrderDTO order, java.security.Principal principal) {
-        System.out.println("=== СОЗДАНИЕ ЗАКАЗА ===");
-        System.out.println("Получен DTO: " + order);
-        System.out.println("duty: " + order.getDuty());
-        System.out.println("debt_payment_date: " + order.getDebt_payment_date());
-        System.out.println("Тип debt_payment_date: " +
-                (order.getDebt_payment_date() != null ?
-                        order.getDebt_payment_date().getClass().getName() : "null"));
         try {
             order.setCreatedBy(principal != null ? principal.getName() : "order-api");
             OrderDTO createdOrder = orderService.createOrder(order);
@@ -52,6 +48,7 @@ public class OrderController {
         } catch (OrderStateConflictException e) {
             return orderError(HttpStatus.CONFLICT, "ORDER_STATE_CONFLICT", e.getMessage());
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", e.getMessage()));
         }
@@ -92,6 +89,7 @@ public class OrderController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Ошибка обновления оплаты: " + e.getMessage()));
         }
@@ -107,6 +105,7 @@ public class OrderController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Ошибка выдачи заказа: " + e.getMessage()));
         }
@@ -253,6 +252,7 @@ public class OrderController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Ошибка добавления блюд: " + e.getMessage()));
         }
@@ -281,6 +281,7 @@ public class OrderController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Ошибка подготовки данных для печати: " + e.getMessage()));
         }
