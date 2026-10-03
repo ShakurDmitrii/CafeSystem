@@ -11,39 +11,28 @@ import SupplierAssortmentCatalog from "./supplier-products/SupplierAssortmentCat
 import SupplierAssortmentHero from "./supplier-products/SupplierAssortmentHero";
 import SupplierProductEditor from "./supplier-products/SupplierProductEditor";
 import styles from "./SuppliersProductPage.module.css";
+import { unitLabel } from "../../utils/units";
+import { findProductByName, presetForUnit } from "../../components/forms/units";
 
 const API_PRODUCTS = `${API_BASE_URL}/api/product`;
 const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
 const API_UPLOAD = `${API_BASE_URL}/api/v1/files/images`;
 
-const UNIT_PRESETS = {
-    g: { baseUnit: "g", unitFactor: "1" },
-    kg: { baseUnit: "g", unitFactor: "1000" },
-    ml: { baseUnit: "ml", unitFactor: "1" },
-    l: { baseUnit: "ml", unitFactor: "1000" },
-    pcs: { baseUnit: "pcs", unitFactor: "1" }
-};
-
-const UNIT_OPTIONS = [
-    { value: "g", label: "Граммы (g)" },
-    { value: "kg", label: "Килограммы (kg)" },
-    { value: "ml", label: "Миллилитры (ml)" },
-    { value: "l", label: "Литры (l)" },
-    { value: "pcs", label: "Штуки (pcs)" }
-];
-
 const SORT_OPTIONS = new Set(["name_asc", "name_desc", "price_asc", "price_desc"]);
 
-const createEmptyForm = () => ({
-    productName: "",
-    productPrice: "",
-    waste: "0",
-    isFavorite: false,
-    unit: "g",
-    baseUnit: "g",
-    unitFactor: "1",
-    imageUrl: ""
-});
+const createEmptyForm = (unit = "kg") => {
+    const preset = presetForUnit(unit) ?? presetForUnit("kg");
+    return {
+        productName: "",
+        productPrice: "",
+        waste: "",
+        isFavorite: false,
+        unit: preset.value,
+        baseUnit: preset.baseUnit,
+        unitFactor: String(preset.unitFactor),
+        imageUrl: ""
+    };
+};
 
 const normalizeProduct = (product) => ({
     ...product,
@@ -117,6 +106,7 @@ export default function SupplierProductPage() {
         normalizeSupplier(null, supplierId)
     ));
     const [products, setProducts] = useState([]);
+    const [catalog, setCatalog] = useState([]);
     const [loading, setLoading] = useState(true);
     const [pageError, setPageError] = useState("");
     const [statusMessage, setStatusMessage] = useState("");
@@ -126,6 +116,7 @@ export default function SupplierProductPage() {
     const [formError, setFormError] = useState("");
     const [saving, setSaving] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
+    const [focusKey, setFocusKey] = useState(0);
 
     const search = searchParams.get("q") ?? "";
     const requestedSort = searchParams.get("sort") ?? "name_asc";
@@ -144,13 +135,15 @@ export default function SupplierProductPage() {
         setPageError("");
 
         try {
-            const [productsResponse, supplierResponse] = await Promise.all([
+            const [productsResponse, supplierResponse, catalogResponse] = await Promise.all([
                 fetch(`${API_PRODUCTS}/supplier/${supplierId}`),
-                fetch(`${API_SUPPLIERS}/${supplierId}`)
+                fetch(`${API_SUPPLIERS}/${supplierId}`),
+                fetch(API_PRODUCTS).catch(() => null)
             ]);
-            const [productsRaw, supplierRaw] = await Promise.all([
+            const [productsRaw, supplierRaw, catalogRaw] = await Promise.all([
                 productsResponse.text(),
-                supplierResponse.text()
+                supplierResponse.text(),
+                catalogResponse?.ok ? catalogResponse.text() : Promise.resolve("")
             ]);
 
             if (!productsResponse.ok) {
@@ -178,6 +171,13 @@ export default function SupplierProductPage() {
                     : []
             );
             setSupplier(normalizeSupplier(supplierData, supplierId));
+            // Общий каталог нужен только для подсказки о дубле; без него форма работает как раньше.
+            const catalogData = parseJsonSafe(catalogRaw);
+            setCatalog(
+                Array.isArray(catalogData)
+                    ? catalogData.map(normalizeProduct).filter((product) => product.productId > 0)
+                    : []
+            );
         } catch (error) {
             console.error("Ошибка загрузки ассортимента поставщика:", error);
             setPageError(
@@ -227,12 +227,12 @@ export default function SupplierProductPage() {
             initial: (product.productName || "П").slice(0, 1).toLocaleUpperCase("ru"),
             imageUrl: product.imageUrl,
             favorite: product.isFavorite,
-            purchasePriceLabel: `${formatMoney(product.productPrice)} ₽/${product.unit}`,
-            basePriceLabel: `${formatMoney(hasStockPrice ? stockPrice : calculatedBasePrice)} ₽/${product.baseUnit}`,
+            purchasePriceLabel: `${formatMoney(product.productPrice)} ₽/${unitLabel(product.unit)}`,
+            basePriceLabel: `${formatMoney(hasStockPrice ? stockPrice : calculatedBasePrice)} ₽/${unitLabel(product.baseUnit)}`,
             hasStockPrice,
             conversionLabel: factor === 1 && product.unit === product.baseUnit
-                ? `Учёт в ${product.baseUnit}`
-                : `1 ${product.unit} = ${formatNumber(factor)} ${product.baseUnit}`,
+                ? `Учёт в ${unitLabel(product.baseUnit)}`
+                : `1 ${unitLabel(product.unit)} = ${formatNumber(factor)} ${unitLabel(product.baseUnit)}`,
             wasteLabel: `${formatNumber(product.waste, 2)}%`,
             source: product
         };
@@ -242,9 +242,9 @@ export default function SupplierProductPage() {
         const price = Number(form.productPrice);
         const factor = Number(form.unitFactor);
         if (!Number.isFinite(price) || price < 0 || !Number.isFinite(factor) || factor <= 0) {
-            return `0 ₽ за 1 ${form.baseUnit}`;
+            return `0 ₽ за 1 ${unitLabel(form.baseUnit)}`;
         }
-        return `${formatMoney(price / factor)} ₽ за 1 ${form.baseUnit}`;
+        return `${formatMoney(price / factor)} ₽ за 1 ${unitLabel(form.baseUnit)}`;
     }, [form.baseUnit, form.productPrice, form.unitFactor]);
 
     const updateSearchParam = (key, value, defaultValue = "") => {
@@ -257,13 +257,24 @@ export default function SupplierProductPage() {
     };
 
     const handleChange = (field, value) => {
+        const preset = field === "unit" ? presetForUnit(value) : null;
+        if (preset && editingProductId != null && preset.baseUnit !== form.baseUnit) {
+            // Предложение поставщика пересчитывается в учётную единицу карточки, её здесь не поменять.
+            setFormError(`Продукт учитывается в ${unitLabel(form.baseUnit)} — выберите подходящую единицу.`);
+            return;
+        }
         setFormError("");
         setForm((current) => {
-            if (field === "unit" && UNIT_PRESETS[value]) {
+            if (field === "customUnit") {
+                return { ...current, unit: String(value).trimStart() };
+            }
+            const preset = field === "unit" ? presetForUnit(value) : null;
+            if (preset) {
                 return {
                     ...current,
                     unit: value,
-                    ...UNIT_PRESETS[value]
+                    baseUnit: preset.baseUnit,
+                    unitFactor: String(preset.unitFactor)
                 };
             }
             return { ...current, [field]: value };
@@ -308,8 +319,9 @@ export default function SupplierProductPage() {
         event.preventDefault();
         const productName = form.productName.trim();
         const productPrice = Number(form.productPrice);
-        const waste = Number(form.waste);
+        const waste = form.waste === "" ? 0 : Number(form.waste);
         const unitFactor = Number(form.unitFactor);
+        const unit = form.unit.trim().toLowerCase();
 
         if (!productName) {
             setFormError("Введите название продукта.");
@@ -323,12 +335,26 @@ export default function SupplierProductPage() {
             setFormError("Отход должен быть от 0 до 100%.");
             return;
         }
+        if (!unit) {
+            setFormError("Укажите единицу закупки.");
+            return;
+        }
         if (!Number.isFinite(unitFactor) || unitFactor <= 0) {
             setFormError("Коэффициент пересчёта должен быть больше 0.");
             return;
         }
 
         const editing = editingProductId != null;
+        // Такое название уже есть в общем каталоге: сервер не создаёт дубль,
+        // а добавляет этого поставщика к существующей карточке.
+        const existingInCatalog = editing ? null : findProductByName(catalog, productName);
+        if (existingInCatalog && existingInCatalog.baseUnit !== form.baseUnit) {
+            setFormError(
+                `«${existingInCatalog.productName}» учитывается в ${unitLabel(existingInCatalog.baseUnit)} — выберите подходящую единицу закупки.`
+            );
+            return;
+        }
+
         setSaving(true);
         setFormError("");
         setStatusMessage("");
@@ -348,16 +374,16 @@ export default function SupplierProductPage() {
                         ...(editing
                             ? {
                                 supplierPrice: productPrice,
-                                supplierUnit: form.unit,
+                                supplierUnit: unit,
                                 supplierUnitFactor: unitFactor
                             }
                             : {
                                 productPrice,
                                 supplierPrice: productPrice,
-                                unit: form.unit,
+                                unit,
                                 baseUnit: form.baseUnit,
                                 unitFactor,
-                                supplierUnit: form.unit,
+                                supplierUnit: unit,
                                 supplierUnitFactor: unitFactor
                             })
                     })
@@ -370,12 +396,20 @@ export default function SupplierProductPage() {
                 );
             }
 
-            resetEditor();
+            if (editing) {
+                resetEditor();
+            } else {
+                // Следующую позицию обычно покупают в тех же единицах: оставляем их и возвращаем фокус в название.
+                setForm(presetForUnit(unit) ? createEmptyForm(unit) : createEmptyForm());
+                setFocusKey((key) => key + 1);
+            }
             await loadData();
             setStatusMessage(
                 editing
                     ? `Карточка «${productName}» обновлена.`
-                    : `Продукт «${productName}» добавлен в ассортимент.`
+                    : existingInCatalog
+                        ? `«${existingInCatalog.productName}» уже была в каталоге — поставщик добавлен к ней.`
+                        : `Продукт «${productName}» добавлен в ассортимент.`
             );
         } catch (error) {
             console.error("Ошибка сохранения продукта:", error);
@@ -427,7 +461,10 @@ export default function SupplierProductPage() {
                 <SupplierProductEditor
                     supplierName={supplier.name}
                     form={form}
-                    unitOptions={UNIT_OPTIONS}
+                    supplierProducts={products}
+                    catalog={catalog}
+                    focusKey={focusKey}
+                    onEditExisting={startEditing}
                     editingProductId={editingProductId}
                     saving={saving}
                     uploadingImage={uploadingImage}

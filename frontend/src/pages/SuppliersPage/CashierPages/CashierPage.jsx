@@ -11,6 +11,7 @@ import OrderComposer from "./cashier-page/OrderComposer";
 import OrdersBoard from "./cashier-page/OrdersBoard";
 import ShiftLobby from "./cashier-page/ShiftLobby";
 import ShiftReportModal from "./cashier-page/ShiftReportModal";
+import { describeDebt, describeUnpaidOrdersBlock } from "./cashier-page/cashierUtils";
 import { openAppWindow, openPrintDocument } from "../../../utils/desktopWindows";
 
 const API_ORDERS = `${API_BASE_URL}/api/orders`;
@@ -104,7 +105,7 @@ export default function CashierPage() {
     const [allShifts, setAllShifts] = useState([]);
     const [preparationTime, setPreparationTime] = useState(30);
     const [deliveryCost, setDeliveryCost] = useState(0);
-    const [paymentType, setPaymentType] = useState("cash"); // cash | transfer | unpaid
+    const [paymentType, setPaymentType] = useState(""); // "" (не выбрано) | cash | transfer | unpaid
     const [deliveryPhone, setDeliveryPhone] = useState("");
     const [deliveryAddress, setDeliveryAddress] = useState("");
     const [dishCategories, setDishCategories] = useState([]);
@@ -243,25 +244,34 @@ export default function CashierPage() {
 
         fetchShifts()
             .then((loadedShifts) => {
-                // Если есть сохраненная смена, восстанавливаем ее
+                const shifts = Array.isArray(loadedShifts) ? loadedShifts : [];
+                const openShifts = shifts.filter((shift) => !shift.endTime);
+                let shiftToEnter = null;
+
+                // Сохранённую в этом браузере смену восстанавливаем, только если она ещё открыта
                 if (savedShiftOpen && savedShiftId && savedShiftData) {
                     try {
                         const savedShift = JSON.parse(savedShiftData);
-                        const restoredShift = Array.isArray(loadedShifts)
-                            ? loadedShifts.find((shift) => Number(shift.shiftId) === Number(savedShiftId)) || savedShift
-                            : savedShift;
-                        setCurrentShift(restoredShift);
-                        setShiftOpen(true);
-                        setSelectedShiftPersons(resolveShiftPersons(restoredShift));
-
-                        // Загружаем заказы для восстановленной смены
-                        loadOrdersForShift(restoredShift.shiftId);
+                        const actual = shifts.find((shift) => Number(shift.shiftId) === Number(savedShiftId));
+                        shiftToEnter = actual ? (actual.endTime ? null : actual) : savedShift;
                     } catch (e) {
                         console.error("Ошибка восстановления смены:", e);
-                        localStorage.removeItem('currentShiftId');
-                        localStorage.removeItem('shiftOpen');
-                        localStorage.removeItem('currentShiftData');
                     }
+                }
+                // Иначе, если на сервере открыта ровно одна смена, сразу входим в неё
+                if (!shiftToEnter && openShifts.length === 1) {
+                    shiftToEnter = openShifts[0];
+                }
+
+                if (shiftToEnter) {
+                    setCurrentShift(shiftToEnter);
+                    setShiftOpen(true);
+                    setSelectedShiftPersons(resolveShiftPersons(shiftToEnter));
+                    loadOrdersForShift(shiftToEnter.shiftId);
+                } else {
+                    localStorage.removeItem('currentShiftId');
+                    localStorage.removeItem('shiftOpen');
+                    localStorage.removeItem('currentShiftData');
                 }
             })
             .finally(() => setIsLoading(false));
@@ -550,6 +560,12 @@ export default function CashierPage() {
 
     const closeShift = () => {
         if (!currentShift?.shiftId) return;
+        // Сервер всё равно не закроет такую смену; предупреждаем до отчёта об остатках.
+        const unpaidBlock = describeUnpaidOrdersBlock(orders);
+        if (unpaidBlock) {
+            alert(unpaidBlock);
+            return;
+        }
         setInventoryReportShiftId(String(currentShift.shiftId));
         setInventoryReportOpen(true);
     };
@@ -639,6 +655,10 @@ export default function CashierPage() {
                 if (Number(order.deliveryExpense || 0) > 0) {
                     lines.push(`    Доставка: ${Number(order.deliveryExpense).toFixed(2)} ₽`);
                 }
+                const debtMark = describeDebt(order);
+                if (debtMark) {
+                    lines.push(`    ${debtMark}`);
+                }
                 lines.push("");
             });
 
@@ -651,6 +671,11 @@ export default function CashierPage() {
             lines.push(`Траты на доставку: ${Number(report.totals?.deliveryExpense || 0).toFixed(2)} ₽`);
             lines.push(`Общая выручка: ${Number(report.totals?.revenue || 0).toFixed(2)} ₽`);
             lines.push(`Неоплаченная сумма: ${Number(report.totals?.unpaidAmount || 0).toFixed(2)} ₽`);
+            if (Number(report.totals?.debtOrdersCount || 0) > 0) {
+                lines.push(`В долг: ${Number(report.totals?.debtAmount || 0).toFixed(2)} ₽`);
+                lines.push(`  из них погашено: ${Number(report.totals?.debtRepaidAmount || 0).toFixed(2)} ₽`);
+                lines.push(`  остаток долга: ${Number(report.totals?.debtOutstandingAmount || 0).toFixed(2)} ₽`);
+            }
             lines.push(`Себестоимость: ${Number(report.totals?.cost || 0).toFixed(2)} ₽`);
             lines.push(`Расходы смены: ${Number(report.totals?.expenses || 0).toFixed(2)} ₽`);
             lines.push(`Прибыль: ${Number(report.totals?.profit || 0).toFixed(2)} ₽`);
@@ -795,7 +820,7 @@ ${reportText}
             setConsumableOverrides({});
             setOrderType(false);
             setDeliveryCost(0);
-            setPaymentType("cash");
+            setPaymentType("");
             setDeliveryPhone("");
             setDeliveryAddress("");
             setPreparationTime(30);
@@ -859,7 +884,7 @@ ${reportText}
             setShowDatePicker(true);
         } else {
             setIsDebt(false);
-            setPaymentType("cash");
+            setPaymentType("");
             setShowDatePicker(false);
         }
     };
@@ -1359,6 +1384,7 @@ ${reportText}
                 isLoading={isLoading}
                 onShowDebts={() => setShowDebtNotification(true)}
                 onPrintReport={printZReport}
+                onCloseShift={closeShift}
                 onOpenKitchen={async () => {
                     if (!currentShift?.shiftId) return;
                     try {
@@ -1485,7 +1511,6 @@ ${reportText}
                             return next;
                         })}
                         onCreateOrder={() => createOrder()}
-                        onCloseShift={closeShift}
                     />
                     <OrdersBoard
                         orders={orders}

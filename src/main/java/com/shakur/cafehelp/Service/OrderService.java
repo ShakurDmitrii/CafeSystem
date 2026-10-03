@@ -167,7 +167,6 @@ public class OrderService {
 
             Integer orderId = result.get(ORDER.ORDERID);
             consumableService.replaceForOrder(orderId, consumables);
-            System.out.println("Created order with ID: " + orderId);
 
             if (!items.isEmpty()) {
                 for (ValidatedOrderItem item : items) {
@@ -207,8 +206,6 @@ public class OrderService {
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            System.err.println("Error creating order: " + e.getMessage());
-            e.printStackTrace();
             throw new RuntimeException("Failed to create order: " + e.getMessage(), e);
         }
     }

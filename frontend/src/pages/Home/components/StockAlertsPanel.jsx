@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import styles from "../HomePage.module.css";
+import { unitLabel } from "../../../utils/units";
 
 const quantityFormatter = new Intl.NumberFormat("ru-RU", {
     maximumFractionDigits: 2
@@ -60,7 +61,7 @@ export default function StockAlertsPanel({ stocks, visible }) {
                                 </small>
                             </span>
                             <strong className={styles.itemValue}>
-                                {quantityFormatter.format(stock.qty)}&nbsp;{stock.unit}
+                                {quantityFormatter.format(stock.qty)}&nbsp;{unitLabel(stock.unit)}
                             </strong>
                         </li>
                     ))}

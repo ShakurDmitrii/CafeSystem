@@ -46,6 +46,7 @@ import com.shakur.cafehelp.Service.TaxReceiptDispatchService;
 import com.shakur.cafehelp.Service.WareHouseService;
 import com.shakur.cafehelp.Service.VkClientLinkService;
 import com.shakur.cafehelp.exception.OrderStateConflictException;
+import com.shakur.cafehelp.exception.ShiftStateConflictException;
 import com.shakur.cafehelp.config.BusinessTimeProvider;
 import com.shakur.cafehelp.security.JwtService;
 import jooqdata.tables.records.ShiftRecord;
@@ -780,7 +781,9 @@ class CafehelpApplicationTests {
         );
         assertThat(outbox.get("status", String.class)).isEqualTo("pending");
         assertThat(outbox.get("attempt_count", Integer.class)).isEqualTo(1);
-        assertThat(outbox.get("available_at", java.time.LocalDateTime.class)).isAfter(businessTime.now());
+        // Relay считает задержку от часов JVM (как и now() в сессии БД), а не от бизнес-времени кафе:
+        // при поясе системы, отличном от Europe/Moscow, сравнение с businessTime давало ложное падение.
+        assertThat(outbox.get("available_at", java.time.LocalDateTime.class)).isAfter(java.time.LocalDateTime.now());
         assertThat(outbox.get("locked_at", java.time.LocalDateTime.class)).isNull();
     }
 
@@ -1094,6 +1097,45 @@ class CafehelpApplicationTests {
         assertThat((Double) totals.get("unpaidAmount")).isEqualTo(20.0);
         assertThat((Integer) totals.get("paidOrdersCount")).isZero();
         assertThat((Integer) totals.get("unpaidOrdersCount")).isEqualTo(1);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void debtRepaidAfterShiftCloseIsMarkedInTheOriginalShiftReport() {
+        OrderFixture fixture = createOrderFixture(10.0, 1.0);
+        OrderDTO debt = orderRequest(fixture.shiftId(), fixture.dishId(), false);
+        debt.setDuty(true);
+        debt.setClientId(createClient("Пометка долга", "+7 999 000-00-12"));
+        debt.setDebt_payment_date(businessTime.today().plusDays(1));
+        int orderId = orderService.createOrder(debt).getOrderId();
+        shiftService.closeShift(fixture.shiftId(), BigDecimal.ZERO);
+
+        var beforeRepayment = shiftService.buildZReport(fixture.shiftId());
+        var openOrder = ((java.util.List<java.util.Map<String, Object>>) beforeRepayment.get("orders")).get(0);
+        assertThat(openOrder.get("isDebt")).isEqualTo(true);
+        assertThat(openOrder.get("debtStatus")).isEqualTo("open");
+
+        clientService.payDebt(orderId, debtPayment("5.00", "cash", "mark-debt-1"));
+        clientService.payDebt(orderId, debtPayment("15.00", "transfer", "mark-debt-2"));
+
+        var report = shiftService.buildZReport(fixture.shiftId());
+        var order = ((java.util.List<java.util.Map<String, Object>>) report.get("orders")).get(0);
+        assertThat(order.get("isDebt")).isEqualTo(true);
+        assertThat(order.get("debtStatus")).isEqualTo("repaid");
+        assertThat((BigDecimal) order.get("debtOriginalAmount")).isEqualByComparingTo("20.00");
+        assertThat((BigDecimal) order.get("debtRepaidAmount")).isEqualByComparingTo("20.00");
+        assertThat((BigDecimal) order.get("debtRemainingAmount")).isEqualByComparingTo("0");
+        var payments = (java.util.List<java.util.Map<String, Object>>) order.get("debtPayments");
+        assertThat(payments).extracting(payment -> payment.get("paymentType"))
+                .containsExactly("cash", "transfer");
+
+        var totals = (java.util.Map<String, Object>) report.get("totals");
+        assertThat((Integer) totals.get("debtOrdersCount")).isEqualTo(1);
+        assertThat((BigDecimal) totals.get("debtAmount")).isEqualByComparingTo("20.00");
+        assertThat((BigDecimal) totals.get("debtRepaidAmount")).isEqualByComparingTo("20.00");
+        assertThat((BigDecimal) totals.get("debtOutstandingAmount")).isEqualByComparingTo("0");
+        // Выручка закрытой смены задним числом не меняется — только пометка у заказа.
+        assertThat((Double) totals.get("revenue")).isZero();
     }
 
     @Test
@@ -1557,20 +1599,11 @@ class CafehelpApplicationTests {
     void shiftFinancialTotalsIncludeOnlyPaidActiveOrders() {
         OrderFixture fixture = createOrderFixture(20.0, 3.0);
         orderService.createOrder(orderRequest(fixture.shiftId(), fixture.dishId(), true));
-        orderService.createOrder(orderRequest(fixture.shiftId(), fixture.dishId(), false));
+        OrderDTO unpaid = orderService.createOrder(orderRequest(fixture.shiftId(), fixture.dishId(), false));
         OrderDTO cancelled = orderService.createOrder(
                 orderRequest(fixture.shiftId(), fixture.dishId(), false)
         );
         orderService.cancelOrder(cancelled.getOrderId(), "Дубликат", cancelled.getVersion());
-
-        ShiftRecord closed = shiftService.closeShift(
-                fixture.shiftId(),
-                new BigDecimal("3.00")
-        );
-
-        assertThat(closed.getIncome()).isEqualTo(20.0);
-        assertThat(closed.getExpenses()).isEqualByComparingTo("3.00");
-        assertThat(closed.getProfit()).isEqualByComparingTo("7.00");
 
         @SuppressWarnings("unchecked")
         var totals = (java.util.Map<String, Object>) shiftService
@@ -1582,6 +1615,25 @@ class CafehelpApplicationTests {
         assertThat((Double) totals.get("revenue")).isEqualTo(20.0);
         assertThat((Double) totals.get("unpaidAmount")).isEqualTo(20.0);
         assertThat((Double) totals.get("cost")).isEqualTo(10.0);
+
+        // Неоплаченный заказ (не в долг) не даёт закрыть смену: после закрытия его уже не оплатить и не отменить.
+        assertThatThrownBy(() -> shiftService.closeShift(fixture.shiftId(), new BigDecimal("3.00")))
+                .isInstanceOf(ShiftStateConflictException.class)
+                .hasMessageContaining("№ " + unpaid.getOrderId());
+        assertThat(dsl.fetchValue(
+                "select closed_at from sales.shift where id = ?", fixture.shiftId()
+        )).isNull();
+
+        OrderDTO pending = orderService.getOrderById(unpaid.getOrderId());
+        orderService.cancelOrder(unpaid.getOrderId(), "Клиент ушёл", pending.getVersion());
+        ShiftRecord closed = shiftService.closeShift(
+                fixture.shiftId(),
+                new BigDecimal("3.00")
+        );
+
+        assertThat(closed.getIncome()).isEqualTo(20.0);
+        assertThat(closed.getExpenses()).isEqualByComparingTo("3.00");
+        assertThat(closed.getProfit()).isEqualByComparingTo("7.00");
     }
 
     @Test
@@ -1768,9 +1820,15 @@ class CafehelpApplicationTests {
     void closedShiftRejectsNewOrdersAndPaymentOfExistingOrders() {
         OrderFixture fixture = createOrderFixture(10.0, 3.0);
         OrderDTO unpaid = orderService.createOrder(
-                orderRequest(fixture.shiftId(), fixture.dishId(), false)
+                orderRequest(fixture.shiftId(), fixture.dishId(), true)
         );
         shiftService.closeShift(fixture.shiftId(), BigDecimal.ZERO);
+        // Неоплаченный заказ в закрытой смене бывает только в данных, записанных до запрета
+        // закрывать смену с такими заказами: воспроизводим его напрямую.
+        dsl.execute(
+                "update sales.\"order\" set is_paid = false, payment_type = 'unpaid', paid_at = null where orderid = ?",
+                unpaid.getOrderId()
+        );
 
         assertThatThrownBy(() -> orderService.createOrder(
                 orderRequest(fixture.shiftId(), fixture.dishId(), false)

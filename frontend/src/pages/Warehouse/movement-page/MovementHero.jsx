@@ -1,9 +1,9 @@
-import styles from "../Movement.module.css";
+import PageHeader from "../../../components/layout/PageHeader";
 
 const TYPE_LABELS = {
-    receipt: "Приход",
-    movement: "Перемещение",
-    writeoff: "Списание"
+    receipt: "Приходов",
+    movement: "Перемещений",
+    writeoff: "Списаний"
 };
 
 export default function MovementHero({
@@ -20,17 +20,14 @@ export default function MovementHero({
         return accumulator;
     }, {});
     return (
-        <header className={styles.hero}>
-            <div className={styles.heroCopy}>
-                <p>Журнал товарного потока</p>
-                <h1>Каждая упаковка оставляет след</h1>
-                <span>
-                    Приходы из накладных, внутренние передачи и списания собраны
-                    в одной хронологии.
-                </span>
-                <div className={styles.heroActions}>
+        <PageHeader
+            title="Движения"
+            description="Журнал приходов, перемещений и списаний по всем складам."
+            stats={Object.entries(TYPE_LABELS).map(([type, label]) => ({ label, value: counts[type] ?? 0 }))}
+            actions={(
+                <>
                     <button type="button" onClick={onRefresh} disabled={loading}>
-                        {loading ? "Обновляем…" : "Обновить журнал"}
+                        {loading ? "Обновляем…" : "Обновить"}
                     </button>
                     <button type="button" onClick={onToggleReport} aria-pressed={showReport}>
                         Динамика закупок
@@ -38,18 +35,8 @@ export default function MovementHero({
                     <button type="button" onClick={onToggleTurnover} aria-pressed={showTurnoverReport}>
                         Оборот
                     </button>
-                </div>
-            </div>
-            <div className={styles.flowBoard} aria-label="Сводка по типам операций">
-                <span>Каналы движения</span>
-                {Object.entries(TYPE_LABELS).map(([type, label]) => (
-                    <div key={type}>
-                        <i className={styles[`flow_${type}`]} aria-hidden="true" />
-                        <strong>{label}</strong>
-                        <small>{counts[type] ?? 0} документов</small>
-                    </div>
-                ))}
-            </div>
-        </header>
+                </>
+            )}
+        />
     );
 }

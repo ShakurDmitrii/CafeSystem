@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import PageHeader from "../../components/layout/PageHeader";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import styles from "./SystemPage.module.css";
 
@@ -154,16 +155,15 @@ export default function SystemPage() {
 
     return (
         <div className={styles.page}>
-            <section className={styles.hero}>
-                <div>
-                    <p className={styles.kicker}>Локальная установка</p>
-                    <h1>Система и резервные копии</h1>
-                    <p>Проверка компонентов CafeHelp на этом компьютере и безопасное сохранение рабочих данных.</p>
-                </div>
-                <button type="button" className={styles.refreshButton} onClick={loadStatus} disabled={loading || Boolean(action)}>
-                    {loading ? "Проверяем…" : "Обновить состояние"}
-                </button>
-            </section>
+            <PageHeader
+                title="Система"
+                description="Состояние компонентов CafeHelp на этом компьютере и резервные копии данных."
+                actions={(
+                    <button type="button" onClick={loadStatus} disabled={loading || Boolean(action)}>
+                        {loading ? "Проверяем…" : "Обновить состояние"}
+                    </button>
+                )}
+            />
 
             {message ? <div className={message.type === "error" ? styles.errorMessage : styles.successMessage}>{message.text}</div> : null}
 

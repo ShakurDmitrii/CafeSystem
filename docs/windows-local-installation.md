@@ -18,11 +18,13 @@ Java, Python, Node.js, PostgreSQL и MinIO на рабочем компьюте�
 
 ```powershell
 .\tools\build-windows-release.ps1 `
-  -Version 0.1.0 `
+  -Version 0.1.1 `
   -PrinterDriverSource "C:\path\to\Thermal Printer Driver（Windows）"
 ```
 
 Скрипт проверяет цифровые подписи драйверов, собирает versioned Docker images, формирует offline image-pack и создаёт NSIS installer.
+
+MinIO больше не публикует community-образы в Docker Hub. Если образа `minio/minio:RELEASE.2025-09-07T16-13-09Z` нет в локальном Docker и он не скачивается, скрипт собирает тот же релиз из исходников по `desktop/minio/Dockerfile` (нужен только Docker и доступ к GitHub).
 
 ## Первый запуск
 

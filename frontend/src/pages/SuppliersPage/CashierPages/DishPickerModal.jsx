@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import styles from "./DishPickerModal.module.css";
+import { formatMoney } from "./cashier-page/cashierUtils";
 
 const normalize = (v) => String(v || "").trim();
 const FOCUSABLE = [
@@ -310,7 +311,7 @@ export default function DishPickerModal({
                                         )}
                                         <div className={styles.dishName}>{d.dishName}</div>
                                         <div className={styles.dishMeta}>
-                                            <span>{Number(d.price || 0).toFixed(2)} ₽</span>
+                                            <span>{formatMoney(d.price)}</span>
                                             <span className={styles.dishMetaRight}>
                                                 <span className={styles.typeBadge}>
                                                     {isSet ? "Набор" : "Блюдо"}
@@ -353,7 +354,7 @@ export default function DishPickerModal({
                                                 </span>
                                             </div>
                                             <div className={styles.cartPrice}>
-                                                {Number(i.price || 0).toFixed(2)} ₽
+                                                {formatMoney(i.price)}
                                             </div>
                                         </div>
                                         <div className={styles.cartControls}>
@@ -402,7 +403,7 @@ export default function DishPickerModal({
                         )}
                         <div className={styles.cartFooter}>
                             <div className={styles.total}>
-                                Итого: {Number(total || 0).toFixed(2)} ₽
+                                Итого: {formatMoney(total)}
                             </div>
                             <button
                                 className={styles.okBtn}

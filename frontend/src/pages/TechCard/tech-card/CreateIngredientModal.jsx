@@ -1,36 +1,36 @@
 import ModalShell from "./ModalShell";
 import styles from "../TechCardPage.module.css";
-
-const unitOptions = [
-    { value: "g", label: "Граммы (g)" },
-    { value: "kg", label: "Килограммы (kg)" },
-    { value: "ml", label: "Миллилитры (ml)" },
-    { value: "l", label: "Литры (l)" },
-    { value: "pcs", label: "Штуки (pcs)" }
-];
+import { unitLabel } from "../../../utils/units";
+import UnitChips from "../../../components/forms/UnitChips";
+import { findProductByName } from "../../../components/forms/units";
 
 export default function CreateIngredientModal({
     form,
     suppliers,
+    products = [],
     error,
     loading,
     onChange,
     onSubmit,
+    onPickExisting,
     onClose
 }) {
+    const duplicate = findProductByName(products, form.productName);
+    const basePrice = Number(form.productPrice) / Number(form.unitFactor || 1);
+
     return (
         <ModalShell
             titleId="create-ingredient-title"
             eyebrow="Новый продукт"
             title="Добавить в справочник"
-            subtitle="После создания продукт автоматически выберется для новой строки техкарты."
+            subtitle="Достаточно названия, единицы и цены. После создания продукт сразу выберется для строки техкарты."
             onClose={onClose}
             busy={loading}
         >
             <form onSubmit={onSubmit} className={styles.modalForm}>
                 <div className={styles.modalFormGrid}>
                     <label className={`${styles.field} ${styles.fieldWide}`} htmlFor="new-product-name">
-                        <span>Название продукта</span>
+                        <span>Название</span>
                         <input
                             id="new-product-name"
                             name="newProductName"
@@ -40,12 +40,25 @@ export default function CreateIngredientModal({
                             placeholder="Например, сливки 20%…"
                             autoComplete="off"
                             className={styles.input}
+                            autoFocus
                             required
                         />
                     </label>
+                    {duplicate ? (
+                        <div className={`${styles.fieldWide} ${styles.duplicateNotice}`} role="status">
+                            <span>«{duplicate.productName}» уже есть в справочнике.</span>
+                            <button type="button" onClick={() => onPickExisting(duplicate)}>
+                                Выбрать его
+                            </button>
+                        </div>
+                    ) : null}
+
+                    <div className={styles.fieldWide}>
+                        <UnitChips value={form.unit} onChange={(value) => onChange("unit", value)} name="newProductUnit" />
+                    </div>
 
                     <label className={styles.field} htmlFor="new-product-price">
-                        <span>Цена за единицу, ₽</span>
+                        <span>Цена за 1 {unitLabel(form.unit)}, ₽</span>
                         <input
                             id="new-product-price"
                             name="newProductPrice"
@@ -53,50 +66,22 @@ export default function CreateIngredientModal({
                             inputMode="decimal"
                             value={form.productPrice}
                             onChange={(event) => onChange("productPrice", event.target.value)}
-                            placeholder="Например, 0,42…"
+                            placeholder="Например, 450"
                             min="0"
                             step="0.01"
                             autoComplete="off"
                             className={styles.input}
                             required
                         />
-                    </label>
-
-                    <label className={styles.field} htmlFor="new-product-waste">
-                        <span>Отход по умолчанию, %</span>
-                        <input
-                            id="new-product-waste"
-                            name="newProductWaste"
-                            type="number"
-                            inputMode="decimal"
-                            value={form.waste}
-                            onChange={(event) => onChange("waste", event.target.value)}
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            autoComplete="off"
-                            className={styles.input}
-                        />
-                    </label>
-
-                    <label className={styles.field} htmlFor="new-product-unit">
-                        <span>Единица закупки</span>
-                        <select
-                            id="new-product-unit"
-                            name="newProductUnit"
-                            value={form.unit}
-                            onChange={(event) => onChange("unit", event.target.value)}
-                            autoComplete="off"
-                            className={styles.select}
-                        >
-                            {unitOptions.map((unit) => (
-                                <option key={unit.value} value={unit.value}>{unit.label}</option>
-                            ))}
-                        </select>
+                        {form.unit !== form.baseUnit && Number.isFinite(basePrice) && form.productPrice !== "" ? (
+                            <small className={styles.fieldHint}>
+                                = {basePrice.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} ₽ за 1 {unitLabel(form.baseUnit)}
+                            </small>
+                        ) : null}
                     </label>
 
                     <label className={styles.field} htmlFor="new-product-supplier">
-                        <span>Поставщик</span>
+                        <span>Поставщик <small className={styles.fieldHint}>необязательно</small></span>
                         <select
                             id="new-product-supplier"
                             name="newProductSupplier"
@@ -114,12 +99,25 @@ export default function CreateIngredientModal({
                         </select>
                     </label>
 
-                    <div className={`${styles.field} ${styles.unitSummary}`}>
-                        <span>Как сохранится цена</span>
-                        <div className={styles.unitHint}>
-                            1 {form.unit} = {form.unitFactor} {form.baseUnit}. Расчёт техкарты использует базовую единицу.
-                        </div>
-                    </div>
+                    <details className={`${styles.fieldWide} ${styles.moreOptions}`}>
+                        <summary>Дополнительно: отход при обработке</summary>
+                        <label className={styles.field} htmlFor="new-product-waste">
+                            <span>Отход по умолчанию, %</span>
+                            <input
+                                id="new-product-waste"
+                                name="newProductWaste"
+                                type="number"
+                                inputMode="decimal"
+                                value={form.waste}
+                                onChange={(event) => onChange("waste", event.target.value)}
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                autoComplete="off"
+                                className={styles.input}
+                            />
+                        </label>
+                    </details>
                 </div>
 
                 {error ? <div className={styles.errorText} role="alert">{error}</div> : null}

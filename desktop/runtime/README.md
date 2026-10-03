@@ -6,9 +6,9 @@ Launcher создаёт `runtime.env` с локальными секретами
 
 Release-сборка обязана заранее загрузить или приложить версии образов:
 
-- `cafehelp-backend:0.1.0`
-- `cafehelp-pymodule:0.1.0`
-- `cafehelp-vkbot:0.1.0`
+- `cafehelp-backend:0.1.1`
+- `cafehelp-pymodule:0.1.1`
+- `cafehelp-vkbot:0.1.1`
 - `postgres:16-alpine`
 - `minio/minio:RELEASE.2025-09-07T16-13-09Z`
 

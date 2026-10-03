@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL } from "../../../auth";
 import styles from "./CashierPage.module.css";
 import { formatDate, formatMoney } from "./cashier-page/cashierUtils";
+import { unitLabel } from "../../../utils/units";
 
 async function loadOrderDishes(orderId) {
     if (!orderId) return [];
@@ -236,7 +237,7 @@ export default function OrderCard({
                     <strong>Комплектация · {order.personCount || 1} перс.</strong>
                     {order.consumables.map((item) => (
                         <span key={item.productId}>
-                            {item.productName}: {Number(item.actualQuantity || 0).toLocaleString("ru-RU")} {item.baseUnit}
+                            {item.productName}: {Number(item.actualQuantity || 0).toLocaleString("ru-RU")} {unitLabel(item.baseUnit)}
                             {Number(item.surchargeAmount || 0) > 0 ? ` · +${formatMoney(item.surchargeAmount)}` : ""}
                         </span>
                     ))}
@@ -261,61 +262,62 @@ export default function OrderCard({
                 )}
             </dl>
 
-            <div className={styles.orderCardActions}>
-                <button
-                    className={styles.orderActionQuiet}
-                    type="button"
-                    disabled={Boolean(busyAction)}
-                    onClick={() => runAction("number", () => onPrintOrderNumber?.(order), "Номер отправлен на печать")}
-                >
-                    {busyAction === "number" ? "Печатаем…" : "Номер"}
-                </button>
-                <button
-                    className={styles.orderActionQuiet}
-                    type="button"
-                    disabled={Boolean(busyAction)}
-                    onClick={() => runAction("details", () => onPrintOrderDetails?.(order, items), "Чек отправлен на печать")}
-                >
-                    {busyAction === "details" ? "Печатаем…" : "Чек"}
-                </button>
+            {!isPaid && !order.duty && (
+                <div className={styles.orderPaymentRow}>
+                    <span>Принять оплату</span>
+                    <button
+                        className={styles.orderActionPrimary}
+                        type="button"
+                        disabled={Boolean(busyAction)}
+                        onClick={() => onRequestCashPayment?.(order)}
+                    >
+                        Наличными
+                    </button>
+                    <button
+                        className={styles.orderActionPrimary}
+                        type="button"
+                        disabled={Boolean(busyAction)}
+                        onClick={() => runAction(
+                            "transfer",
+                            () => onUpdatePayment?.(order.orderId, "transfer"),
+                            "Оплата переводом отмечена"
+                        )}
+                    >
+                        {busyAction === "transfer" ? "Сохраняем…" : "Переводом"}
+                    </button>
+                </div>
+            )}
 
+            <div className={styles.orderCardActions}>
                 {!isReady && (
-                    <button className={styles.orderActionPrimary} type="button" onClick={() => markOrderReady(order.orderId)}>
+                    <button className={styles.orderActionStatus} type="button" onClick={() => markOrderReady(order.orderId)}>
                         Готово
                     </button>
                 )}
-
-                {!isPaid && (
-                    <>
-                        <button
-                            className={styles.orderActionPrimary}
-                            type="button"
-                            disabled={Boolean(busyAction)}
-                            onClick={() => onRequestCashPayment?.(order)}
-                        >
-                            Наличные
-                        </button>
-                        <button
-                            className={styles.orderActionQuiet}
-                            type="button"
-                            disabled={Boolean(busyAction)}
-                            onClick={() => runAction(
-                                "transfer",
-                                () => onUpdatePayment?.(order.orderId, "transfer"),
-                                "Оплата переводом отмечена"
-                            )}
-                        >
-                            Перевод
-                        </button>
-                    </>
-                )}
-
                 {isReady && !isIssued && (
                     <button className={styles.orderActionIssue} type="button" onClick={() => onIssueOrder?.(order.orderId)}>
                         Выдать
                     </button>
                 )}
                 {isIssued && <span className={styles.issuedLabel}>Выдан</span>}
+
+                <div className={styles.orderPrintLinks}>
+                    <span>Печать:</span>
+                    <button
+                        type="button"
+                        disabled={Boolean(busyAction)}
+                        onClick={() => runAction("number", () => onPrintOrderNumber?.(order), "Номер отправлен на печать")}
+                    >
+                        {busyAction === "number" ? "печатаем…" : "номер"}
+                    </button>
+                    <button
+                        type="button"
+                        disabled={Boolean(busyAction)}
+                        onClick={() => runAction("details", () => onPrintOrderDetails?.(order, items), "Чек отправлен на печать")}
+                    >
+                        {busyAction === "details" ? "печатаем…" : "чек"}
+                    </button>
+                </div>
             </div>
 
             {message && (

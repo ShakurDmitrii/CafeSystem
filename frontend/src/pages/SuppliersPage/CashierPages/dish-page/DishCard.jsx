@@ -46,7 +46,11 @@ export default function DishCard({
                 </div>
                 <div className={styles.metric}>
                     <dt className={styles.metricLabel}>Себестоимость</dt>
-                    <dd>{formatMoney(dish.firstCost)} ₽</dd>
+                    <dd>
+                        {Number(dish.firstCost) > 0
+                            ? `${formatMoney(dish.firstCost)} ₽`
+                            : "Нет техкарты"}
+                    </dd>
                 </div>
             </dl>
 

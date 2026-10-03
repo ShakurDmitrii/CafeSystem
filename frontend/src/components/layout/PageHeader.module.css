@@ -1,0 +1,126 @@
+.pageHeader {
+    display: grid;
+    gap: 14px;
+    padding: 4px 2px 6px;
+}
+
+.headingRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px 20px;
+}
+
+.copy {
+    min-width: 0;
+}
+
+.backLink {
+    display: inline-block;
+    margin-bottom: 6px;
+    color: var(--color-accent-strong);
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.backLink:hover {
+    text-decoration: underline;
+}
+
+.title {
+    margin: 0;
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: clamp(24px, 2.4vw, 30px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+}
+
+.description {
+    max-width: 760px;
+    margin: 6px 0 0;
+    color: var(--color-muted);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.actions button,
+.actions a {
+    min-height: 38px;
+    padding: 8px 14px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--color-ink);
+    background: var(--color-surface);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.actions button[aria-pressed="true"] {
+    color: #fff;
+    border-color: var(--color-accent-strong);
+    background: var(--color-accent-strong);
+}
+
+.actions button:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+.stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0;
+}
+
+.stats > div {
+    display: grid;
+    min-width: 112px;
+    gap: 2px;
+    padding: 9px 13px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+}
+
+.stats dt {
+    color: var(--color-muted);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.stats dd {
+    margin: 0;
+    color: var(--color-ink);
+    font-family: var(--font-data);
+    font-size: 17px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.stats > .stat_warning {
+    border-color: var(--color-warning);
+    background: var(--color-warning-soft);
+}
+
+.stats > .stat_danger {
+    border-color: var(--color-danger);
+    background: var(--color-danger-soft);
+}
+
+.stats > .stat_danger dd {
+    color: var(--color-danger);
+}

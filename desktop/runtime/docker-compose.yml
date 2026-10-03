@@ -54,7 +54,7 @@ services:
     mem_limit: 768m
 
   backend:
-    image: ${CAFEHELP_BACKEND_IMAGE:-cafehelp-backend:0.1.0}
+    image: ${CAFEHELP_BACKEND_IMAGE:-cafehelp-backend:0.1.1}
     container_name: cafehelp-backend
     depends_on:
       db:
@@ -88,7 +88,7 @@ services:
     mem_limit: 2g
 
   pymodule:
-    image: ${CAFEHELP_PYMODULE_IMAGE:-cafehelp-pymodule:0.1.0}
+    image: ${CAFEHELP_PYMODULE_IMAGE:-cafehelp-pymodule:0.1.1}
     container_name: cafehelp-pymodule
     depends_on:
       - backend
@@ -110,7 +110,7 @@ services:
     mem_limit: 2g
 
   vkbot:
-    image: ${CAFEHELP_VKBOT_IMAGE:-cafehelp-vkbot:0.1.0}
+    image: ${CAFEHELP_VKBOT_IMAGE:-cafehelp-vkbot:0.1.1}
     container_name: cafehelp-vkbot
     profiles: ["vkbot"]
     depends_on:
