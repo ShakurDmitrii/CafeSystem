@@ -378,6 +378,10 @@ components:
           description: Сумма порций блюда за дату; Java агрегирует позиции заказов перед обучением.
         date: {type: string, format: date}
         rollName: {type: [string, 'null']}
+        dishId:
+          type: [integer, 'null']
+          minimum: 1
+          description: Блюдо; если указано во всех записях, дни без продаж восстанавливаются нулями.
     TrainingRequest:
       type: object
       additionalProperties: false

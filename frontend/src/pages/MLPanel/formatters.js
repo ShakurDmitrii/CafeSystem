@@ -52,3 +52,28 @@ export const formatTime = (value) => {
     const date = value ? new Date(value) : new Date();
     return Number.isNaN(date.getTime()) ? '—' : timeFormatter.format(date);
 };
+
+const formatIsoDate = (value) => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? ''));
+    return match ? `${match[3]}.${match[2]}.${match[1]}` : null;
+};
+
+/** Итог обучения для статусной строки: период, объём данных и предупреждения модели. */
+export const describeTrainingResult = (result) => {
+    const training = result?.trainingResult ?? {};
+    const records = result?.recordsCount ?? training.records;
+    const from = formatIsoDate(training.trainingStartDate);
+    const to = formatIsoDate(training.trainingEndDate);
+    const period = from && to ? ` на продажах с ${from} по ${to}` : '';
+    const zeroDays = Number(training.zeroSaleDaysAdded) > 0
+        ? `, из них дней без продаж: ${formatInteger(training.zeroSaleDaysAdded)}`
+        : '';
+    const parts = [
+        `Модель обучена${period}: ${formatInteger(records, '—')} записей по блюдам и дням${zeroDays}, `
+            + `${formatInteger(result?.newIngredientsCount, '—')} ингредиентов.`
+    ];
+    if (result?.trimmedToRecent) {
+        parts.push('История слишком длинная для одного запуска: взяты самые свежие продажи.');
+    }
+    return [...parts, ...(training.warnings || [])].join(' ');
+};

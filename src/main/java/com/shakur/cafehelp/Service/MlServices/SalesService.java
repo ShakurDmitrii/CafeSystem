@@ -35,6 +35,7 @@ public class SalesService {
      * @param endDate конечная дата
      * @return список записей о продажах
      */
+    /** Продажи для обучения; {@code startDate == null} — вся история до {@code endDate}. */
     public List<SalesRecordDTO> getSalesForML(LocalDate startDate, LocalDate endDate) {
         Map<Integer, List<String>> ingredientsByDish = new java.util.HashMap<>();
         return dsl.select(ORDER.DATE, ORDER.ORDERID, DISH.DISHID, DISH.DISHNAME,
@@ -42,7 +43,7 @@ public class SalesService {
                 .from(ORDER)
                 .join(ORDERDISH).on(ORDER.ORDERID.eq(ORDERDISH.ORDERID))
                 .join(DISH).on(ORDERDISH.DISHID.eq(DISH.DISHID))
-                .where(ORDER.DATE.between(startDate, endDate))
+                .where(startDate == null ? ORDER.DATE.le(endDate) : ORDER.DATE.between(startDate, endDate))
                 .and(ORDER.STATUS.eq(true))
                 .and(ORDER_CANCELLED_AT.isNull())
                 .orderBy(ORDER.DATE, ORDER.ORDERID, ORDERDISH.ID)

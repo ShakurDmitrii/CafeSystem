@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Sequence, Union
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import PoissonRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import MultiLabelBinarizer
 from xgboost import XGBRegressor
@@ -35,6 +36,68 @@ popular_ingredient_pairs: list[str] = []
 
 _state_lock = threading.RLock()
 _training_lock = threading.Lock()
+
+# Цель модели: продажи блюда за день. Если в записях есть блюдо, дни без продаж восстанавливаются нулями.
+TARGET_DAILY = "daily_quantity"
+TARGET_SALE_DAYS = "daily_quantity_on_sale_days"
+SUPPORTED_TARGETS = frozenset({TARGET_DAILY, TARGET_SALE_DAYS})
+# Обучение идёт на всей истории; старые дни весят меньше: вес вдвое ниже за каждый год давности.
+RECENCY_HALF_LIFE_DAYS = 365.0
+
+_TREE_PARAMS = dict(
+    n_estimators=400,
+    max_depth=3,
+    learning_rate=0.05,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    min_child_weight=5,
+    objective="count:poisson",
+    random_state=42,
+    n_jobs=2,
+)
+
+
+class SalesEnsemble:
+    """Прогноз счётных продаж: среднее градиентного бустинга и пуассоновской регрессии.
+
+    Вход тот же, что у прежней модели: признаки ингредиентов, день недели (1–7) и месяц.
+    Деревья ловят сочетания ингредиентов, линейная модель устойчивее на новых рецептах;
+    на сравнении с прежней XGBoost-регрессией среднее точнее ранжирует новые составы.
+    """
+
+    def __init__(self, glm_alpha: float = 1e-3):
+        self.glm_alpha = glm_alpha
+
+    @staticmethod
+    def _linear_features(features: np.ndarray) -> np.ndarray:
+        ingredients = features[:, :-2]
+        weekday = np.clip(features[:, -2].astype(int) - 1, 0, 6)
+        month = features[:, -1].astype(float)
+        return np.hstack([
+            ingredients,
+            np.eye(7)[weekday],
+            np.column_stack([np.sin(2 * np.pi * month / 12), np.cos(2 * np.pi * month / 12)]),
+        ])
+
+    def fit(self, features: np.ndarray, target: np.ndarray, sample_weight: np.ndarray | None = None):
+        features = np.asarray(features, dtype=float)
+        self.trees = XGBRegressor(**_TREE_PARAMS)
+        self.trees.fit(features, target, sample_weight=sample_weight, verbose=False)
+        self.linear = PoissonRegressor(alpha=self.glm_alpha, max_iter=2000)
+        self.linear.fit(self._linear_features(features), target, sample_weight=sample_weight)
+        self.n_features_in_ = features.shape[1]
+        return self
+
+    def predict_components(self, features: np.ndarray) -> dict[str, np.ndarray]:
+        features = np.asarray(features, dtype=float)
+        return {
+            "trees": np.asarray(self.trees.predict(features), dtype=float),
+            "linear": np.asarray(self.linear.predict(self._linear_features(features)), dtype=float),
+        }
+
+    def predict(self, features: np.ndarray) -> np.ndarray:
+        parts = self.predict_components(features)
+        return 0.5 * parts["trees"] + 0.5 * parts["linear"]
 
 
 class TrainingInProgressError(RuntimeError):
@@ -245,7 +308,13 @@ def _prepare_training_frame(records: list[dict[str, Any]]) -> pd.DataFrame:
             "records должны содержать поля: " + ", ".join(sorted(required))
         )
 
+    dish = pd.Series([None] * len(frame), index=frame.index, dtype=object)
+    for column in ("rollName", "dishId"):
+        if column in frame.columns:
+            values = frame[column].map(lambda value: None if value is None or pd.isna(value) or str(value).strip() == "" else f"{column}:{str(value).strip()}")
+            dish = values.where(values.notna(), dish)
     frame = frame.loc[:, ["ingredients", "sales", "date"]].copy()
+    frame["dish"] = dish
     frame["ingredients"] = frame["ingredients"].map(_normalize_ingredients)
     frame["sales"] = pd.to_numeric(frame["sales"], errors="coerce")
     frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
@@ -262,6 +331,43 @@ def _prepare_training_frame(records: list[dict[str, Any]]) -> pd.DataFrame:
         raise ValueError("Все значения продаж одинаковы: недостаточно разнообразных данных для обучения")
 
     return frame.sort_values("date", kind="stable").reset_index(drop=True)
+
+
+def _fill_zero_sale_days(frame: pd.DataFrame) -> tuple[pd.DataFrame, bool]:
+    """Добавить нулевые продажи блюда в дни работы кафе между его первой и последней продажей.
+
+    Без этого модель видит только удачные дни и завышает спрос на редко продаваемые блюда.
+    Днём работы считается дата, когда было продано хоть что-то. Состав для нулевого дня
+    берётся из последней продажи до него (рецепт мог меняться).
+    """
+    if frame["dish"].isna().any():
+        return frame, False
+
+    open_days = np.unique(frame["date"].to_numpy(dtype="datetime64[ns]"))
+    additions = []
+    for dish, group in frame.groupby("dish", sort=False):
+        sold = group.sort_values("date", kind="stable")
+        sold_days = np.unique(sold["date"].to_numpy(dtype="datetime64[ns]"))
+        span = open_days[(open_days >= sold_days[0]) & (open_days <= sold_days[-1])]
+        missing = np.setdiff1d(span, sold_days)
+        if len(missing) == 0:
+            continue
+        recipes = sold.drop_duplicates("date", keep="last").set_index("date")["ingredients"]
+        positions = np.searchsorted(recipes.index.to_numpy(dtype="datetime64[ns]"), missing, side="right") - 1
+        additions.append(pd.DataFrame({
+            "ingredients": [recipes.iloc[max(position, 0)] for position in positions],
+            "sales": 0.0,
+            "date": missing,
+            "dish": dish,
+        }))
+    if additions:
+        frame = pd.concat([frame, *additions], ignore_index=True)
+    return frame.sort_values("date", kind="stable").reset_index(drop=True), True
+
+
+def _recency_weights(dates: pd.Series) -> np.ndarray:
+    age_days = (dates.max() - dates).dt.days.to_numpy(dtype=float)
+    return np.power(0.5, age_days / RECENCY_HALF_LIFE_DAYS)
 
 
 def _build_popular_pairs(ingredient_rows: Sequence[Sequence[str]]) -> list[str]:
@@ -297,7 +403,9 @@ def train_model(records: list[dict[str, Any]]) -> dict[str, Any]:
         raise TrainingInProgressError("Обучение модели уже выполняется")
 
     try:
-        frame = _prepare_training_frame(records)
+        prepared = _prepare_training_frame(records)
+        frame, zero_days_restored = _fill_zero_sale_days(prepared)
+        zero_days_added = len(frame) - len(prepared)
         dates = frame["date"].drop_duplicates().to_list()
         validation_start = dates[max(1, int(len(dates) * 0.8))]
         split_index = int((frame["date"] < validation_start).sum())
@@ -317,39 +425,33 @@ def train_model(records: list[dict[str, Any]]) -> dict[str, Any]:
         )
         features = np.hstack([ingredient_features, date_features])
         target = frame["sales"].astype(float).to_numpy()
+        weights = _recency_weights(frame["date"])
 
         x_train, x_test = features[:split_index], features[split_index:]
         y_train, y_test = target[:split_index], target[split_index:]
 
-        local_model = XGBRegressor(
-            n_estimators=800,
-            max_depth=6,
-            learning_rate=0.03,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            reg_alpha=0.0,
-            reg_lambda=1.0,
-            objective="reg:squarederror",
-            eval_metric="rmse",
-            random_state=42,
-            n_jobs=2,
-        )
-        local_model.fit(
-            x_train,
-            y_train,
-            eval_set=[(x_test, y_test)],
-            verbose=False,
-        )
+        local_model = SalesEnsemble()
+        local_model.fit(x_train, y_train, sample_weight=weights[:split_index])
 
         predictions = np.maximum(0, local_model.predict(x_test))
+        component_mae = {
+            name: float(mean_absolute_error(y_test, np.maximum(0, values)))
+            for name, values in local_model.predict_components(x_test).items()
+        }
         rmse = float(mean_squared_error(y_test, predictions) ** 0.5)
         mae = float(mean_absolute_error(y_test, predictions))
         validation_r2 = (
             float(r2_score(y_test, predictions)) if len(y_test) >= 2 and np.ptp(y_test) > 0 else None
         )
         baseline_mae = float(mean_absolute_error(y_test, np.full_like(y_test, y_train.mean())))
+        target_name = TARGET_DAILY if zero_days_restored else TARGET_SALE_DAYS
         warnings = [
-            "Прогноз для дней, когда блюдо продавалось. Нет истории доступности для учёта дней без продаж.",
+            (
+                "Дни без продаж восстановлены по дням работы кафе между первой и последней продажей блюда; "
+                "дни, когда блюда не было в наличии, тоже считаются нулевыми."
+                if zero_days_restored
+                else "Прогноз для дней, когда блюдо продавалось: в данных нет блюда, дни без продаж не восстановлены."
+            ),
             "Новый состав, граммовки и влияние цены на спрос отдельно не проверены.",
         ]
         if mae >= baseline_mae:
@@ -361,17 +463,22 @@ def train_model(records: list[dict[str, Any]]) -> dict[str, Any]:
         # Validation uses past-only features; the released model is then fitted on all available days.
         local_mlb = MultiLabelBinarizer()
         features = np.hstack([local_mlb.fit_transform(frame["ingredients"]), date_features])
-        local_model.fit(features, target, verbose=False)
+        local_model = SalesEnsemble().fit(features, target, sample_weight=weights)
         version = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         metadata = {
             "modelVersion": version,
-            "modelType": type(local_model).__name__,
+            "modelType": "SalesEnsemble (XGBoost Poisson + Poisson GLM)",
             "trainedAt": datetime.now(timezone.utc).isoformat(),
             "trainingRecords": len(frame),
+            "zeroSaleDaysAdded": zero_days_added,
+            "trainingStartDate": frame["date"].min().date().isoformat(),
+            "trainingEndDate": frame["date"].max().date().isoformat(),
+            "recencyHalfLifeDays": RECENCY_HALF_LIFE_DAYS,
             "validationRmse": rmse,
             "validationMae": mae,
+            "validationComponentMae": component_mae,
             "validationR2": validation_r2,
-            "target": "daily_quantity_on_sale_days",
+            "target": target_name,
             "validationStartDate": validation_start.date().isoformat(),
             "baselineMae": baseline_mae,
             "warnings": warnings,
@@ -403,13 +510,18 @@ def train_model(records: list[dict[str, Any]]) -> dict[str, Any]:
             "status": "trained",
             "records": len(frame),
             "modelVersion": version,
+            "modelType": metadata["modelType"],
             "target": metadata["target"],
+            "trainingStartDate": metadata["trainingStartDate"],
+            "trainingEndDate": metadata["trainingEndDate"],
+            "zeroSaleDaysAdded": metadata["zeroSaleDaysAdded"],
             "warnings": warnings,
             "validation": {
                 "rmse": rmse,
                 "mae": mae,
                 "r2": validation_r2,
                 "baselineMae": baseline_mae,
+                "componentMae": component_mae,
             },
         }
     finally:
