@@ -1,0 +1,44 @@
+# Асинхронная потоковая (physical streaming) реплика основной БД CafeHelp.
+# master: сервис db (cafehelp-db, localhost:5432), replica: cafehelp-db-replica (localhost:5434, только чтение).
+# Перед первым запуском: powershell -File replication/enable-replication.ps1
+# Запуск: docker compose -f docker-compose.replication.yml up -d
+name: cafehelp-replication
+
+services:
+  db_replica:
+    image: postgres:16-alpine
+    container_name: cafehelp-db-replica
+    user: postgres
+    environment:
+      PGPASSWORD: ${REPLICATION_PASSWORD:-repl_pass}
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg_replica_data:/var/lib/postgresql/data
+    networks:
+      - cafehelp
+    entrypoint: ["sh", "-c"]
+    # При пустом томе снимаем базовую копию с master; -R пишет standby.signal и primary_conninfo,
+    # -S привязывает реплику к слоту replica1, чтобы master не удалил ещё не переданный WAL.
+    command:
+      - |
+        set -e
+        if [ ! -s "$$PGDATA/PG_VERSION" ]; then
+          until pg_isready -h db -U postgres; do sleep 1; done
+          pg_basebackup -h db -U replicator -D "$$PGDATA" -Fp -Xs -R -S replica1 -P
+          chmod 0700 "$$PGDATA"
+        fi
+        exec postgres -c hot_standby=on
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pg_replica_data:
+
+networks:
+  cafehelp:
+    external: true
+    name: cafehelp_default
