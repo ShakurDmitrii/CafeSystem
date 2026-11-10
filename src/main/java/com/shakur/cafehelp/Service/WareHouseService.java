@@ -32,6 +32,10 @@ public class WareHouseService {
     private static final Field<BigDecimal> PRODUCT_INVENTORY_VALUE = DSL.field(DSL.name("inventory_value"), BigDecimal.class);
     private static final Field<BigDecimal> PREPARATION_INVENTORY_VALUE = DSL.field(DSL.name("inventory_value"), BigDecimal.class);
     private static final Field<BigDecimal> PREPARATION_AVERAGE_UNIT_COST = DSL.field(DSL.name("average_unit_cost"), BigDecimal.class);
+    private static final Table<?> PREPARATION = DSL.table(DSL.name("sales", "preparation"));
+    private static final Field<Integer> PREPARATION_ID = DSL.field(DSL.name("sales", "preparation", "preparationid"), Integer.class);
+    private static final Field<String> PREPARATION_NAME = DSL.field(DSL.name("sales", "preparation", "preparationname"), String.class);
+    private static final Field<Double> PREPARATION_OUTPUT_WEIGHT = DSL.field(DSL.name("sales", "preparation", "output_weight"), Double.class);
 
     public WareHouseService(DSLContext dsl) {
         this.dsl = dsl;
@@ -233,13 +237,22 @@ public class WareHouseService {
     }
 
     public List<PreparationWarehouseDTO> getPreparationsOnWarehouse(int warehouseId) {
+        Field<Integer> pwId = DSL.field(DSL.name("sales", "preparationwarehouse", "preparationwarehouseid"), Integer.class);
+        Field<Integer> pwPreparationId = DSL.field(DSL.name("sales", "preparationwarehouse", "preparationid"), Integer.class);
+        Field<Integer> pwWarehouseId = DSL.field(DSL.name("sales", "preparationwarehouse", "warehouseid"), Integer.class);
+        Field<Double> pwQuantity = DSL.field(DSL.name("sales", "preparationwarehouse", "quantity"), Double.class);
+        Field<BigDecimal> pwValue = DSL.field(DSL.name("sales", "preparationwarehouse", "inventory_value"), BigDecimal.class);
+        Field<BigDecimal> pwAverage = DSL.field(DSL.name("sales", "preparationwarehouse", "average_unit_cost"), BigDecimal.class);
         return dsl.select(
-                        PW_ID, PW_PREPARATION_ID, PW_WAREHOUSE_ID, PW_QUANTITY,
-                        PREPARATION_INVENTORY_VALUE, PREPARATION_AVERAGE_UNIT_COST
+                        pwId.as(PW_ID), pwPreparationId.as(PW_PREPARATION_ID), pwWarehouseId.as(PW_WAREHOUSE_ID),
+                        pwQuantity.as(PW_QUANTITY), pwValue.as(PREPARATION_INVENTORY_VALUE),
+                        pwAverage.as(PREPARATION_AVERAGE_UNIT_COST),
+                        PREPARATION_NAME, PREPARATION_OUTPUT_WEIGHT
                 )
                 .from(PREPARATION_WAREHOUSE)
-                .where(PW_WAREHOUSE_ID.eq(warehouseId))
-                .orderBy(PW_ID.asc())
+                .leftJoin(PREPARATION).on(PREPARATION_ID.eq(pwPreparationId))
+                .where(pwWarehouseId.eq(warehouseId))
+                .orderBy(PREPARATION_NAME.asc().nullsLast(), pwId.asc())
                 .fetch(record -> {
                     PreparationWarehouseDTO dto = new PreparationWarehouseDTO();
                     dto.setPreparationWarehouseId(record.get(PW_ID));
@@ -248,6 +261,9 @@ public class WareHouseService {
                     dto.setQuantity(record.get(PW_QUANTITY) != null ? record.get(PW_QUANTITY) : 0.0);
                     dto.setInventoryValue(record.get(PREPARATION_INVENTORY_VALUE));
                     dto.setAverageUnitCost(record.get(PREPARATION_AVERAGE_UNIT_COST));
+                    String name = record.get(PREPARATION_NAME);
+                    dto.setPreparationName(name != null ? name.trim() : "Заготовка #" + record.get(PW_PREPARATION_ID));
+                    dto.setOutputWeight(record.get(PREPARATION_OUTPUT_WEIGHT));
                     return dto;
                 });
     }

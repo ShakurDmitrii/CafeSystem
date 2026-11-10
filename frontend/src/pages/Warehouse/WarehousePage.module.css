@@ -882,3 +882,8 @@
         transition: none;
     }
 }
+
+/* Заготовки на складе: та же сетка, что у продуктов, с отметкой слева */
+.preparationRow {
+    box-shadow: inset 3px 0 0 var(--color-accent, #2f7d5b);
+}
