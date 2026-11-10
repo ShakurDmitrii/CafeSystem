@@ -109,6 +109,9 @@ export default function OrderComposer({
     consumableSurchargeTotal,
     itemsTotal,
     total,
+    discountAmount,
+    appliedDiscount,
+    onDiscountChange,
     isLoading,
     requiresContactDetails,
     effectivePhone,
@@ -459,6 +462,25 @@ export default function OrderComposer({
                 )}
             </div>
 
+            <div className={styles.deliveryFields}>
+                <label htmlFor="order-discount">
+                    Скидка
+                    <span className={styles.inputWithUnit}>
+                        <input
+                            id="order-discount"
+                            name="discountAmount"
+                            type="number"
+                            min="0"
+                            step="10"
+                            inputMode="decimal"
+                            value={discountAmount}
+                            onChange={(event) => onDiscountChange(event.target.value)}
+                        />
+                        <span>₽</span>
+                    </span>
+                </label>
+            </div>
+
             <div className={styles.receiptTotal}>
                 <div>
                     <span>Позиции</span>
@@ -474,6 +496,12 @@ export default function OrderComposer({
                     <div>
                         <span>Доплаты</span>
                         <strong>{formatMoney(consumableSurchargeTotal)}</strong>
+                    </div>
+                ) : null}
+                {Number(appliedDiscount || 0) > 0 ? (
+                    <div>
+                        <span>Скидка</span>
+                        <strong>−{formatMoney(appliedDiscount)}</strong>
                     </div>
                 ) : null}
                 <div className={styles.grandTotal}>

@@ -35,6 +35,7 @@ public class OrderDTO {
     public Boolean paid;
     public BigDecimal cashReceived;
     public BigDecimal cashChange;
+    public BigDecimal discountAmount;
     public BigDecimal debtOriginalAmount;
     public BigDecimal debtRemainingAmount;
     public LocalDateTime cancelledAt;
@@ -185,6 +186,8 @@ public class OrderDTO {
     public void setCashReceived(BigDecimal cashReceived) { this.cashReceived = cashReceived; }
     public BigDecimal getCashChange() { return cashChange; }
     public void setCashChange(BigDecimal cashChange) { this.cashChange = cashChange; }
+    public BigDecimal getDiscountAmount() { return discountAmount; }
+    public void setDiscountAmount(BigDecimal discountAmount) { this.discountAmount = discountAmount; }
 
     public BigDecimal getDebtOriginalAmount() { return debtOriginalAmount; }
     public void setDebtOriginalAmount(BigDecimal debtOriginalAmount) { this.debtOriginalAmount = debtOriginalAmount; }

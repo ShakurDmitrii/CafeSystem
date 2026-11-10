@@ -353,7 +353,31 @@ public class TaxReceiptDispatchService {
             normalized.put("sum", sum);
             items.add(normalized);
         }
+        applyDiscount(items, payload.path("discountAmount").asDouble(0.0));
         return items;
+    }
+
+    /**
+     * Распределяет скидку заказа по позициям: в строке остаются исходная цена,
+     * поле discount и уменьшенная сумма, чтобы сумма позиций сходилась с итогом.
+     */
+    private void applyDiscount(List<Map<String, Object>> items, double discountAmount) {
+        if (!(discountAmount > 0) || items.isEmpty()) {
+            return;
+        }
+        List<BigDecimal> sums = items.stream()
+                .map(item -> BigDecimal.valueOf(((Number) item.get("sum")).doubleValue()))
+                .toList();
+        List<BigDecimal> shares = OrderDiscountCalculator.distribute(sums, BigDecimal.valueOf(discountAmount));
+        for (int i = 0; i < items.size(); i++) {
+            BigDecimal share = shares.get(i);
+            if (share.signum() <= 0) {
+                continue;
+            }
+            Map<String, Object> item = items.get(i);
+            item.put("discount", share.doubleValue());
+            item.put("sum", sums.get(i).subtract(share).setScale(2, RoundingMode.HALF_UP).doubleValue());
+        }
     }
 
     private String resolveBusinessDate(ClaimedJob job, JsonNode payload) {
