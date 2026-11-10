@@ -93,7 +93,7 @@ public class OrderService {
         try {
             // Проверяем обязательные поля
             if (orderDTO.getShiftId() == 0) {
-                throw new IllegalArgumentException("Shift ID is required");
+                throw new IllegalArgumentException("Не выбрана смена: откройте смену перед созданием заказа");
             }
             lockOpenShift(orderDTO.getShiftId());
 
@@ -162,7 +162,7 @@ public class OrderService {
                     .fetchOne();
 
             if (result == null) {
-                throw new RuntimeException("Failed to create order - no ID returned");
+                throw new IllegalStateException("База данных не вернула номер созданного заказа");
             }
 
             Integer orderId = result.get(ORDER.ORDERID);
@@ -209,7 +209,7 @@ public class OrderService {
         } catch (Exception e) {
             System.err.println("Error creating order: " + e.getMessage());
             e.printStackTrace();
-            throw new RuntimeException("Failed to create order: " + e.getMessage(), e);
+            throw new IllegalStateException("Не удалось создать заказ: " + e.getMessage(), e);
         }
     }
     @Transactional

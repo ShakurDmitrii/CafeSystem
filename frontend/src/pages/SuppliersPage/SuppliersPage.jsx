@@ -12,6 +12,7 @@ import SupplierEditor from "./supplier-page/SupplierEditor";
 import SuppliersCatalog from "./supplier-page/SuppliersCatalog";
 import SuppliersHero from "./supplier-page/SuppliersHero";
 import styles from "./SuppliersPage.module.css";
+import { describeHttpStatus } from "../../utils/apiError";
 
 const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
 const SORT_OPTIONS = new Set(["name_asc", "name_desc", "id_desc"]);
@@ -80,7 +81,7 @@ export default function SuppliersPage() {
             const raw = await response.text();
             if (!response.ok) {
                 throw new Error(
-                    getResponseMessage(raw, `Не удалось загрузить поставщиков (${response.status}).`)
+                    getResponseMessage(raw, `Не удалось загрузить поставщиков: ${describeHttpStatus(response.status)}.`)
                 );
             }
 

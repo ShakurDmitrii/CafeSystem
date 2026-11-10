@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { API_BASE_URL } from "../../../auth";
 import styles from "./KitchenDisplayPage.module.css";
+import { describeHttpStatus } from "../../../utils/apiError";
 
 const API_ORDERS = `${API_BASE_URL}/api/orders`;
 const REFRESH_INTERVAL_MS = 5000;
@@ -98,7 +99,7 @@ export default function KitchenDisplayPage() {
 
         try {
             const response = await fetch(API_ORDERS);
-            if (!response.ok) throw new Error(`Не удалось загрузить заказы (${response.status})`);
+            if (!response.ok) throw new Error(`Не удалось загрузить заказы: ${describeHttpStatus(response.status)}`);
             const payload = await response.json();
             const visibleOrders = (Array.isArray(payload) ? payload : [])
                 .filter((order) => Number(order.shiftId) === Number(shiftId))

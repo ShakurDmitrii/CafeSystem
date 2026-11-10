@@ -7,6 +7,7 @@ import DishEditModal from "./dish-page/DishEditModal";
 import DishList from "./dish-page/DishList";
 import DishPageHeader from "./dish-page/DishPageHeader";
 import styles from "./DishPage.module.css";
+import { describeHttpStatus } from "../../../utils/apiError";
 
 const API_DISHES = `${API_BASE_URL}/api/dishes`;
 const API_UPLOAD = `${API_BASE_URL}/api/v1/files/images`;
@@ -110,11 +111,11 @@ export default function DishPage() {
             const categoriesData = parseJsonSafe(categoriesText);
 
             if (!dishesRes.ok) {
-                throw new Error(dishesData?.message || `Не удалось загрузить блюда (${dishesRes.status})`);
+                throw new Error(dishesData?.message || `Не удалось загрузить блюда: ${describeHttpStatus(dishesRes.status)}`);
             }
 
             if (!categoriesRes.ok) {
-                throw new Error(categoriesData?.message || `Не удалось загрузить категории (${categoriesRes.status})`);
+                throw new Error(categoriesData?.message || `Не удалось загрузить категории: ${describeHttpStatus(categoriesRes.status)}`);
             }
 
             setDishes(Array.isArray(dishesData) ? dishesData : []);
@@ -159,7 +160,7 @@ export default function DishPage() {
         const text = await res.text();
         const data = parseJsonSafe(text);
         if (!res.ok) {
-            throw new Error(data?.message || `Ошибка обновления блюда (${res.status})`);
+            throw new Error(data?.message || `Ошибка обновления блюда: ${describeHttpStatus(res.status)}`);
         }
         return data || payload;
     };
@@ -228,7 +229,7 @@ export default function DishPage() {
             const text = await res.text();
             const data = parseJsonSafe(text);
             if (!res.ok) {
-                throw new Error(data?.message || `Ошибка создания блюда (${res.status})`);
+                throw new Error(data?.message || `Ошибка создания блюда: ${describeHttpStatus(res.status)}`);
             }
 
             setCreateForm(createDishForm());
@@ -322,7 +323,7 @@ export default function DishPage() {
             if (!res.ok) {
                 const raw = await res.text().catch(() => "");
                 const data = parseJsonSafe(raw);
-                throw new Error(data?.message || data?.error || raw || `Ошибка удаления блюда (${res.status})`);
+                throw new Error(data?.message || data?.error || raw || `Ошибка удаления блюда: ${describeHttpStatus(res.status)}`);
             }
             setDishes((prev) => prev.filter((item) => item.dishId !== dish.dishId));
         } catch (err) {

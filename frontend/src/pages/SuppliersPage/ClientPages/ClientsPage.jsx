@@ -11,15 +11,16 @@ import {
     getClientDebt,
     getOrderTimestamp
 } from "./clients-page/clientUtils";
+import { describeHttpStatus, parseJsonSafe } from "../../../utils/apiError";
 
 const API_CLIENTS = `${API_BASE_URL}/api/clients`;
 const API_ORDERS = `${API_BASE_URL}/api/orders`;
 
 const readJson = async (response) => {
     const text = await response.text();
-    const data = text ? JSON.parse(text) : null;
+    const data = parseJsonSafe(text);
     if (!response.ok) {
-        throw new Error(data?.message || data?.error || `Ошибка сервера (${response.status})`);
+        throw new Error(data?.message || data?.error || `Ошибка сервера: ${describeHttpStatus(response.status)}`);
     }
     return data;
 };
