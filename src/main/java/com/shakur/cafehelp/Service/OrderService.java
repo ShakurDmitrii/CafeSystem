@@ -1377,15 +1377,15 @@ public List<OrderDTO> getOrders() {
      * Проверяет «готов к»: строго позже создания заказа, не в прошлом и не дальше недели.
      */
     private void validateReadyAt(LocalDateTime createdAt, LocalDateTime readyAt, LocalDateTime now) {
+        if (!readyAt.isAfter(now)) {
+            throw new InvalidOrderRequestException(
+                    "Время готовности " + READY_AT_LABEL.format(readyAt) + " уже прошло. Укажите время позже текущего"
+            );
+        }
         if (!readyAt.isAfter(createdAt)) {
             throw new InvalidOrderRequestException(
                     "Время готовности " + READY_AT_LABEL.format(readyAt)
                             + " должно быть позже времени создания заказа " + READY_AT_LABEL.format(createdAt)
-            );
-        }
-        if (!readyAt.isAfter(now)) {
-            throw new InvalidOrderRequestException(
-                    "Время готовности " + READY_AT_LABEL.format(readyAt) + " уже прошло. Укажите время позже текущего"
             );
         }
         if (readyAt.isAfter(now.plusDays(MAX_READY_AHEAD_DAYS))) {

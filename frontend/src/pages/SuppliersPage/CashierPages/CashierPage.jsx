@@ -1687,7 +1687,9 @@ ${reportText}
                             delete next[productId];
                             return next;
                         })}
-                        onCreateOrder={() => createOrder()}
+                        onCreateOrder={() => createOrder().catch((error) => {
+                            alert(error.message || "Не удалось создать заказ");
+                        })}
                         onCloseShift={closeShift}
                     />
                     <OrdersBoard
