@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { API_BASE_URL } from "../../../auth";
 import styles from "./KitchenDisplayPage.module.css";
+import { formatReadyAt } from "./cashier-page/cashierUtils";
 
 const API_ORDERS = `${API_BASE_URL}/api/orders`;
 const REFRESH_INTERVAL_MS = 5000;
@@ -70,7 +71,10 @@ function KitchenLane({
                             freshReadyIds.includes(order.orderId) ? styles.freshTicket : ""
                         ].filter(Boolean).join(" ")}
                     >
-                        <span>{tone === "ready" ? "Забрать" : "Готовится"}</span>
+                        <span>
+                            {tone === "ready" ? "Забрать" : "Готовится"}
+                            {tone !== "ready" && order.readyAt ? ` · к ${formatReadyAt(order.readyAt)}` : ""}
+                        </span>
                         <strong>#{order.orderId}</strong>
                     </article>
                 ))}

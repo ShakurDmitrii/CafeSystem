@@ -1,5 +1,6 @@
 package com.shakur.cafehelp.DTO;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public class OrderEditRequestDTO {
@@ -8,6 +9,7 @@ public class OrderEditRequestDTO {
     private Boolean type;
     private Double time;
     private Double timeDelay;
+    private LocalDateTime readyAt;
     private Double deliveryCost;
     private String deliveryPhone;
     private String deliveryAddress;
@@ -86,6 +88,9 @@ public class OrderEditRequestDTO {
     public void setItems(List<OrderDishDTO> items) {
         this.items = items;
     }
+
+    public LocalDateTime getReadyAt() { return readyAt; }
+    public void setReadyAt(LocalDateTime readyAt) { this.readyAt = readyAt; }
 
     public Integer getPersonCount() { return personCount; }
     public void setPersonCount(Integer personCount) { this.personCount = personCount; }

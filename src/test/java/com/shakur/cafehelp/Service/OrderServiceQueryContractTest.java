@@ -31,6 +31,8 @@ class OrderServiceQueryContractTest {
     private static final Field<Boolean> IS_PAID = DSL.field("is_paid", Boolean.class);
     private static final Field<BigDecimal> CASH_RECEIVED = DSL.field("cash_received", BigDecimal.class);
     private static final Field<BigDecimal> CASH_CHANGE = DSL.field("cash_change", BigDecimal.class);
+    private static final Field<java.time.LocalDateTime> READY_AT = DSL.field("ready_at", java.time.LocalDateTime.class);
+    private static final Field<Integer> VERSION = DSL.field("version", Integer.class);
     private static final Field<Integer> SET_ID = DSL.field("set_id", Integer.class);
     private static final Field<Double> UNIT_PRICE = DSL.field("unit_price", Double.class);
     private static final Field<String> SET_NAME = DSL.field("set_name", String.class);
@@ -72,7 +74,7 @@ class OrderServiceQueryContractTest {
 
     private Result<Record> orders(DSLContext data) {
         List<Field<?>> fields = new ArrayList<>(Arrays.asList(Order.ORDER.fields()));
-        fields.addAll(List.of(DELIVERY_PHONE, DELIVERY_ADDRESS, PAYMENT_TYPE, IS_PAID, CASH_RECEIVED, CASH_CHANGE));
+        fields.addAll(List.of(DELIVERY_PHONE, DELIVERY_ADDRESS, PAYMENT_TYPE, IS_PAID, CASH_RECEIVED, CASH_CHANGE, READY_AT, VERSION));
         Result<Record> result = data.newResult(fields.toArray(Field[]::new));
         result.add(orderRecord(data, fields, 1));
         result.add(orderRecord(data, fields, 2));

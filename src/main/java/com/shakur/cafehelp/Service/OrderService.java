@@ -45,6 +45,10 @@ public class OrderService {
     private static final Field<BigDecimal> DEBT_REMAINING_AMOUNT_FIELD = DSL.field(DSL.name("debt_remaining_amount"), BigDecimal.class);
     private static final Field<Boolean> INVENTORY_CONSUMED_FIELD = DSL.field(DSL.name("inventory_consumed"), Boolean.class);
     private static final Field<LocalDateTime> PAID_AT_FIELD = DSL.field(DSL.name("paid_at"), LocalDateTime.class);
+    private static final Field<LocalDateTime> READY_AT_FIELD = DSL.field(DSL.name("ready_at"), LocalDateTime.class);
+    private static final long MAX_READY_AHEAD_DAYS = 7;
+    private static final java.time.format.DateTimeFormatter READY_AT_LABEL =
+            java.time.format.DateTimeFormatter.ofPattern("dd.MM HH:mm");
     private static final Field<Integer> PERSON_COUNT_FIELD = DSL.field(DSL.name("person_count"), Integer.class);
     private static final Field<BigDecimal> CASH_RECEIVED_FIELD = DSL.field(DSL.name("cash_received"), BigDecimal.class);
     private static final Field<BigDecimal> CASH_CHANGE_FIELD = DSL.field(DSL.name("cash_change"), BigDecimal.class);
@@ -126,6 +130,17 @@ public class OrderService {
                     ? CashPaymentCalculator.calculate(BigDecimal.valueOf(serverTotal), orderDTO.getCashReceived())
                     : null;
             boolean debt = Boolean.TRUE.equals(orderDTO.getDuty());
+            LocalDateTime readyAt = orderDTO.getReadyAt();
+            double preparationMinutes;
+            if (readyAt != null) {
+                validateReadyAt(now, readyAt, now);
+                preparationMinutes = minutesBetween(now, readyAt);
+            } else {
+                preparationMinutes = orderDTO.getTime() != null ? orderDTO.getTime() : 30.0;
+                if (!Double.isFinite(preparationMinutes) || preparationMinutes < 0) {
+                    throw new InvalidOrderRequestException("Время приготовления должно быть неотрицательным числом минут");
+                }
+            }
 
             Integer clientId = orderDTO.getClientId();
             if (clientId != null && clientId == 0) {
@@ -143,7 +158,8 @@ public class OrderService {
                     .set(ORDER.AMOUNT, serverTotal)
                     .set(ORDER.STATUS, orderDTO.getStatus() != null ? orderDTO.getStatus() : false)
                     .set(ORDER.TYPE, delivery)
-                    .set(ORDER.TIME, orderDTO.getTime() != null ? orderDTO.getTime() : 30.0) // время по умолчанию 30 мин
+                    .set(ORDER.TIME, preparationMinutes) // минуты от created_at; по умолчанию 30
+                    .set(READY_AT_FIELD, readyAt)
                     .set(ORDER.TIMEDELAY, orderDTO.getTimeDelay()) // может быть null
                     .set(ORDER.DUTY, debt)
                     .set(ORDER.DEBT_PAYMENT_DATE, orderDTO.getDebt_payment_date())
@@ -236,7 +252,8 @@ public class OrderService {
                         DEBT_REMAINING_AMOUNT_FIELD,
                         PERSON_COUNT_FIELD,
                         CASH_RECEIVED_FIELD,
-                        CASH_CHANGE_FIELD
+                        CASH_CHANGE_FIELD,
+                        READY_AT_FIELD
                 )
                 .from(ORDER)
                 .where(ORDER.ORDERID.eq(id))
@@ -269,6 +286,8 @@ public class OrderService {
                     order.items = buildOrderDishDtos(record.get(ORDER.ORDERID));
                     order.personCount = record.get(PERSON_COUNT_FIELD);
                     order.consumables = consumableService.getForOrder(record.get(ORDER.ORDERID));
+                    order.readyAt = record.get(READY_AT_FIELD);
+                    order.deliveryCost = deliveryCostFrom(order);
                     return order;
                 });
     }
@@ -385,7 +404,7 @@ public class OrderService {
 public List<OrderDTO> getOrders() {
         var records = dsl.select(ORDER.fields())
                 .select(DELIVERY_PHONE_FIELD, DELIVERY_ADDRESS_FIELD, PAYMENT_TYPE_FIELD, IS_PAID_FIELD,
-                        CASH_RECEIVED_FIELD, CASH_CHANGE_FIELD)
+                        CASH_RECEIVED_FIELD, CASH_CHANGE_FIELD, READY_AT_FIELD, VERSION_FIELD)
                 .from(ORDER)
                 .where(CANCELLED_AT_FIELD.isNull())
                 .fetch();
@@ -413,6 +432,10 @@ public List<OrderDTO> getOrders() {
                     order.setPaid(record.get(IS_PAID_FIELD));
                     order.setCashReceived(record.get(CASH_RECEIVED_FIELD));
                     order.setCashChange(record.get(CASH_CHANGE_FIELD));
+                    order.setReadyAt(record.get(READY_AT_FIELD));
+                    order.setVersion(record.get(VERSION_FIELD));
+                    order.setDuty(record.get(ORDER.DUTY));
+                    order.setDebt_payment_date(record.get(ORDER.DEBT_PAYMENT_DATE));
                     order.setItems(buildOrderDishDtos(
                             itemsByOrderId.getOrDefault(record.get(ORDER.ORDERID), List.of())
                     ));
@@ -493,7 +516,26 @@ public List<OrderDTO> getOrders() {
         if (clientId != null && clientId == 0) {
             clientId = null;
         }
-        double preparationTime = request.getTime() != null ? request.getTime() : safeDouble(order.getTime(), 30.0);
+        LocalDateTime createdAt = order.getCreatedAt() != null ? order.getCreatedAt() : businessTime.now();
+        LocalDateTime currentReadyAt = dsl.select(READY_AT_FIELD)
+                .from(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .fetchOne(READY_AT_FIELD);
+        LocalDateTime readyAt;
+        double preparationTime;
+        if (request.getReadyAt() != null) {
+            readyAt = request.getReadyAt();
+            if (!readyAt.equals(currentReadyAt)) {
+                validateReadyAt(createdAt, readyAt, businessTime.now());
+            }
+            preparationTime = minutesBetween(createdAt, readyAt);
+        } else if (request.getTime() != null) {
+            readyAt = null;
+            preparationTime = request.getTime();
+        } else {
+            readyAt = currentReadyAt;
+            preparationTime = safeDouble(order.getTime(), 30.0);
+        }
         double delay = request.getTimeDelay() != null ? request.getTimeDelay() : safeDouble(order.getTimedelay(), 0.0);
         if (!Double.isFinite(preparationTime) || preparationTime < 0) {
             throw new InvalidOrderRequestException("Время приготовления должно быть неотрицательным числом");
@@ -507,6 +549,7 @@ public List<OrderDTO> getOrders() {
                 .set(ORDER.CLIENTID, clientId)
                 .set(ORDER.TYPE, delivery)
                 .set(ORDER.TIME, preparationTime)
+                .set(READY_AT_FIELD, readyAt)
                 .set(ORDER.TIMEDELAY, delay)
                 .set(ORDER.AMOUNT, total)
                 .set(DELIVERY_PHONE_FIELD, trimToNull(request.getDeliveryPhone()))
@@ -1328,6 +1371,50 @@ public List<OrderDTO> getOrders() {
             throw new InvalidOrderRequestException(fieldName + " должна быть неотрицательным числом");
         }
         return value;
+    }
+
+    /**
+     * Проверяет «готов к»: строго позже создания заказа, не в прошлом и не дальше недели.
+     */
+    private void validateReadyAt(LocalDateTime createdAt, LocalDateTime readyAt, LocalDateTime now) {
+        if (!readyAt.isAfter(createdAt)) {
+            throw new InvalidOrderRequestException(
+                    "Время готовности " + READY_AT_LABEL.format(readyAt)
+                            + " должно быть позже времени создания заказа " + READY_AT_LABEL.format(createdAt)
+            );
+        }
+        if (!readyAt.isAfter(now)) {
+            throw new InvalidOrderRequestException(
+                    "Время готовности " + READY_AT_LABEL.format(readyAt) + " уже прошло. Укажите время позже текущего"
+            );
+        }
+        if (readyAt.isAfter(now.plusDays(MAX_READY_AHEAD_DAYS))) {
+            throw new InvalidOrderRequestException(
+                    "Время готовности можно указать не дальше чем на " + MAX_READY_AHEAD_DAYS + " дней вперёд"
+            );
+        }
+    }
+
+    /** Целое число минут (вверх, минимум 1) между созданием заказа и временем готовности. */
+    static double minutesBetween(LocalDateTime from, LocalDateTime to) {
+        long seconds = java.time.Duration.between(from, to).getSeconds();
+        return Math.max(1L, (seconds + 59) / 60);
+    }
+
+    private Double deliveryCostFrom(OrderDTO order) {
+        if (!Boolean.TRUE.equals(order.type)) {
+            return 0.0;
+        }
+        double itemsTotal = order.items == null ? 0.0 : order.items.stream()
+                .mapToDouble(item -> safeDouble(item.getPrice(), 0.0) * item.getQty())
+                .sum();
+        double surchargeTotal = order.consumables == null ? 0.0 : order.consumables.stream()
+                .map(OrderConsumableDTO::getSurchargeAmount)
+                .filter(java.util.Objects::nonNull)
+                .mapToDouble(BigDecimal::doubleValue)
+                .sum();
+        double value = safeDouble(order.amount, 0.0) - itemsTotal - surchargeTotal;
+        return BigDecimal.valueOf(Math.max(0.0, value)).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
     private double safeDouble(Double value, double fallback) {

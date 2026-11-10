@@ -12,6 +12,13 @@ import OrdersBoard from "./cashier-page/OrdersBoard";
 import ShiftLobby from "./cashier-page/ShiftLobby";
 import ShiftReportModal from "./cashier-page/ShiftReportModal";
 import { openAppWindow, openPrintDocument } from "../../../utils/desktopWindows";
+import {
+    buildReadyAtValue,
+    getOrderEditBlockReason,
+    splitReadyAt,
+    toDateInputValue,
+    toTimeInputValue
+} from "./cashier-page/cashierUtils";
 
 const API_ORDERS = `${API_BASE_URL}/api/orders`;
 const API_SHIFTS = `${API_BASE_URL}/api/shifts`;
@@ -103,6 +110,14 @@ export default function CashierPage() {
     const [orderType, setOrderType] = useState(false);
     const [allShifts, setAllShifts] = useState([]);
     const [preparationTime, setPreparationTime] = useState(30);
+    // Готовность: "minutes" — через N минут, "at" — к конкретному времени.
+    const [readyMode, setReadyMode] = useState("minutes");
+    const [readyDate, setReadyDate] = useState(() => toDateInputValue());
+    const [readyTime, setReadyTime] = useState("");
+    // Заказ, который сейчас редактируется в конструкторе (null — создаём новый).
+    const [editingOrder, setEditingOrder] = useState(null);
+    const [editBusy, setEditBusy] = useState(false);
+    const skipPhoneSyncRef = useRef(false);
     const [deliveryCost, setDeliveryCost] = useState(0);
     const [paymentType, setPaymentType] = useState("cash"); // cash | transfer | unpaid
     const [deliveryPhone, setDeliveryPhone] = useState("");
@@ -300,6 +315,11 @@ export default function CashierPage() {
 
     useEffect(() => {
         if (!orderType) return;
+        if (skipPhoneSyncRef.current) {
+            // Телефон заказа только что загружен для редактирования — не перетираем его.
+            skipPhoneSyncRef.current = false;
+            return;
+        }
         if (selectedClient?.number) {
             setDeliveryPhone(selectedClient.number);
             return;
@@ -720,6 +740,12 @@ ${reportText}
             }
         }
 
+        const readiness = buildReadinessPayload();
+        if (readiness.error) {
+            alert(readiness.error);
+            return;
+        }
+
         const total = totalOrderAmount;
 
         if (paymentType === "cash" && cashReceived == null) {
@@ -740,7 +766,8 @@ ${reportText}
                 date: new Date().toISOString().slice(0, 10),
                 amount: total,
                 status: false,
-                time: preparationTime,
+                time: readiness.time,
+                readyAt: readiness.readyAt,
                 duty: isDebt,
                 type: orderType,
                 deliveryPhone: requiresContactDetails ? effectivePhone : null,
@@ -788,29 +815,188 @@ ${reportText}
             // Обновляем список заказов (добавляем новый заказ в начало)
             setOrders(prev => [order, ...prev]);
 
-            // Очищаем форму
-            setCurrentOrderItems([]);
-            setPersonCount(1);
-            setOrderConsumables([]);
-            setConsumableOverrides({});
-            setOrderType(false);
-            setDeliveryCost(0);
-            setPaymentType("cash");
-            setDeliveryPhone("");
-            setDeliveryAddress("");
-            setPreparationTime(30);
-            setIsDebt(false);
-            setShowDatePicker(false);
-            setSelectedClient(null);
-
-            // Сбрасываем дату погашения долга на завтра
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            setDebtPaymentDate(tomorrow.toISOString().split('T')[0]);
-
+            resetComposer();
         } catch (e) {
             console.error("Ошибка создания заказа:", e);
             throw e;
+        }
+    };
+
+    // Очищаем конструктор заказа (после создания, сохранения или отмены редактирования)
+    function resetComposer() {
+        setCurrentOrderItems([]);
+        setPersonCount(1);
+        setOrderConsumables([]);
+        setConsumableOverrides({});
+        setOrderType(false);
+        setDeliveryCost(0);
+        setPaymentType("cash");
+        setDeliveryPhone("");
+        setDeliveryAddress("");
+        setPreparationTime(30);
+        setReadyMode("minutes");
+        setReadyDate(toDateInputValue());
+        setReadyTime("");
+        setIsDebt(false);
+        setShowDatePicker(false);
+        setSelectedClient(null);
+        setEditingOrder(null);
+
+        // Сбрасываем дату погашения долга на завтра
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        setDebtPaymentDate(tomorrow.toISOString().split('T')[0]);
+    }
+
+    // Время готовности для запроса: либо минуты, либо конкретный момент.
+    function buildReadinessPayload() {
+        if (readyMode !== "at") {
+            return { time: preparationTime, readyAt: null };
+        }
+        if (!readyTime) {
+            return { error: "Укажите время, к которому заказ должен быть готов" };
+        }
+        const readyAt = buildReadyAtValue(readyDate || toDateInputValue(), readyTime);
+        const unchanged = editingOrder?.readyAt && String(editingOrder.readyAt).slice(0, 16) === readyAt.slice(0, 16);
+        if (!unchanged && new Date(readyAt).getTime() <= Date.now()) {
+            return { error: `Время ${readyTime} уже прошло. Укажите время позже текущего или другую дату` };
+        }
+        return { time: null, readyAt };
+    }
+
+    const startEditOrder = async (order) => {
+        const localReason = getOrderEditBlockReason(order);
+        if (localReason) {
+            throw new Error(localReason);
+        }
+        if (currentOrderItems.length > 0 && editingOrder?.orderId !== order.orderId) {
+            const confirmed = window.confirm(
+                "В конструкторе уже есть несохранённые позиции. Заменить их заказом #" + order.orderId + "?"
+            );
+            if (!confirmed) return false;
+        }
+
+        const res = await fetch(`${API_ORDERS}/${order.orderId}`);
+        const fresh = await res.json().catch(() => null);
+        if (!res.ok || !fresh) {
+            throw new Error(fresh?.message || `Не удалось загрузить заказ #${order.orderId} (${res.status})`);
+        }
+        const reason = getOrderEditBlockReason(fresh);
+        if (reason) {
+            throw new Error(reason);
+        }
+
+        const client = fresh.clientId != null
+            ? clients.find((item) => Number(item.clientId) === Number(fresh.clientId)) || null
+            : null;
+        const items = (Array.isArray(fresh.items) ? fresh.items : []).map((item) => {
+            const isSet = item.itemType === "set" || item.setId != null;
+            return {
+                itemType: isSet ? "set" : "dish",
+                dishId: isSet ? null : item.dishID ?? item.dishId,
+                setId: isSet ? item.setId : null,
+                dishName: item.dishName || item.name || "Позиция",
+                name: item.name || item.dishName || "Позиция",
+                price: Number(item.price || 0),
+                qty: Math.max(1, Number(item.qty || 1))
+            };
+        });
+        const overrides = {};
+        (Array.isArray(fresh.consumables) ? fresh.consumables : []).forEach((row) => {
+            if (row?.productId == null) return;
+            overrides[row.productId] = {
+                productId: Number(row.productId),
+                actualQuantity: Number(row.actualQuantity ?? 0),
+                surchargeAmount: Number(row.surchargeAmount ?? 0)
+            };
+        });
+        const ready = splitReadyAt(fresh.readyAt);
+
+        skipPhoneSyncRef.current = Boolean(fresh.type);
+        setEditingOrder(fresh);
+        setCurrentOrderItems(items);
+        setPersonCount(Math.max(1, Number(fresh.personCount || 1)));
+        setConsumableOverrides(overrides);
+        setOrderType(Boolean(fresh.type));
+        setDeliveryCost(Number(fresh.deliveryCost || 0));
+        setDeliveryPhone(fresh.deliveryPhone || "");
+        setDeliveryAddress(fresh.deliveryAddress || "");
+        setSelectedClient(client);
+        setClientSearch("");
+        setPaymentType("unpaid");
+        setIsDebt(false);
+        setShowDatePicker(false);
+        if (ready) {
+            setReadyMode("at");
+            setReadyDate(ready.date);
+            setReadyTime(ready.time);
+        } else {
+            setReadyMode("minutes");
+            setPreparationTime(Math.max(1, Math.round(Number(fresh.time || 30))));
+            setReadyDate(toDateInputValue());
+            setReadyTime("");
+        }
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const saveEditedOrder = async () => {
+        if (!editingOrder) return;
+        if (orderItemsForApi.length === 0) {
+            alert("В заказе должна остаться хотя бы одна позиция");
+            return;
+        }
+        if (requiresContactDetails && (!effectivePhone || !effectiveAddress)) {
+            alert(!effectivePhone ? "Введите номер телефона для доставки" : "Введите адрес доставки");
+            return;
+        }
+        const readiness = buildReadinessPayload();
+        if (readiness.error) {
+            alert(readiness.error);
+            return;
+        }
+
+        setEditBusy(true);
+        try {
+            const res = await fetch(`${API_ORDERS}/${editingOrder.orderId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    expectedVersion: editingOrder.version ?? null,
+                    clientId: selectedClient?.clientId ?? 0,
+                    type: orderType,
+                    time: readiness.time,
+                    readyAt: readiness.readyAt,
+                    deliveryCost: orderType ? Number(deliveryCost || 0) : 0,
+                    deliveryPhone: requiresContactDetails ? effectivePhone : null,
+                    deliveryAddress: requiresContactDetails ? effectiveAddress : null,
+                    items: orderItemsForApi,
+                    personCount,
+                    consumables: orderConsumables
+                })
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) {
+                throw new Error(body?.message || body?.error || `Не удалось сохранить заказ #${editingOrder.orderId} (${res.status})`);
+            }
+
+            const updated = {
+                ...body,
+                clientName: selectedClient?.fullName || undefined,
+                clientPhone: selectedClient?.number || undefined
+            };
+            setOrders((prev) => {
+                const next = prev.map((o) => (o.orderId === updated.orderId ? { ...o, ...updated } : o));
+                if (currentShift?.shiftId) {
+                    localStorage.setItem(`orders_shift_${currentShift.shiftId}`, JSON.stringify(next));
+                }
+                return next;
+            });
+            resetComposer();
+        } catch (e) {
+            console.error("Ошибка сохранения заказа:", e);
+            alert(e.message || "Не удалось сохранить изменения заказа");
+        } finally {
+            setEditBusy(false);
         }
     };
 
@@ -1403,6 +1589,23 @@ ${reportText}
                         showDatePicker={showDatePicker}
                         debtPaymentDate={debtPaymentDate}
                         preparationTime={preparationTime}
+                        readyMode={readyMode}
+                        readyDate={readyDate}
+                        readyTime={readyTime}
+                        onReadyModeChange={(mode) => {
+                            setReadyMode(mode);
+                            if (mode === "at" && !readyTime) {
+                                const suggestion = new Date(Date.now() + preparationTime * 60000);
+                                setReadyDate(toDateInputValue(suggestion));
+                                setReadyTime(toTimeInputValue(suggestion));
+                            }
+                        }}
+                        onReadyDateChange={setReadyDate}
+                        onReadyTimeChange={setReadyTime}
+                        editingOrderId={editingOrder?.orderId ?? null}
+                        editBusy={editBusy}
+                        onSaveEdit={saveEditedOrder}
+                        onCancelEdit={resetComposer}
                         personCount={personCount}
                         consumables={orderConsumables}
                         consumablesLoading={consumablesLoading}
@@ -1502,7 +1705,9 @@ ${reportText}
                             onPrintOrderDetails: printOrderDetailsTicket,
                             onUpdatePayment: updateOrderPayment,
                             onRequestCashPayment: requestCashPayment,
-                            onIssueOrder: issueOrder
+                            onIssueOrder: issueOrder,
+                            onEditOrder: startEditOrder,
+                            editingOrderId: editingOrder?.orderId ?? null
                         }}
                     />
                 </div>
