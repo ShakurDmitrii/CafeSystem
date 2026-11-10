@@ -1,6 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import styles from "./DishPickerModal.module.css";
 import { formatMoney } from "./cashier-page/cashierUtils";
+import VoiceOrderPanel from "./voice/VoiceOrderPanel";
+import { useVoiceOrder } from "./voice/useVoiceOrder";
 
 const normalize = (v) => String(v || "").trim();
 const FOCUSABLE = [
@@ -181,6 +183,18 @@ export default function DishPickerModal({
         return m;
     }, [cartItems]);
 
+    const catalogByKey = useMemo(
+        () => new Map(catalogItems.map((item) => [item.entityKey, item])),
+        [catalogItems]
+    );
+
+    const voice = useVoiceOrder({
+        active: isOpen,
+        disabled,
+        catalogByKey,
+        setCartItems
+    });
+
     const addToCart = (dish) => {
         const entityKey = toEntityKey(dish);
         if (!entityKey) return;
@@ -231,7 +245,7 @@ export default function DishPickerModal({
     );
 
     const handleConfirm = async () => {
-        await Promise.resolve(onConfirm?.(cartItems));
+        await Promise.resolve(onConfirm?.(cartItems, { personCount: voice.personCount }));
         onClose?.();
     };
 
@@ -276,6 +290,19 @@ export default function DishPickerModal({
                         <div className={styles.sectionTitle}>
                             {activeCategory === "Все" ? "Все позиции" : activeCategory}
                         </div>
+                        <VoiceOrderPanel
+                            supported={voice.supported}
+                            phase={voice.phase}
+                            hotkey={voice.hotkey}
+                            error={voice.error}
+                            result={voice.result}
+                            disabled={disabled}
+                            onToggle={voice.toggle}
+                            onCancel={voice.cancel}
+                            onPickCandidate={voice.pickCandidate}
+                            onDismiss={voice.dismiss}
+                            onHotkeyChange={voice.changeHotkey}
+                        />
                         <input
                             type="text"
                             name="dishSearch"

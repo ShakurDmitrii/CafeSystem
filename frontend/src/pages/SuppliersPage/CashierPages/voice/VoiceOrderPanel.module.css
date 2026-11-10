@@ -1,0 +1,158 @@
+.panel {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    border: 1px solid #d5e2dd;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #17362f;
+    font-size: 13px;
+}
+
+.panelMuted {
+    color: #6b8179;
+    background: #f1f6f4;
+}
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+}
+
+.micButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    border: 1px solid #88bfac;
+    border-radius: 9px;
+    background: #e4f4ed;
+    color: #154b3d;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.micButton:disabled {
+    cursor: default;
+    opacity: 0.7;
+}
+
+.micButtonRecording {
+    border-color: #bb4b1f;
+    background: #fdebe3;
+    color: #8a2f0f;
+}
+
+.micDot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.55;
+}
+
+.micButtonRecording .micDot {
+    opacity: 1;
+    animation: voicePulse 1s ease-in-out infinite;
+}
+
+@keyframes voicePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.5); }
+}
+
+.linkButton {
+    border: none;
+    background: none;
+    color: #486a60;
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0;
+}
+
+.hotkeyField {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #486a60;
+}
+
+.hotkeyField select {
+    border: 1px solid #d5e2dd;
+    border-radius: 7px;
+    padding: 5px 8px;
+    background: #ffffff;
+    color: #17362f;
+}
+
+.hint {
+    color: #6b8179;
+}
+
+.error {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #fdebe3;
+    color: #8a2f0f;
+}
+
+.result {
+    display: grid;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #d5e2dd;
+}
+
+.resultHeader {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: #486a60;
+}
+
+.added {
+    color: #154b3d;
+}
+
+.ambiguous {
+    display: grid;
+    gap: 6px;
+}
+
+.ambiguousTitle {
+    font-weight: 700;
+}
+
+.candidates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.candidate {
+    display: grid;
+    gap: 2px;
+    text-align: left;
+    padding: 8px 12px;
+    border: 1px solid #bfddd2;
+    border-radius: 9px;
+    background: #e9f6f1;
+    color: #17362f;
+    cursor: pointer;
+}
+
+.candidate:hover:not(:disabled) {
+    border-color: #88bfac;
+}
+
+.candidate small {
+    color: #486a60;
+}
+
+.unrecognized {
+    color: #8a5a2f;
+}
