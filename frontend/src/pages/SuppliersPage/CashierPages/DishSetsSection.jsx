@@ -74,7 +74,7 @@ const buildSetPayload = (form) => ({
 
 const normalizeSetName = (value) => String(value || "").trim().toLocaleLowerCase("ru-RU");
 
-export default function DishSetsSection({ dishes = [], categories = [] }) {
+export default function DishSetsSection({ dishes = [], categories = [], readOnly = false }) {
     const [dishSets, setDishSets] = useState([]);
     const [loading, setLoading] = useState(true);
     const [createForm, setCreateForm] = useState(createSetForm);
@@ -352,6 +352,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
 
     return (
         <>
+            {!readOnly && (
             <section className={styles.createCard}>
                 <div className={styles.sectionHeading}>
                     <div>
@@ -484,6 +485,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
 
                 {createError && <div className={styles.errorBox} role="alert">{createError}</div>}
             </section>
+            )}
 
             <section className={styles.listSection}>
                 <div className={styles.sectionHeading}>
@@ -561,6 +563,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                                     </div>
                                 </div>
 
+                                {!readOnly && (
                                 <div className={styles.cardActions}>
                                     <button type="button" className={styles.secondaryButton} onClick={() => openEditModal(setItem)}>
                                         Редактировать
@@ -574,6 +577,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                                         {deletingSetId === setItem.setId ? "Удаляем…" : "Удалить"}
                                     </button>
                                 </div>
+                                )}
                             </article>
                         ))}
                     </div>

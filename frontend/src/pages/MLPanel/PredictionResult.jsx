@@ -3,6 +3,11 @@ import React from 'react';
 import { formatCurrency, formatNumber, formatPercent, formatTime } from './formatters';
 import styles from './mlStyles.module.css';
 
+const TARGET_LABELS = {
+    daily_quantity: 'порций в день',
+    daily_quantity_on_sale_days: 'порций в день с продажами'
+};
+
 export default function PredictionResult({ prediction, loading, error }) {
     if (loading) {
         return (
@@ -54,7 +59,7 @@ export default function PredictionResult({ prediction, loading, error }) {
             <p className={styles.eyebrow}>Прогноз спроса</p>
             <div className={styles.salesValue}>
                 {formatNumber(prediction.predictedSales)}
-                <span>{prediction.target === 'daily_quantity_on_sale_days' ? 'порций в день с продажами' : 'оценка старой модели — нужно переобучение'}</span>
+                <span>{TARGET_LABELS[prediction.target] ?? 'оценка старой модели — нужно переобучение'}</span>
             </div>
 
             <div className={styles.metricGrid}>

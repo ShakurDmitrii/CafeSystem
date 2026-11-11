@@ -1,4 +1,5 @@
 import styles from "../TechCardPage.module.css";
+import { unitLabel } from "../../../utils/units";
 
 export default function IngredientEditor({
     selectedLabel,
@@ -61,7 +62,7 @@ export default function IngredientEditor({
 
                 <div className={styles.editorFields}>
                     <label className={styles.field} htmlFor="tech-card-weight">
-                        <span>Количество, {ingredientMeasureUnit}</span>
+                        <span>Количество, {unitLabel(ingredientMeasureUnit)}</span>
                         <input
                             id="tech-card-weight"
                             name="ingredientQuantity"
@@ -72,7 +73,7 @@ export default function IngredientEditor({
                             autoComplete="off"
                             value={weight}
                             onChange={(event) => onWeightChange(event.target.value)}
-                            placeholder={`Например, 150 ${ingredientMeasureUnit}…`}
+                            placeholder={`Например, 150 ${unitLabel(ingredientMeasureUnit)}…`}
                             className={styles.input}
                             required
                         />

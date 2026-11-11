@@ -1,6 +1,6 @@
 import CashierModal from "./CashierModal";
 import styles from "../CashierPage.module.css";
-import { formatMoney } from "./cashierUtils";
+import { describeDebt, formatMoney } from "./cashierUtils";
 
 export default function ShiftReportModal({ report, loading, onClose }) {
     return (
@@ -40,6 +40,13 @@ export default function ShiftReportModal({ report, loading, onClose }) {
                         <div><span>Прибыль</span><strong>{formatMoney(report.totals?.profit)}</strong></div>
                         <div><span>Доставка</span><strong>{formatMoney(report.totals?.deliveryExpense)}</strong></div>
                         <div><span>С задержкой</span><strong>{report.totals?.delayedOrdersCount ?? 0}</strong></div>
+                        {Number(report.totals?.debtOrdersCount || 0) > 0 && (
+                            <>
+                                <div><span>В долг</span><strong>{formatMoney(report.totals?.debtAmount)}</strong></div>
+                                <div><span>Долг погашен</span><strong>{formatMoney(report.totals?.debtRepaidAmount)}</strong></div>
+                                <div><span>Долг остаток</span><strong>{formatMoney(report.totals?.debtOutstandingAmount)}</strong></div>
+                            </>
+                        )}
                     </section>
 
                     <section className={styles.reportSection}>
@@ -77,6 +84,9 @@ export default function ShiftReportModal({ report, loading, onClose }) {
                                             {order.clientName || "Гость без профиля"}
                                             {order.clientPhone ? ` · ${order.clientPhone}` : ""}
                                         </p>
+                                        {describeDebt(order) && (
+                                            <span className={styles.debtChip}>{describeDebt(order)}</span>
+                                        )}
                                         {Number(order.delayMinutes || 0) > 0 && (
                                             <span className={styles.delayChip}>
                                                 Задержка {Number(order.delayMinutes).toFixed(0)} мин

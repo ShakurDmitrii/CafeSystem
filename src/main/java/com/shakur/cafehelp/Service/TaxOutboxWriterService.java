@@ -26,6 +26,7 @@ public class TaxOutboxWriterService {
     private static final Field<String> PAYMENT_TYPE = DSL.field(DSL.name("payment_type"), String.class);
     private static final Field<LocalDateTime> CANCELLED_AT = DSL.field(DSL.name("cancelled_at"), LocalDateTime.class);
     private static final Field<String> CANCEL_REASON = DSL.field(DSL.name("cancel_reason"), String.class);
+    private static final Field<LocalDateTime> PAID_AT = DSL.field(DSL.name("paid_at"), LocalDateTime.class);
     private static final org.jooq.Table<?> TAX_OUTBOX = DSL.table(DSL.name("sales", "tax_outbox"));
     private static final Field<Long> OUTBOX_ID = DSL.field(DSL.name("id"), Long.class);
     private static final Field<String> AGGREGATE_TYPE = DSL.field(DSL.name("aggregate_type"), String.class);
@@ -64,7 +65,8 @@ public class TaxOutboxWriterService {
                         ORDER.DATE,
                         IS_PAID,
                         PAYMENT_TYPE,
-                        CANCELLED_AT
+                        CANCELLED_AT,
+                        PAID_AT
                 )
                 .from(ORDER)
                 .where(ORDER.ORDERID.eq(orderId))
@@ -81,8 +83,14 @@ public class TaxOutboxWriterService {
 
         Map<String, Object> payload = new LinkedHashMap<>();
         if (basePayload != null) payload.putAll(basePayload);
-        LocalDate effectiveDate = receiptDate != null ? receiptDate : order.get(ORDER.DATE);
+        // Доход самозанятого признаётся в день получения денег: для долга, погашенного
+        // позже, чек должен датироваться оплатой, а не днём оформления заказа.
+        LocalDateTime paidAt = order.get(PAID_AT);
+        LocalDate effectiveDate = receiptDate != null
+                ? receiptDate
+                : paidAt != null ? paidAt.toLocalDate() : order.get(ORDER.DATE);
         payload.put("orderDate", effectiveDate != null ? effectiveDate.toString() : null);
+        payload.put("paidAt", paidAt != null ? paidAt.toString() : null);
         if (receiptDate != null) {
             payload.put("createdAt", receiptDate.atTime(12, 0).toString());
         }

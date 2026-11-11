@@ -48,3 +48,9 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Временные файлы и дампы с рабочими данными ###
+__tmp*
+*_tail.txt
+*.sql.bak
+db/*backup*.sql

@@ -1,7 +1,7 @@
 .page { display: grid; gap: 18px; color: #173c34; }
 .hero, .section, .actionCard, .desktopNotice { border: 1px solid #d4e1dc; border-radius: 18px; background: #fff; }
 .hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: clamp(24px, 4vw, 46px); color: #f5fbf8; background: radial-gradient(circle at 90% 10%, rgba(154, 215, 194, .27), transparent 34%), #183f36; }
-.hero h1, .section h2, .actionCard h2, .desktopNotice h1 { margin: 0; font-family: Georgia, serif; }
+.hero h1, .section h2, .actionCard h2, .desktopNotice h1 { margin: 0; font-family: var(--font-display); }
 .hero h1 { max-width: 680px; font-size: clamp(34px, 5vw, 62px); line-height: .98; }
 .hero p:not(.kicker) { max-width: 700px; margin: 16px 0 0; color: #bfd4cc; line-height: 1.6; }
 .kicker { margin: 0 0 9px; color: #76a99a; font-size: 11px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
@@ -24,7 +24,7 @@
 .actionsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .actionCard { position: relative; overflow: hidden; padding: 26px; }
 .actionCard p { min-height: 52px; color: #607b72; line-height: 1.55; }
-.actionNumber { position: absolute; top: 15px; right: 20px; color: #d9e8e2; font-family: Georgia, serif; font-size: 42px; }
+.actionNumber { position: absolute; top: 15px; right: 20px; color: #d9e8e2; font-family: var(--font-display); font-size: 42px; }
 .primaryButton, .secondaryButton, .refreshButton { min-height: 42px; padding: 10px 16px; border: 1px solid transparent; border-radius: 10px; font-weight: 850; }
 .primaryButton { color: #fff; background: #225b4d; }
 .secondaryButton, .refreshButton { color: #225b4d; border-color: #bcd1ca; background: #f8fbfa; }

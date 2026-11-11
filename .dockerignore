@@ -5,4 +5,4 @@ build
 out
 frontend
 PyModule
-__tmp_styles.js
+__tmp*

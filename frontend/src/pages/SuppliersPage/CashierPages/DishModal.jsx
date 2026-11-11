@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import styles from "../DishModal.module.css";
+import { formatMoney } from "./cashier-page/cashierUtils";
 
 export default function DishModal({ isOpen, onClose, onAddDish, dishes }) {
     const [search, setSearch] = useState("");
@@ -39,7 +40,7 @@ export default function DishModal({ isOpen, onClose, onAddDish, dishes }) {
                             onClick={() => setSelectedDish(dish)}
                         >
                             <span>{dish.dishName || "Без названия"}</span>
-                            <span>{dish.price != null ? `${dish.price} ₽` : "—"}</span>
+                            <span>{dish.price != null ? formatMoney(dish.price) : "—"}</span>
                         </div>
                     ))}
                     {filteredDishes.length === 0 && <p>Ничего не найдено</p>}

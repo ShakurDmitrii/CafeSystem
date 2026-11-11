@@ -1,5 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import styles from "./DishPickerModal.module.css";
+import { formatMoney } from "./cashier-page/cashierUtils";
+import VoiceOrderPanel from "./voice/VoiceOrderPanel";
+import { useVoiceOrder } from "./voice/useVoiceOrder";
 
 const normalize = (v) => String(v || "").trim();
 const FOCUSABLE = [
@@ -180,6 +183,18 @@ export default function DishPickerModal({
         return m;
     }, [cartItems]);
 
+    const catalogByKey = useMemo(
+        () => new Map(catalogItems.map((item) => [item.entityKey, item])),
+        [catalogItems]
+    );
+
+    const voice = useVoiceOrder({
+        active: isOpen,
+        disabled,
+        catalogByKey,
+        setCartItems
+    });
+
     const addToCart = (dish) => {
         const entityKey = toEntityKey(dish);
         if (!entityKey) return;
@@ -230,7 +245,7 @@ export default function DishPickerModal({
     );
 
     const handleConfirm = async () => {
-        await Promise.resolve(onConfirm?.(cartItems));
+        await Promise.resolve(onConfirm?.(cartItems, { personCount: voice.personCount }));
         onClose?.();
     };
 
@@ -275,6 +290,19 @@ export default function DishPickerModal({
                         <div className={styles.sectionTitle}>
                             {activeCategory === "Все" ? "Все позиции" : activeCategory}
                         </div>
+                        <VoiceOrderPanel
+                            supported={voice.supported}
+                            phase={voice.phase}
+                            hotkey={voice.hotkey}
+                            error={voice.error}
+                            result={voice.result}
+                            disabled={disabled}
+                            onToggle={voice.toggle}
+                            onCancel={voice.cancel}
+                            onPickCandidate={voice.pickCandidate}
+                            onDismiss={voice.dismiss}
+                            onHotkeyChange={voice.changeHotkey}
+                        />
                         <input
                             type="text"
                             name="dishSearch"
@@ -310,7 +338,7 @@ export default function DishPickerModal({
                                         )}
                                         <div className={styles.dishName}>{d.dishName}</div>
                                         <div className={styles.dishMeta}>
-                                            <span>{Number(d.price || 0).toFixed(2)} ₽</span>
+                                            <span>{formatMoney(d.price)}</span>
                                             <span className={styles.dishMetaRight}>
                                                 <span className={styles.typeBadge}>
                                                     {isSet ? "Набор" : "Блюдо"}
@@ -353,7 +381,7 @@ export default function DishPickerModal({
                                                 </span>
                                             </div>
                                             <div className={styles.cartPrice}>
-                                                {Number(i.price || 0).toFixed(2)} ₽
+                                                {formatMoney(i.price)}
                                             </div>
                                         </div>
                                         <div className={styles.cartControls}>
@@ -402,7 +430,7 @@ export default function DishPickerModal({
                         )}
                         <div className={styles.cartFooter}>
                             <div className={styles.total}>
-                                Итого: {Number(total || 0).toFixed(2)} ₽
+                                Итого: {formatMoney(total)}
                             </div>
                             <button
                                 className={styles.okBtn}

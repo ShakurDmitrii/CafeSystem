@@ -1,5 +1,6 @@
 import styles from "../CashierPage.module.css";
 import { formatMoney, formatReadyAt, getInitials, toDateInputValue } from "./cashierUtils";
+import { unitLabel } from "../../../../utils/units";
 
 function ReadinessField({
     readyMode,
@@ -136,10 +137,10 @@ export default function OrderComposer({
     onPersonCountChange,
     onConsumableChange,
     onConsumableReset,
-    onCreateOrder,
-    onCloseShift
+    onCreateOrder
 }) {
     const isEditing = editingOrderId != null;
+    const paymentMissing = !paymentType && !isDebt;
     return (
         <section className={`${styles.orderComposer} ${isEditing ? styles.orderComposerEditing : ""}`}>
             <div className={styles.sectionHeading}>
@@ -217,11 +218,8 @@ export default function OrderComposer({
             <div className={styles.composerBlock}>
                 <div className={styles.blockHeading}>
                     <h3>Позиции</h3>
-                    <button type="button" onClick={onOpenDishPicker}>Добавить</button>
                 </div>
-                {items.length === 0 ? (
-                    <div className={styles.compactEmpty}>Добавьте блюда или наборы из меню.</div>
-                ) : (
+                {items.length === 0 ? null : (
                     <div className={styles.orderLines}>
                         {items.map((item, index) => (
                             <div key={`${item.itemType || "dish"}-${item.dishId || item.setId || index}-${index}`} className={styles.orderLine}>
@@ -249,6 +247,14 @@ export default function OrderComposer({
                         ))}
                     </div>
                 )}
+                <button
+                    className={items.length === 0 ? styles.addDishesButton : styles.addMoreDishesButton}
+                    type="button"
+                    onClick={onOpenDishPicker}
+                    disabled={isLoading}
+                >
+                    {items.length === 0 ? "+ Добавить блюда из меню" : "+ Добавить ещё"}
+                </button>
             </div>
 
             <div className={styles.composerBlock}>
@@ -282,11 +288,11 @@ export default function OrderComposer({
                                     <span>{item.itemType === "packaging" ? "Упаковка" : "Расходник"}</span>
                                     <strong>{item.productName}</strong>
                                     <small>
-                                        По умолчанию: {Number(item.suggestedQuantity || 0).toLocaleString("ru-RU")} {item.baseUnit}
+                                        По умолчанию: {Number(item.suggestedQuantity || 0).toLocaleString("ru-RU")} {unitLabel(item.baseUnit)}
                                     </small>
                                 </div>
                                 <label>
-                                    <span>Положить, {item.baseUnit}</span>
+                                    <span>Положить, {unitLabel(item.baseUnit)}</span>
                                     <input
                                         type="number"
                                         min="0"
@@ -391,8 +397,8 @@ export default function OrderComposer({
                     Оплата при редактировании не меняется. Принять оплату можно на карточке заказа после сохранения.
                 </div>
             ) : (
-            <fieldset className={styles.paymentFieldset}>
-                <legend>Оплата</legend>
+            <fieldset className={`${styles.paymentFieldset} ${paymentMissing && items.length > 0 ? styles.paymentFieldsetRequired : ""}`}>
+                <legend>Оплата{paymentMissing ? " — выберите способ" : ""}</legend>
                 {[
                     ["cash", "Наличные"],
                     ["transfer", "Перевод"],
@@ -485,6 +491,7 @@ export default function OrderComposer({
                     isLoading ||
                     editBusy ||
                     consumablesLoading ||
+                    paymentMissing ||
                     (requiresContactDetails && (!effectivePhone || !effectiveAddress))
                 }
             >
@@ -492,14 +499,14 @@ export default function OrderComposer({
                     ? (editBusy ? "Сохраняем…" : `Сохранить изменения #${editingOrderId}`)
                     : "Отправить заказ на кухню"}
             </button>
+            {items.length > 0 && paymentMissing && !isEditing && (
+                <p className={styles.composerHint}>Выберите способ оплаты, чтобы отправить заказ.</p>
+            )}
             {isEditing && (
                 <button className={styles.cancelEditButton} type="button" onClick={onCancelEdit} disabled={editBusy}>
                     Отменить редактирование
                 </button>
             )}
-            <button className={styles.closeShiftButton} type="button" onClick={onCloseShift} disabled={isLoading}>
-                Закрыть смену
-            </button>
         </section>
     );
 }

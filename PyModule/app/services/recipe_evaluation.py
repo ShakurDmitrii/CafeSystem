@@ -60,7 +60,7 @@ class RecipeEvaluation:
                 self.warnings.add("Модель не обучена: используется эвристическая оценка, без прогноза продаж.")
             else:
                 unknown = set(available) - set(binarizer.classes_)
-                if metadata.get("target") != "daily_quantity_on_sale_days":
+                if metadata.get("target") not in service.SUPPORTED_TARGETS:
                     self.warnings.add("Модель старого формата: переобучите её. Сейчас используется эвристическая оценка.")
                 elif unknown:
                     self.warnings.add("Модель не знает часть пула: все варианты сравниваются эвристически, без прогноза продаж.")

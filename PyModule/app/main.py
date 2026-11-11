@@ -6,7 +6,8 @@ from fastapi import FastAPI
 from app.clients.java_api import JavaApiClient
 from app.routers.analytics import router as analytics_router
 from app.routers.ml_router import router as ml_router
-from app.services import service
+from app.routers.speech import router as speech_router
+from app.services import service, speech
 
 
 logging.basicConfig(level=logging.INFO)
@@ -17,6 +18,7 @@ java_client = JavaApiClient()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     service.load_model()
+    speech.warm_up_in_background()
     await java_client.connect()
     try:
         yield
@@ -32,6 +34,7 @@ app = FastAPI(
 
 app.include_router(analytics_router)
 app.include_router(ml_router)
+app.include_router(speech_router)
 
 
 @app.get("/health", tags=["System"])
@@ -48,4 +51,5 @@ async def readiness() -> dict[str, object]:
         "status": "ready",
         "modelLoaded": info["modelLoaded"],
         "javaClientConnected": java_client.session is not None,
+        "speechReady": speech.transcriber.is_ready(),
     }
