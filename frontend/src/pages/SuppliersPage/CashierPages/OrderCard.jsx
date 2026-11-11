@@ -281,8 +281,13 @@ export default function OrderCard({
                 </button>
 
                 {!isReady && (
-                    <button className={styles.orderActionPrimary} type="button" onClick={() => markOrderReady(order.orderId)}>
-                        Готово
+                    <button
+                        className={styles.orderActionPrimary}
+                        type="button"
+                        disabled={Boolean(busyAction)}
+                        onClick={() => runAction("ready", () => markOrderReady(order.orderId), "Заказ отмечен готовым")}
+                    >
+                        {busyAction === "ready" ? "Отмечаем…" : "Готово"}
                     </button>
                 )}
 
@@ -312,8 +317,13 @@ export default function OrderCard({
                 )}
 
                 {isReady && !isIssued && (
-                    <button className={styles.orderActionIssue} type="button" onClick={() => onIssueOrder?.(order.orderId)}>
-                        Выдать
+                    <button
+                        className={styles.orderActionIssue}
+                        type="button"
+                        disabled={Boolean(busyAction)}
+                        onClick={() => runAction("issue", () => onIssueOrder?.(order.orderId), "Заказ выдан")}
+                    >
+                        {busyAction === "issue" ? "Выдаём…" : "Выдать"}
                     </button>
                 )}
                 {isIssued && <span className={styles.issuedLabel}>Выдан</span>}

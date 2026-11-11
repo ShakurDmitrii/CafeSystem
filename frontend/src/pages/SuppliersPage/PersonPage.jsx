@@ -7,6 +7,7 @@ import EmployeeEditorModal from "./person-page/EmployeeEditorModal";
 import PersonnelRoster from "./person-page/PersonnelRoster";
 import TeamHero from "./person-page/TeamHero";
 import { formatMoney } from "./person-page/personUtils";
+import { describeHttpStatus, parseJsonSafe } from "../../utils/apiError";
 
 const API_PERSONS = `${API_BASE_URL}/api/persons`;
 const API_SHIFTS = `${API_BASE_URL}/api/shifts`;
@@ -15,7 +16,7 @@ const LEGACY_SALARY_STORAGE_KEY = "salaryPayments";
 
 const fetchArray = async (url) => {
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`Ошибка сервера (${response.status})`);
+    if (!response.ok) throw new Error(`Ошибка сервера: ${describeHttpStatus(response.status)}`);
     const data = await response.json();
     return Array.isArray(data) ? data : [];
 };
@@ -24,12 +25,12 @@ const parseResponse = async (response) => {
     const text = await response.text();
     let data = null;
     try {
-        data = text ? JSON.parse(text) : null;
+        data = parseJsonSafe(text);
     } catch {
         data = null;
     }
     if (!response.ok) {
-        throw new Error(data?.message || data?.detail || data?.error || text || `Ошибка сервера (${response.status})`);
+        throw new Error(data?.message || data?.detail || data?.error || text || `Ошибка сервера: ${describeHttpStatus(response.status)}`);
     }
     return data;
 };
@@ -265,12 +266,12 @@ export default function PersonPage() {
             const text = await response.text();
             let updated = null;
             try {
-                updated = text ? JSON.parse(text) : null;
+                updated = parseJsonSafe(text);
             } catch {
                 updated = null;
             }
             if (!response.ok) {
-                throw new Error(updated?.message || updated?.error || text || `Ошибка сервера (${response.status})`);
+                throw new Error(updated?.message || updated?.error || text || `Ошибка сервера: ${describeHttpStatus(response.status)}`);
             }
 
             setEditingPerson(null);
@@ -301,12 +302,12 @@ export default function PersonPage() {
             if (!response.ok || text.trim() === "false") {
                 let details = "";
                 try {
-                    const data = text ? JSON.parse(text) : null;
+                    const data = parseJsonSafe(text);
                     details = data?.message || data?.error || "";
                 } catch {
                     details = text;
                 }
-                throw new Error(details || `Ошибка сервера (${response.status})`);
+                throw new Error(details || `Ошибка сервера: ${describeHttpStatus(response.status)}`);
             }
 
             await loadPersons();
