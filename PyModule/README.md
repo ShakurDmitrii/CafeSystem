@@ -33,10 +33,18 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - `GET /health` — liveness процесса;
 - `GET /ready` — готовность API, модели и Java-клиента;
 - `/api/ml/*` — прогноз, обучение, генерация и оптимизация;
-- `/api/analytics/*` — KPI, топ блюд, тренды и инсайты.
+- `/api/analytics/*` — KPI, топ блюд, тренды и инсайты;
+- `/api/speech/*` — распознавание речи для голосового набора заказа (faster-whisper, CPU).
 
 Маршруты `/api/ml/*` и `/api/analytics/*` требуют `X-Service-Token` и передают
 `X-Contract-Version: 1`. Подробный контракт: `../docs/PYMODULE_CONTRACT.md`.
+
+## Распознавание речи
+
+При первом старте модель faster-whisper (`SPEECH_MODEL`, по умолчанию `small`, около
+500 МБ) скачивается в `models/speech`; дальше интернет не нужен. Пока модель грузится,
+`/ready` отдаёт `speechReady=false`, а `/api/speech/transcribe` отвечает `503`. Отключить:
+`SPEECH_ENABLED=false`. Полный список переменных — в `../docs/PYMODULE_CONTRACT.md`.
 
 ## Тесты
 

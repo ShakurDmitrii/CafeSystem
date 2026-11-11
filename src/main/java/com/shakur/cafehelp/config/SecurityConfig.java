@@ -90,6 +90,8 @@ public class SecurityConfig {
 
                         // WORKER + OWNER: касса и операционная работа
                         .requestMatchers("/api/orders/**").hasAnyRole("WORKER", "OWNER")
+                        // Голосовой черновик заказа: только разбор, ничего не записывает
+                        .requestMatchers("/api/voice-orders/**").hasAnyRole("WORKER", "OWNER")
                         .requestMatchers("/api/clients/**").hasAnyRole("WORKER", "OWNER")
                         // Меню и справочники: сотрудник только читает, менять может владелец
                         .requestMatchers(HttpMethod.GET, "/api/dishes/**").hasAnyRole("WORKER", "OWNER")

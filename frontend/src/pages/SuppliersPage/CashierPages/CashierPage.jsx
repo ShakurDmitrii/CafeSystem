@@ -1756,7 +1756,10 @@ ${reportText}
                 dishSets={allDishSets}
                 categories={dishCategories}
                 initialItems={currentOrderItems}
-                onConfirm={(items) => setCurrentOrderItems(items)}
+                onConfirm={(items, extras) => {
+                    setCurrentOrderItems(items);
+                    if (extras?.personCount) setPersonCount(extras.personCount);
+                }}
                 disabled={isLoading}
             />
         </div>

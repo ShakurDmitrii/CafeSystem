@@ -1,0 +1,110 @@
+openapi: 3.1.0
+info:
+  title: CafeHelp Voice Orders API
+  version: 1.0.0
+  description: >-
+    Голосовой набор заказа в кассе. Сервер возвращает только черновик: позиции попадают в заказ
+    после подтверждения кассиром через обычный `POST /api/orders`.
+paths:
+  /api/voice-orders/draft:
+    post:
+      summary: Распознать фразу кассира и разобрать её по меню
+      description: >-
+        Формат фразы: «<блюдо> [количество] <блюдо> [количество] … [N персон]». Число относится к
+        блюду перед ним; без числа — одна штука. Доступно WORKER и OWNER.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: Запись фразы (webm/opus из MediaRecorder, ogg или wav), не более 5 МБ
+      responses:
+        '200':
+          description: Черновик позиций
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoiceOrderDraft' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422':
+          description: PyModule не смог прочитать запись (`PYTHON_INPUT_INVALID`)
+        '503':
+          description: Модель распознавания не загружена или PyModule недоступен (`PYTHON_UNAVAILABLE`)
+        '504':
+          description: PyModule не ответил вовремя (`PYTHON_TIMEOUT`)
+  /api/voice-orders/parse:
+    post:
+      summary: Разобрать уже распознанный текст по меню
+      description: Тот же разбор без аудио. Используется для отладки и проверок.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, maxLength: 2000 }
+      responses:
+        '200':
+          description: Черновик позиций
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoiceOrderDraft' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    BadRequest:
+      description: Пустая запись или фраза
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code: { type: string, enum: [INVALID_VOICE_REQUEST] }
+              message: { type: string }
+  schemas:
+    VoiceOrderDraft:
+      type: object
+      required: [transcript, lines, unrecognized]
+      properties:
+        transcript: { type: string, description: Распознанный текст как есть }
+        personCount: { type: [integer, 'null'], minimum: 1, description: Число персон, если было названо }
+        unrecognized:
+          type: array
+          items: { type: string }
+          description: Слова, которые не совпали ни с одной позицией меню
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/VoiceOrderLine' }
+    VoiceOrderLine:
+      type: object
+      required: [text, status, qty, candidates]
+      properties:
+        text: { type: string, description: Произнесённый фрагмент }
+        status:
+          type: string
+          enum: [MATCHED, AMBIGUOUS]
+          description: MATCHED — один уверенный кандидат; AMBIGUOUS — кассир выбирает из candidates
+        qty: { type: integer, minimum: 1, maximum: 99 }
+        candidates:
+          type: array
+          items: { $ref: '#/components/schemas/VoiceOrderCandidate' }
+    VoiceOrderCandidate:
+      type: object
+      required: [itemType, id, name, score]
+      properties:
+        itemType: { type: string, enum: [dish, set] }
+        id: { type: integer }
+        name: { type: string }
+        price: { type: [number, 'null'] }
+        score: { type: number, minimum: 0, maximum: 1 }
