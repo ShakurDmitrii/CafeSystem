@@ -32,6 +32,29 @@ class SpeechInputError(ValueError):
     """Аудио пустое или не читается."""
 
 
+def _decode_audio(audio: bytes):
+    """Декодирует запись (webm/opus, ogg, wav…) в 16 кГц моно для whisper.
+
+    Только здесь ошибка означает «запись не читается»; причину пишем в лог,
+    иначе битый контейнер от MediaRecorder не отличить от сломанного кодека.
+    """
+    import io
+
+    from faster_whisper import decode_audio
+
+    try:
+        samples = decode_audio(io.BytesIO(audio), sampling_rate=16000)
+    except Exception as exc:
+        logger.warning(
+            "Speech audio decode failed (%d bytes, header %s): %s: %s",
+            len(audio), audio[:8].hex(), exc.__class__.__name__, exc,
+        )
+        raise SpeechInputError("Аудиозапись не читается") from exc
+    if samples.size == 0:
+        raise SpeechInputError("В записи нет звука")
+    return samples
+
+
 @dataclass(frozen=True)
 class Transcription:
     text: str
@@ -139,24 +162,18 @@ class FasterWhisperTranscriber:
         if not audio:
             raise SpeechInputError("Пустая аудиозапись")
         model = self._get_model()
-        import io
+        samples = _decode_audio(audio)
 
-        try:
-            segments_iter, info = model.transcribe(
-                io.BytesIO(audio),
-                language=self._language,
-                beam_size=self._beam_size,
-                initial_prompt=build_initial_prompt(hints),
-                vad_filter=True,
-                condition_on_previous_text=False,
-            )
-            segments = list(segments_iter)
-        except SpeechUnavailableError:
-            raise
-        except Exception as exc:
-            # faster-whisper/PyAV бросают разные исключения на битое аудио;
-            # для кассы это всегда «запись не читается».
-            raise SpeechInputError("Аудиозапись не читается") from exc
+        # Ошибка здесь — уже не про запись, а про сам движок: роутер отдаст 500 и залогирует её.
+        segments_iter, info = model.transcribe(
+            samples,
+            language=self._language,
+            beam_size=self._beam_size,
+            initial_prompt=build_initial_prompt(hints),
+            vad_filter=True,
+            condition_on_previous_text=False,
+        )
+        segments = list(segments_iter)
 
         texts = [segment.text.strip() for segment in segments if segment.text and segment.text.strip()]
         probs = [segment.avg_logprob for segment in segments if segment.avg_logprob is not None]
