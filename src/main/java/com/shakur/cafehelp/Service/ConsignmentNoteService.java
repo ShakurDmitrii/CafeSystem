@@ -124,15 +124,17 @@ public class ConsignmentNoteService {
         if (warehouseId <= 0) {
             throw new IllegalArgumentException("Warehouse ID is required");
         }
-        if (isPosted(consignmentId)) {
-            throw new IllegalStateException("Накладная уже проведена");
-        }
-
+        // Блокируем накладную до проверки: иначе двойной клик «Провести» проходит
+        // проверку дважды и приходует товар два раза.
         ConsignmentnoteRecord note = dsl.selectFrom(CONSIGNMENTNOTE)
                 .where(CONSIGNMENTNOTE.CONSIGNMENTID.eq(consignmentId))
+                .forUpdate()
                 .fetchOne();
         if (note == null) {
             throw new RuntimeException("ConsignmentNote not found " + consignmentId);
+        }
+        if (isPosted(consignmentId)) {
+            throw new IllegalStateException("Накладная уже проведена");
         }
 
         List<ConsproductRecord> lines = dsl.selectFrom(CONSPRODUCT)

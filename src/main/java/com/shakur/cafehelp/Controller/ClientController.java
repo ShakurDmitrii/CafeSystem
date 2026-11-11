@@ -1,5 +1,7 @@
 package com.shakur.cafehelp.Controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.shakur.cafehelp.DTO.ClientDTO;
 import com.shakur.cafehelp.DTO.ClientDishDTO;
 import com.shakur.cafehelp.DTO.ClientWithDutyDTO;
@@ -20,6 +22,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/clients")
 public class ClientController {
+    private static final Logger log = LoggerFactory.getLogger(ClientController.class);
 
     private final ClientService clientService;
     private final VkClientLinkService vkClientLinkService;
@@ -36,6 +39,7 @@ public class ClientController {
             List<ClientDTO> clients = clientService.getAllClients();
             return ResponseEntity.ok(clients);
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(null);
         }
@@ -56,6 +60,7 @@ public class ClientController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Не удалось создать клиента"));
         }
@@ -68,8 +73,7 @@ public class ClientController {
             List<ClientWithDutyDTO> clientsWithDuty = clientService.getClientsWithDutyOrders(true);
             return ResponseEntity.ok(clientsWithDuty);
         } catch (Exception e) {
-            System.err.println("Error in getClientsWithDutyOrders controller: " + e.getMessage());
-            e.printStackTrace();
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(null);
         }
@@ -82,6 +86,7 @@ public class ClientController {
             List<ClientDishDTO> dishes = clientService.getDishesByClientId(clientId);
             return ResponseEntity.ok(dishes);
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(null);
         }
@@ -100,6 +105,7 @@ public class ClientController {
 
             return ResponseEntity.ok(client);
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(null);
         }
@@ -113,6 +119,7 @@ public class ClientController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Failed to create VK link code"));
         }
@@ -174,6 +181,7 @@ public class ClientController {
         try {
             return ResponseEntity.ok(clientService.searchClients(name));
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(null);
         }
@@ -189,6 +197,7 @@ public class ClientController {
             clientService.addDutyData(orderId, paymentDate);
             return ResponseEntity.ok("Дата погашения долга установлена");
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.badRequest().body("Ошибка: " + e.getMessage());
         }
     }
@@ -200,6 +209,7 @@ public ResponseEntity<List<OrderDTO>> getDebtsDueToday() {
         List<OrderDTO> todayDebts = clientService.getDebtsDueToday();
         return ResponseEntity.ok(todayDebts);
     } catch (Exception e) {
+        log.error("Ошибка обработки запроса", e);
         return ResponseEntity.badRequest().body(null);
     }
 }
@@ -211,6 +221,7 @@ public ResponseEntity<List<OrderDTO>> getDebtsDueToday() {
             List<OrderDTO> overdueDebts = clientService.getOverdueDebts();
             return ResponseEntity.ok(overdueDebts);
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.badRequest().body(null);
         }
     }
@@ -229,6 +240,7 @@ public ResponseEntity<List<OrderDTO>> getDebtsDueToday() {
 
             return ResponseEntity.ok(result);
         } catch (Exception e) {
+            log.error("Ошибка обработки запроса", e);
             return ResponseEntity.badRequest().body(null);
         }
     }

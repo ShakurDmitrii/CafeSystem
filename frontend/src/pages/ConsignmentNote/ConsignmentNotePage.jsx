@@ -350,7 +350,8 @@ export default function ConsignmentNotePage() {
                 .map((product) => ({
                     id: getProductId(product),
                     name: product?.productName || `Продукт #${getProductId(product)}`,
-                    defaultPrice: Number(product?.productPrice ?? product?.price ?? 0)
+                    // Цена предложения этого поставщика; цена карточки — только запасной вариант
+                    defaultPrice: Number(product?.supplierPrice ?? product?.productPrice ?? product?.price ?? 0)
                 }))
                 .filter((product) => product.id > 0)
                 .sort((a, b) => a.name.localeCompare(b.name, "ru"));
@@ -362,6 +363,7 @@ export default function ConsignmentNotePage() {
                     movementPrices[productId]
                     ?? line.GROSS
                     ?? line.gross
+                    ?? product?.supplierPrice
                     ?? product?.productPrice
                     ?? product?.price
                     ?? 0

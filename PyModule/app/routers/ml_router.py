@@ -99,6 +99,7 @@ class TrainingRecord(StrictRequest):
     sales: float = Field(ge=0)
     date: Date
     rollName: str | None = None
+    dishId: int | None = Field(default=None, ge=1)
 
 
 class TrainingRequest(StrictRequest):

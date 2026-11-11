@@ -1,33 +1,17 @@
+import PageHeader from "../../../../components/layout/PageHeader";
 import styles from "../DishPage.module.css";
 
 export default function DishPageHeader({ activeView, dishCount, categoryCount, onViewChange }) {
     return (
         <>
-            <header className={styles.hero}>
-                <div className={styles.heroCopy}>
-                    <p className={styles.eyebrow}>Редактор меню</p>
-                    <h1 className={styles.title}>Меню, готовое к смене</h1>
-                    <p className={styles.subtitle}>
-                        Собирайте блюда и наборы в одном месте. Цена, состав и техкарта
-                        остаются рядом, чтобы карточку можно было быстро проверить перед продажей.
-                    </p>
-                </div>
-
-                <div className={styles.menuBrief} aria-label="Сводка меню">
-                    <div className={styles.briefMarker} aria-hidden="true">МЕНЮ</div>
-                    <dl className={styles.briefStats}>
-                        <div>
-                            <dt>Блюд</dt>
-                            <dd>{dishCount}</dd>
-                        </div>
-                        <div>
-                            <dt>Категорий</dt>
-                            <dd>{categoryCount}</dd>
-                        </div>
-                    </dl>
-                    <p>Сначала создайте карточку, затем заполните её техкарту.</p>
-                </div>
-            </header>
+            <PageHeader
+                title="Меню"
+                description="Блюда и наборы. Состав и себестоимость блюда задаются в его техкарте."
+                stats={[
+                    { label: "Блюд", value: dishCount },
+                    { label: "Категорий", value: categoryCount }
+                ]}
+            />
 
             <section className={styles.switchCard} aria-label="Раздел меню">
                 <div className={styles.switchGroup} role="tablist" aria-label="Тип позиций меню">

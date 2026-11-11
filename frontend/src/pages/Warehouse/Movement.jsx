@@ -5,6 +5,7 @@ import MovementHero from "./movement-page/MovementHero";
 import MovementFilters from "./movement-page/MovementFilters";
 import MovementLedger from "./movement-page/MovementLedger";
 import styles from "./Movement.module.css";
+import { unitLabel } from "../../utils/units";
 
 const API_MOVEMENTS = `${API_BASE_URL}/movements`;
 const API_WAREHOUSES = `${API_BASE_URL}/warehouses`;
@@ -443,7 +444,7 @@ export default function MovementPage() {
             subtitle,
             headers: ["Товар", "Ед.", "Приход", "Уход", "Списание", "Итого уход", "Приход сумма", "Уход сумма", "Списание сумма", "Итого уход сумма", "Ср. цена прихода", "Ср. цена ухода", "Чистое кол-во", "Чистая сумма"],
             rows: turnoverRows.map((row) => {
-                const unit = productMetaMap[row.productId]?.baseUnit || productMetaMap[row.productId]?.unit || "ед.";
+                const unit = unitLabel(productMetaMap[row.productId]?.baseUnit || productMetaMap[row.productId]?.unit);
                 const netQty = Number(row.qtyIn ?? 0) - Number(row.qtyOutTotal ?? 0);
                 const netAmount = Number(row.amountIn ?? 0) - Number(row.amountOutTotal ?? 0);
                 return [
@@ -671,7 +672,7 @@ export default function MovementPage() {
                                     {turnoverRows.map(r => (
                                         <tr key={`${r.productName ?? "unknown"}-${r.productId ?? "none"}`}>
                                             <td>{r.productName ?? productMap[r.productId] ?? `Товар #${r.productId}`}</td>
-                                            <td>{productMetaMap[r.productId]?.baseUnit || productMetaMap[r.productId]?.unit || "ед."}</td>
+                                            <td>{unitLabel(productMetaMap[r.productId]?.baseUnit || productMetaMap[r.productId]?.unit)}</td>
                                             <td className={styles.turnoverIn}>{formatNumber(r.qtyIn)}</td>
                                             <td className={styles.turnoverOut}>{formatNumber(r.qtyOutMovement)}</td>
                                             <td className={styles.turnoverWriteoff}>{formatNumber(r.qtyWriteoff)}</td>

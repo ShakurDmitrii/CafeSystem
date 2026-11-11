@@ -35,28 +35,28 @@ public class MlTrainingController {
             @RequestBody TrainRequest request) {
 
         try {
-            // 1. Собираем данные за указанный период
+            // 1. Собираем продажи: по умолчанию за всю историю, days ограничивает последние N дней
             LocalDate endDate = LocalDate.now();
-            LocalDate startDate = endDate.minusDays(request.getDays());
+            Integer days = request.getDays();
+            LocalDate startDate = days != null && days > 0 ? endDate.minusDays(days) : null;
 
             List<SalesRecordDTO> sales = salesService.getSalesForML(startDate, endDate);
             List<RollMenuItemDTO> menu = menuService.getAllMenuItems();
 
-            // 2. Формируем данные для обучения
-            List<Map<String, Object>> trainingRecords =
-                    mlTrainingService.prepareTrainingData(sales, menu);
+            // 2. Формируем суточные записи по блюдам
+            List<Map<String, Object>> allRecords = mlTrainingService.prepareTrainingData(sales, menu);
+            List<Map<String, Object>> trainingRecords = mlTrainingService.keepMostRecent(allRecords);
 
             // 3. Отправляем в Python ML сервис
             Map<String, Object> result = mlTrainingService.sendToPythonML(trainingRecords);
 
-            int recordsCount = trainingRecords.size();
-            int newIngredientsCount = countUniqueIngredients(trainingRecords);
-
-            return ResponseEntity.ok(Map.of(
-                    "recordsCount", recordsCount,
-                    "newIngredientsCount", newIngredientsCount,
-                    "trainingResult", result
-            ));
+            Map<String, Object> response = new java.util.LinkedHashMap<>();
+            response.put("recordsCount", trainingRecords.size());
+            response.put("newIngredientsCount", countUniqueIngredients(trainingRecords));
+            response.put("allHistory", startDate == null);
+            response.put("trimmedToRecent", trainingRecords.size() < allRecords.size());
+            response.put("trainingResult", result);
+            return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -89,7 +89,8 @@ public class MlTrainingController {
 
     @Data
     public static class TrainRequest {
-        private int days = 90;
+        /** Пусто — обучение на всей истории продаж. */
+        private Integer days;
         private boolean includeMenu = true;
         private boolean includeSales = true;
         private boolean includeIngredients = true;

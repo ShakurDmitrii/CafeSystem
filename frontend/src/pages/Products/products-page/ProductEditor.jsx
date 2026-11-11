@@ -1,5 +1,8 @@
 import { useEffect, useRef } from "react";
 import styles from "../ProductsPage.module.css";
+import { unitLabel } from "../../../utils/units";
+import UnitChips from "../../../components/forms/UnitChips";
+import { findProductByName, isStandardUnit } from "../../../components/forms/units";
 
 export default function ProductEditor({
     form,
@@ -14,9 +17,20 @@ export default function ProductEditor({
     onChange,
     onSubmit,
     onCancel,
-    onUploadImage
+    onUploadImage,
+    products = [],
+    onEditExisting,
+    focusKey
 }) {
     const errorRef = useRef(null);
+    const nameRef = useRef(null);
+    const duplicate = findProductByName(products, form.productName, editingProductId);
+    const standardUnit = isStandardUnit(form.unit, form.baseUnit, form.unitFactor);
+    const detailsOpen = !standardUnit || form.itemType !== "ingredient";
+
+    useEffect(() => {
+        if (focusKey) nameRef.current?.focus();
+    }, [focusKey]);
 
     useEffect(() => {
         if (error) errorRef.current?.focus();
@@ -49,49 +63,190 @@ export default function ProductEditor({
             </div>
 
             <p className={styles.editorIntro}>
-                Цена по умолчанию подставляется в новые поставки. Изменение карточки
-                не переоценивает уже принятый складской остаток.
+                Достаточно названия, единицы и цены. Цена подставляется в новые
+                поставки и не меняет стоимость уже принятого остатка.
             </p>
 
             <form className={styles.editorForm} onSubmit={onSubmit}>
-                <fieldset className={styles.unitFieldset}>
-                    <legend>Назначение товара</legend>
-                    <div className={styles.unitFields}>
-                        <label className={styles.field} htmlFor="product-item-type">
-                            <span>Тип</span>
-                            <select
-                                id="product-item-type"
-                                value={form.itemType}
-                                onChange={(event) => onChange("itemType", event.target.value)}
-                                className={styles.select}
-                            >
-                                <option value="ingredient">Ингредиент рецепта</option>
-                                <option value="consumable">Расходник</option>
-                                <option value="packaging">Упаковка</option>
-                            </select>
-                        </label>
-                        {form.itemType !== "ingredient" ? (
-                            <label className={styles.field} htmlFor="consumable-basis">
-                                <span>Добавлять</span>
+                <label className={styles.field} htmlFor="product-name">
+                    <span>Название</span>
+                    <input
+                        id="product-name"
+                        ref={nameRef}
+                        name="productName"
+                        type="text"
+                        autoComplete="off"
+                        value={form.productName}
+                        onChange={(event) => onChange("productName", event.target.value)}
+                        placeholder="Например, лосось охлаждённый…"
+                        className={styles.input}
+                        required
+                    />
+                </label>
+                {duplicate ? (
+                    <div className={styles.duplicateNotice} role="status">
+                        <span>«{duplicate.productName}» уже есть в каталоге.</span>
+                        <button type="button" onClick={() => onEditExisting(duplicate)}>
+                            Открыть карточку
+                        </button>
+                    </div>
+                ) : null}
+
+                {standardUnit ? (
+                    <UnitChips value={form.unit} onChange={(value) => onChange("unit", value)} />
+                ) : (
+                    <p className={styles.customUnitNote}>
+                        Своя единица закупки: 1 {unitLabel(form.unit)} = {form.unitFactor} {unitLabel(form.baseUnit)}.
+                        Изменить можно в разделе «Дополнительно».
+                    </p>
+                )}
+
+                <label className={styles.field} htmlFor="product-price">
+                    <span>Цена за 1 {unitLabel(form.unit)}, ₽</span>
+                    <input
+                        id="product-price"
+                        name="productPrice"
+                        type="number"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        min="0"
+                        step="0.01"
+                        value={form.productPrice}
+                        onChange={(event) => onChange("productPrice", event.target.value)}
+                        placeholder="Например, 720"
+                        className={styles.input}
+                        required
+                    />
+                    {basePricePreview && form.productPrice !== "" && form.unit !== form.baseUnit ? (
+                        <small className={styles.fieldHint}>{basePricePreview} — так считается себестоимость в техкартах.</small>
+                    ) : null}
+                </label>
+
+                <label className={styles.field} htmlFor="product-supplier">
+                    <span>Поставщик <small className={styles.optionalMark}>необязательно</small></span>
+                    <select
+                        id="product-supplier"
+                        name="supplierId"
+                        autoComplete="off"
+                        value={form.supplierId}
+                        onChange={(event) => onChange("supplierId", event.target.value)}
+                        className={styles.select}
+                    >
+                        <option value="">Без поставщика</option>
+                        {suppliers.map((supplier) => (
+                            <option key={supplier.id} value={supplier.id}>
+                                {supplier.name}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+
+                <details className={styles.moreOptions} open={detailsOpen || undefined}>
+                    <summary>Дополнительно: отход, упаковка, тип, фото</summary>
+
+                    <label className={styles.field} htmlFor="product-waste">
+                        <span>Отход при обработке, %</span>
+                        <input
+                            id="product-waste"
+                            name="waste"
+                            type="number"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={form.waste}
+                            onChange={(event) => onChange("waste", event.target.value)}
+                            placeholder="0"
+                            className={styles.input}
+                        />
+                    </label>
+
+                    <fieldset className={styles.unitFieldset}>
+                        <legend>Своя единица закупки (упаковка, коробка)</legend>
+                        <div className={styles.unitFields}>
+                            <label className={styles.field} htmlFor="product-unit-custom">
+                                <span>Название единицы</span>
+                                <input
+                                    id="product-unit-custom"
+                                    type="text"
+                                    autoComplete="off"
+                                    value={form.unit}
+                                    onChange={(event) => onChange("customUnit", event.target.value)}
+                                    className={styles.input}
+                                />
+                            </label>
+                            <label className={styles.field} htmlFor="product-base-unit">
+                                <span>Учитывать в</span>
                                 <select
-                                    id="consumable-basis"
-                                    value={form.consumableBasis}
-                                    onChange={(event) => onChange("consumableBasis", event.target.value)}
+                                    id="product-base-unit"
+                                    name="baseUnit"
+                                    autoComplete="off"
+                                    value={form.baseUnit}
+                                    onChange={(event) => onChange("baseUnit", event.target.value)}
                                     className={styles.select}
                                 >
-                                    <option value="per_person">На количество персон</option>
-                                    <option value="per_order">Один раз на заказ</option>
-                                    <option value="per_menu_item">На позиции меню</option>
+                                    <option value="g">граммах</option>
+                                    <option value="ml">миллилитрах</option>
+                                    <option value="pcs">штуках</option>
                                 </select>
                             </label>
-                        ) : null}
-                    </div>
+                        </div>
+                        <label className={styles.field} htmlFor="product-unit-factor">
+                            <span>Сколько {unitLabel(form.baseUnit)} в 1 {unitLabel(form.unit)}</span>
+                            <input
+                                id="product-unit-factor"
+                                name="unitFactor"
+                                type="number"
+                                inputMode="decimal"
+                                autoComplete="off"
+                                min="0.0001"
+                                step="0.0001"
+                                value={form.unitFactor}
+                                onChange={(event) => onChange("unitFactor", event.target.value)}
+                                className={styles.input}
+                                required
+                            />
+                        </label>
+                    </fieldset>
 
+                    <fieldset className={styles.unitFieldset}>
+                        <legend>Назначение</legend>
+                        <div className={styles.unitFields}>
+                        <label className={styles.field} htmlFor="product-item-type">
+                                <span>Тип</span>
+                                <select
+                                    id="product-item-type"
+                                    value={form.itemType}
+                                    onChange={(event) => onChange("itemType", event.target.value)}
+                                    className={styles.select}
+                                >
+                                    <option value="ingredient">Ингредиент рецепта</option>
+                                    <option value="consumable">Расходник</option>
+                                    <option value="packaging">Упаковка</option>
+                                </select>
+                            </label>
+                            {form.itemType !== "ingredient" ? (
+                                <label className={styles.field} htmlFor="consumable-basis">
+                                    <span>Добавлять</span>
+                                    <select
+                                        id="consumable-basis"
+                                        value={form.consumableBasis}
+                                        onChange={(event) => onChange("consumableBasis", event.target.value)}
+                                        className={styles.select}
+                                    >
+                                        <option value="per_person">На количество персон</option>
+                                        <option value="per_order">Один раз на заказ</option>
+                                        <option value="per_menu_item">На позиции меню</option>
+                                    </select>
+                                </label>
+                            ) : null}
+                        </div>
                     {form.itemType !== "ingredient" ? (
                         <>
                             <div className={styles.unitFields}>
                                 <label className={styles.field} htmlFor="consumable-default-quantity">
-                                    <span>Количество, {form.baseUnit}</span>
+                                    <span>Количество, {unitLabel(form.baseUnit)}</span>
                                     <input
                                         id="consumable-default-quantity"
                                         type="number"
@@ -146,144 +301,7 @@ export default function ProductEditor({
                             </label>
                         </>
                     ) : null}
-                </fieldset>
-
-                <label className={styles.field} htmlFor="product-supplier">
-                    <span>Поставщик</span>
-                    <select
-                        id="product-supplier"
-                        name="supplierId"
-                        autoComplete="off"
-                        value={form.supplierId}
-                        onChange={(event) => onChange("supplierId", event.target.value)}
-                        className={styles.select}
-                        required
-                    >
-                        <option value="">Выберите поставщика</option>
-                        {suppliers.map((supplier) => (
-                            <option key={supplier.id} value={supplier.id}>
-                                {supplier.name}
-                            </option>
-                        ))}
-                    </select>
-                </label>
-
-                <label className={styles.field} htmlFor="product-name">
-                    <span>Название продукта</span>
-                    <input
-                        id="product-name"
-                        name="productName"
-                        type="text"
-                        autoComplete="off"
-                        value={form.productName}
-                        onChange={(event) => onChange("productName", event.target.value)}
-                        placeholder="Например, лосось охлаждённый…"
-                        className={styles.input}
-                        required
-                    />
-                </label>
-
-                <div className={styles.pairedFields}>
-                    <label className={styles.field} htmlFor="product-price">
-                        <span>Цена по умолчанию, ₽</span>
-                        <input
-                            id="product-price"
-                            name="productPrice"
-                            type="number"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            min="0"
-                            step="0.01"
-                            value={form.productPrice}
-                            onChange={(event) => onChange("productPrice", event.target.value)}
-                            placeholder="Например, 720…"
-                            className={styles.input}
-                            required
-                        />
-                    </label>
-
-                    <label className={styles.field} htmlFor="product-waste">
-                        <span>Отход по умолчанию, %</span>
-                        <input
-                            id="product-waste"
-                            name="waste"
-                            type="number"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            value={form.waste}
-                            onChange={(event) => onChange("waste", event.target.value)}
-                            placeholder="Например, 5…"
-                            className={styles.input}
-                            required
-                        />
-                    </label>
-                </div>
-
-                <fieldset className={styles.unitFieldset}>
-                    <legend>Единицы и пересчёт</legend>
-                    <div className={styles.unitFields}>
-                        <label className={styles.field} htmlFor="product-unit">
-                            <span>Закупочная</span>
-                            <select
-                                id="product-unit"
-                                name="unit"
-                                autoComplete="off"
-                                value={form.unit}
-                                onChange={(event) => onChange("unit", event.target.value)}
-                                className={styles.select}
-                            >
-                                {unitOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
-
-                        <label className={styles.field} htmlFor="product-base-unit">
-                            <span>Базовая</span>
-                            <select
-                                id="product-base-unit"
-                                name="baseUnit"
-                                autoComplete="off"
-                                value={form.baseUnit}
-                                onChange={(event) => onChange("baseUnit", event.target.value)}
-                                className={styles.select}
-                            >
-                                <option value="g">Граммы (g)</option>
-                                <option value="ml">Миллилитры (ml)</option>
-                                <option value="pcs">Штуки (pcs)</option>
-                            </select>
-                        </label>
-                    </div>
-
-                    <label className={styles.field} htmlFor="product-unit-factor">
-                        <span>Базовых единиц в 1 закупочной</span>
-                        <input
-                            id="product-unit-factor"
-                            name="unitFactor"
-                            type="number"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            min="0.0001"
-                            step="0.0001"
-                            value={form.unitFactor}
-                            onChange={(event) => onChange("unitFactor", event.target.value)}
-                            className={styles.input}
-                            required
-                        />
-                    </label>
-
-                    <div className={styles.unitPreview} aria-live="polite">
-                        <span>
-                            1 {form.unit} = {form.unitFactor || "0"} {form.baseUnit}
-                        </span>
-                        <strong>{basePricePreview}</strong>
-                    </div>
-                </fieldset>
+                    </fieldset>
 
                 <div className={styles.imageField}>
                     <div className={styles.imagePreview}>
@@ -342,6 +360,8 @@ export default function ProductEditor({
                         <small>Продукт будет проще найти при работе с поставщиком.</small>
                     </span>
                 </label>
+
+                </details>
 
                 {error ? (
                     <div

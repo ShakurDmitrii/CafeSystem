@@ -18,6 +18,8 @@ import java.util.*;
 @RequiredArgsConstructor
 @Slf4j
 public class MlTrainingService {
+    /** Предел одного запроса к PyModule; при более длинной истории берутся самые свежие записи. */
+    public static final int MAX_TRAINING_RECORDS = 100_000;
 
     private final SalesService salesService;
     private final MenuService menuService;
@@ -52,6 +54,11 @@ public class MlTrainingService {
             Map<String, Object> record = dailyRecords.computeIfAbsent(key, ignored -> {
                 Map<String, Object> row = new HashMap<>();
                 row.put("rollName", sale.getRollName());
+                Integer dishId = parseDishId(sale.getRollId());
+                if (dishId != null) {
+                    // По блюду PyModule восстанавливает дни без продаж нулями.
+                    row.put("dishId", dishId);
+                }
                 row.put("ingredients", ingredients);
                 row.put("date", sale.getSaleDate().toString());
                 row.put("sales", 0);
@@ -79,7 +86,7 @@ public class MlTrainingService {
         if (trainingRecords == null || trainingRecords.size() < 10) {
             throw new IllegalArgumentException("Для обучения требуется минимум 10 суточных записей по блюдам");
         }
-        if (trainingRecords.size() > 100_000) {
+        if (trainingRecords.size() > MAX_TRAINING_RECORDS) {
             throw new IllegalArgumentException("Для одного запуска допускается не более 100000 записей");
         }
         try {
@@ -235,15 +242,11 @@ public class MlTrainingService {
      */
     public Map<String, Object> retrainFullModel() {
         try {
-            // Получаем все исторические данные - ПЕРЕДАЙ ДАТЫ!
-            List<SalesRecordDTO> allSales = salesService.getSalesForML(
-                    LocalDate.of(2000, 1, 1),  // ← НАЧАЛЬНАЯ ДАТА
-                    LocalDate.now()             // ← КОНЕЧНАЯ ДАТА
-            );
+            List<SalesRecordDTO> allSales = salesService.getSalesForML(null, LocalDate.now());
 
             List<RollMenuItemDTO> allMenuItems = menuService.getAllMenuItems();
 
-            List<Map<String, Object>> allTrainingData = prepareTrainingData(allSales, allMenuItems);
+            List<Map<String, Object>> allTrainingData = keepMostRecent(prepareTrainingData(allSales, allMenuItems));
 
             log.info("Полная переобучение модели на {} записях", allTrainingData.size());
 
@@ -254,6 +257,25 @@ public class MlTrainingService {
         } catch (Exception e) {
             log.error("Ошибка полного переобучения: {}", e.getClass().getSimpleName());
             throw PythonServiceException.translate(e);
+        }
+    }
+
+    /** Оставить самые свежие записи, если вся история не помещается в один запрос. */
+    public List<Map<String, Object>> keepMostRecent(List<Map<String, Object>> trainingRecords) {
+        if (trainingRecords.size() <= MAX_TRAINING_RECORDS) {
+            return trainingRecords;
+        }
+        log.warn("История продаж длиннее {} суточных записей: для обучения взяты самые свежие", MAX_TRAINING_RECORDS);
+        return trainingRecords.subList(trainingRecords.size() - MAX_TRAINING_RECORDS, trainingRecords.size());
+    }
+
+    private static Integer parseDishId(String rollId) {
+        if (rollId == null) return null;
+        try {
+            int id = Integer.parseInt(rollId.trim());
+            return id > 0 ? id : null;
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 

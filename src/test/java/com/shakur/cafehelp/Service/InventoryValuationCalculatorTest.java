@@ -55,6 +55,46 @@ class InventoryValuationCalculatorTest {
         return InventoryValuationCalculator.balance(decimal(quantity), decimal(value));
     }
 
+    @Test
+    void manualWriteOffOfWholeStockClearsItsValueBeforeNextProduction() {
+        var writeOff = InventoryValuationCalculator.adjust(balance("10", "1000"), decimal("-10"), decimal("0"));
+
+        assertThat(writeOff.incoming()).isFalse();
+        assertThat(writeOff.value()).isEqualByComparingTo("1000");
+        assertThat(writeOff.updated().quantity()).isEqualByComparingTo("0");
+        assertThat(writeOff.updated().value()).isEqualByComparingTo("0");
+
+        var afterProduction = InventoryValuationCalculator.receive(writeOff.updated(), decimal("10"), decimal("500"));
+        assertThat(afterProduction.averageUnitCost()).isEqualByComparingTo("50");
+    }
+
+    @Test
+    void manualSurplusIsValuedAtTheCurrentAverage() {
+        var surplus = InventoryValuationCalculator.adjust(balance("10", "1000"), decimal("5"), decimal("1"));
+
+        assertThat(surplus.incoming()).isTrue();
+        assertThat(surplus.unitCost()).isEqualByComparingTo("100");
+        assertThat(surplus.value()).isEqualByComparingTo("500");
+        assertThat(surplus.updated().quantity()).isEqualByComparingTo("15");
+        assertThat(surplus.updated().averageUnitCost()).isEqualByComparingTo("100");
+    }
+
+    @Test
+    void manualSurplusOnEmptyStockUsesTheFallbackCost() {
+        var surplus = InventoryValuationCalculator.adjust(balance("0", "0"), decimal("4"), decimal("25"));
+
+        assertThat(surplus.value()).isEqualByComparingTo("100");
+        assertThat(surplus.updated().averageUnitCost()).isEqualByComparingTo("25");
+    }
+
+    @Test
+    void manualAdjustmentRejectsZeroAndShortage() {
+        assertThatThrownBy(() -> InventoryValuationCalculator.adjust(balance("10", "100"), decimal("0"), null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> InventoryValuationCalculator.adjust(balance("10", "100"), decimal("-11"), null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private BigDecimal decimal(String value) {
         return new BigDecimal(value);
     }

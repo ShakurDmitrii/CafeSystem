@@ -6,11 +6,12 @@ import {
     ThunderboltOutlined
 } from '@ant-design/icons';
 import React, { useEffect, useRef, useState } from 'react';
+import PageHeader from "../../components/layout/PageHeader";
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE_URL } from '../../auth';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { ApiClient } from './api';
-import { formatCurrency, formatInteger, formatNumber, formatPercent, formatUnitCost } from './formatters';
+import { describeTrainingResult, formatCurrency, formatNumber, formatPercent, formatUnitCost } from './formatters';
 import styles from './MlPage.module.css';
 import OptimizationResults from './OptimizationResults';
 import PredictRollPage from './PredictRollPage';
@@ -69,13 +70,13 @@ export default function MlPage() {
 
     const sendTrainingData = async () => {
         setIsTraining(true);
-        setTrainingStatus({ type: 'progress', text: 'Собираем продажи и обновляем модель…' });
+        setTrainingStatus({ type: 'progress', text: 'Собираем продажи за всё время и обновляем модель…' });
         try {
             const response = await fetch(`${API_BASE_URL}/api/ml/train-with-recent-data`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                // Без days сервер берёт всю историю продаж.
                 body: JSON.stringify({
-                    days: 90,
                     includeMenu: true,
                     includeSales: true,
                     includeIngredients: true
@@ -86,16 +87,7 @@ export default function MlPage() {
                 throw new Error(result.error || result.message || 'Не удалось обучить модель.');
             }
 
-            const recordsCount = result.recordsCount
-                ?? result.records
-                ?? result.trainingResult?.recordsCount;
-            const ingredientsCount = result.newIngredientsCount
-                ?? result.ingredientsCount
-                ?? result.trainingResult?.ingredientsCount;
-            setTrainingStatus({
-                type: 'success',
-                text: `Модель обновлена: ${formatInteger(recordsCount, '—')} суточных записей, ${formatInteger(ingredientsCount, '—')} ингредиентов. ${(result.trainingResult?.warnings || []).join(' ')}`
-            });
+            setTrainingStatus({ type: 'success', text: describeTrainingResult(result) });
         } catch (error) {
             setTrainingStatus({
                 type: 'error',
@@ -184,30 +176,16 @@ export default function MlPage() {
 
     return (
         <div className={styles.mlPage}>
-            <header className={styles.hero}>
-                <div className={styles.heroCopy}>
-                    <p className={styles.eyebrow}>CafeHelp Intelligence</p>
-                    <h1>Решения для меню на основе данных</h1>
-                    <p className={styles.subtitle}>
-                        Прогнозируйте спрос, проверяйте экономику рецептов и находите точки роста.
-                    </p>
-                </div>
-                <div className={styles.heroActions}>
-                    <span className={styles.modelStatus}>
-                        <i aria-hidden="true" />
-                        Модель готова
-                    </span>
-                    <button
-                        type="button"
-                        onClick={sendTrainingData}
-                        disabled={isTraining}
-                        className={styles.trainButton}
-                    >
-                        <SyncOutlined spin={isTraining} aria-hidden="true" />
-                        {isTraining ? 'Обновляем модель…' : 'Обучить на новых данных'}
+            <PageHeader
+                title="AI-аналитика"
+                description="Прогноз спроса, экономика рецептов и подсказки по меню на основе продаж."
+                actions={(
+                    <button type="button" onClick={sendTrainingData} disabled={isTraining}>
+                        <SyncOutlined spin={isTraining} aria-hidden="true" />{" "}
+                        {isTraining ? "Обновляем модель…" : "Обучить на новых данных"}
                     </button>
-                </div>
-            </header>
+                )}
+            />
 
             {trainingStatus && (
                 <div

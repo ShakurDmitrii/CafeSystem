@@ -45,6 +45,8 @@ PyModule — вспомогательный FastAPI-сервис. Java backend �
 | Топ блюд | `GET /api/analytics/top-rolls` | период, `limit`, `sortBy` | массив блюд |
 | Тренд | `GET /api/analytics/sales-trend` | период, `granularity=day` | временной ряд |
 | Инсайты | `GET /api/analytics/insights` | `timeRange` | массив инсайтов |
+| Состояние речи | `GET /api/speech/status` | — | `enabled`, `ready`, `model`, `language` |
+| Распознавание речи | `POST /api/speech/transcribe` | multipart: `audio` (webm/opus, ogg, wav), `hints` (JSON-массив названий меню) | `text`, `language`, `durationSeconds`, `confidence` |
 
 Pydantic отклоняет лишние поля. Поэтому Java формирует отдельные внутренние payload, а не
 сериализует UI DTO целиком. Пакетный ответ Python использует поле `results`; Java сопоставляет
@@ -65,6 +67,23 @@ Pydantic отклоняет лишние поля. Поэтому Java форм�
 PyModule принимает только JSON ожидаемого типа. Ошибка Java API или некорректный формат
 продаж превращается в безопасный ответ аналитики `502`, без выдачи внутреннего URL и текста
 исключения клиенту.
+
+### Распознавание речи (голосовой набор заказа)
+
+Касса записывает фразу кассира в окне выбора блюд и отправляет её в Java
+(`POST /api/voice-orders/draft`, multipart `audio`). Java добавляет названия меню как
+подсказку (`hints`) и вызывает PyModule, а разбор текста по меню выполняет сама:
+числительные, количество персон и нечёткое сравнение с названиями блюд и наборов.
+Результат — черновик (`lines[]` со статусом `MATCHED`/`AMBIGUOUS`, `personCount`,
+`unrecognized[]`), который кассир подтверждает в интерфейсе. PyModule ничего не знает
+о заказах и меню, кроме подсказки.
+
+Движок — faster-whisper на CPU (модель задаётся `SPEECH_MODEL`, по умолчанию `small`).
+Модель скачивается при первом старте в `models/speech` и далее работает без интернета.
+Ошибки: `422 SPEECH_INPUT_INVALID` (пустая или нечитаемая запись, неверный `hints`),
+`413` (запись длиннее `SPEECH_MAX_AUDIO_BYTES`), `503 SPEECH_UNAVAILABLE` (модель не
+загружена или `SPEECH_ENABLED=false`). Java переводит их в `PYTHON_INPUT_INVALID` и
+`PYTHON_UNAVAILABLE`; касса показывает текст ошибки и остаётся работоспособной.
 
 ## Ошибки и таймауты
 
@@ -93,12 +112,23 @@ Java нормализует сбои PyModule:
 | `PYTHON_CONNECT_TIMEOUT` | `3s` | таймаут соединения Java → Python |
 | `PYTHON_READ_TIMEOUT` | `30s` | таймаут ответа Java → Python |
 | `JAVA_API_TIMEOUT_SECONDS` | `30` | общий таймаут Python → Java |
+| `SPEECH_ENABLED` | `true` | включает распознавание речи в PyModule |
+| `SPEECH_PRELOAD` | `true` | грузить модель в фоне при старте, а не при первом запросе |
+| `SPEECH_MODEL` | `small` | размер модели faster-whisper (`base` быстрее, `medium` точнее) |
+| `SPEECH_DEVICE` / `SPEECH_COMPUTE_TYPE` | `cpu` / `int8` | устройство и точность вычислений |
+| `SPEECH_LANGUAGE` | `ru` | язык распознавания |
+| `SPEECH_BEAM_SIZE` | `5` | ширина поиска (меньше — быстрее) |
+| `SPEECH_CPU_THREADS` | `0` | потоки CPU, `0` — по умолчанию библиотеки |
+| `SPEECH_MODEL_DIR` | `models/speech` | каталог с весами модели |
+| `SPEECH_MAX_AUDIO_BYTES` | `5242880` | предел размера записи |
 
 ## Проверка перед выпуском
 
 ```powershell
 ./gradlew.bat test --tests "com.shakur.cafehelp.Service.MlServices.PythonMlContractTest" `
   --tests "com.shakur.cafehelp.Controller.PythonAnalyticsClientContractTest" `
+  --tests "com.shakur.cafehelp.Controller.PythonSpeechClientContractTest" `
+  --tests "com.shakur.cafehelp.Service.VoiceOrder.*" `
   --tests "com.shakur.cafehelp.Controller.PythonServiceFailureMappingTest" `
   --tests "com.shakur.cafehelp.config.PythonRestTemplateConfigTest" `
   --tests "com.shakur.cafehelp.security.ServiceTokenContractVersionTest"
@@ -118,6 +148,21 @@ python -m pytest -q
 `confidenceScore=null` означает отсутствие измеренной уверенности, а не нулевую вероятность.
 `target=daily_quantity_on_sale_days` — условная суточная оценка по дням с продажами. Записи
 обучения должны быть предварительно сгруппированы по блюду и дате. Ответы содержат `warnings`.
+
+## Обучение на всей истории (октябрь 2026)
+
+Java по умолчанию отправляет продажи за всю историю (`days` в `/api/ml/train-with-recent-data`
+необязателен и ограничивает последние N дней); если суточных записей больше 100000, берутся самые
+свежие. Запись обучения может содержать `dishId` (и `rollName`): если блюдо указано во всех
+записях, PyModule добавляет нулевые продажи в дни работы кафе между первой и последней продажей
+блюда, и цель становится `target=daily_quantity` — порций в день. Без блюда остаётся
+`daily_quantity_on_sale_days`.
+
+Модель — `SalesEnsemble`: среднее XGBoost с пуассоновской целью (неглубокие деревья) и
+пуассоновской регрессии (GLM). Вход прежний: признаки ингредиентов, день недели, месяц. Старые
+дни весят меньше: вес вдвое ниже за каждый год давности. Ответ обучения содержит период
+(`trainingStartDate`, `trainingEndDate`), число восстановленных нулевых дней и MAE каждой части
+модели на проверочном периоде (`validation.componentMae`).
 
 Генератор/оптимизатор возвращают `salesSource=ml|heuristic`, `priceSource`, `modelVersion`,
 `warnings`, `techCard`. В эвристическом режиме `predictedSales` и `estimatedProfit` равны `null`.

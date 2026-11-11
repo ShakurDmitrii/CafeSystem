@@ -1,3 +1,4 @@
+import { unitLabel } from "../../../utils/units";
 export const normalizeCollection = (value) => Array.isArray(value) ? value : [];
 
 export const getProductId = (product) => Number(product?.productId ?? product?.id ?? 0);
@@ -13,8 +14,8 @@ export const getSafeUnitFactor = (value) => {
 };
 
 export const getUnitLabel = (product) => {
-    const unit = product?.unit ?? product?.baseUnit ?? "ед.";
-    const baseUnit = product?.baseUnit ?? unit;
+    const unit = unitLabel(product?.unit ?? product?.baseUnit);
+    const baseUnit = product?.baseUnit ? unitLabel(product.baseUnit) : unit;
     const factor = getSafeUnitFactor(product?.unitFactor);
     return factor > 1 ? `${unit} · 1 = ${factor} ${baseUnit}` : unit;
 };

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import PageHeader from "../../components/layout/PageHeader";
 import { API_BASE_URL } from "../../auth";
 import styles from "./TaxPage.module.css";
 
@@ -406,31 +407,23 @@ export default function TaxPage() {
 
     return (
         <div className={styles.page}>
-            <section className={styles.hero}>
-                <div className={styles.heroCopy}>
-                    <p className={styles.eyebrow}>ФИСКАЛИЗАЦИЯ · {dispatchMode}</p>
-                    <h1>Поток чеков</h1>
-                    <p className={styles.subtitle}>
-                        Контроль очереди, налоговой базы и отправки чеков через {dispatchProvider}.
-                    </p>
-                </div>
-                <div className={styles.integrationCard}>
-                    <span className={dispatchReady ? styles.readyDot : styles.safeDot} aria-hidden="true" />
-                    <div>
-                        <small>Канал отправки</small>
-                        <strong>{dispatchReady ? "Готов к работе" : "Безопасный режим"}</strong>
-                        <span>{dispatchMessage}</span>
-                    </div>
-                    <button
-                        type="button"
-                        className={styles.heroButton}
-                        onClick={() => loadOverview()}
-                        disabled={loading || busy}
-                    >
+            <PageHeader
+                title="Налог"
+                description={`Очередь чеков и отправка через ${dispatchProvider}. ${dispatchMessage || ""}`}
+                stats={[
+                    { label: "Режим", value: dispatchMode },
+                    {
+                        label: "Канал отправки",
+                        value: dispatchReady ? "Готов к работе" : "Безопасный режим",
+                        tone: dispatchReady ? undefined : "warning"
+                    }
+                ]}
+                actions={(
+                    <button type="button" onClick={() => loadOverview()} disabled={loading || busy}>
                         {loading ? "Обновление…" : "Обновить"}
                     </button>
-                </div>
-            </section>
+                )}
+            />
 
             {(error || message) && (
                 <div

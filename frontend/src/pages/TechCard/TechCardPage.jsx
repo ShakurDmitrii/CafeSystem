@@ -7,6 +7,7 @@ import IngredientList from "./tech-card/IngredientList";
 import IngredientPickerModal from "./tech-card/IngredientPickerModal";
 import TechCardHeader from "./tech-card/TechCardHeader";
 import styles from "./TechCardPage.module.css";
+import { unitLabel } from "../../utils/units";
 
 const API_TECH = `${API_BASE_URL}/api/tech-products`;
 const API_PRODUCTS = `${API_BASE_URL}/api/product`;
@@ -27,9 +28,9 @@ const createEmptyIngredientForm = () => ({
     productName: "",
     productPrice: "",
     waste: "0",
-    unit: "g",
+    unit: "kg",
     baseUnit: "g",
-    unitFactor: "1"
+    unitFactor: "1000"
 });
 
 const toSafeNumber = (value, fallback = 0) => {
@@ -327,8 +328,11 @@ export default function TechCardPage() {
         closeIngredientPicker();
     };
 
-    const openCreateIngredientModal = () => {
-        setCreateIngredientForm(createEmptyIngredientForm());
+    const openCreateIngredientModal = (prefillName) => {
+        setCreateIngredientForm({
+            ...createEmptyIngredientForm(),
+            productName: typeof prefillName === "string" ? prefillName.trim() : ""
+        });
         setCreateIngredientError("");
         setIngredientPickerOpen(false);
         setCreateIngredientOpen(true);
@@ -620,9 +624,9 @@ export default function TechCardPage() {
             source: item,
             name: product?.productName || preparation?.preparationName || "Неизвестный ингредиент",
             typeLabel: item.productId != null ? "Продукт" : "Заготовка",
-            quantityLabel: `${formatQuantity(item.weight)} ${itemMeasureUnit}`,
+            quantityLabel: `${formatQuantity(item.weight)} ${unitLabel(itemMeasureUnit)}`,
             wasteLabel: `${formatQuantity(item.waste)}%`,
-            unitCostLabel: `${formatMoney(unitCost)} ₽/${unitCostUnit}`,
+            unitCostLabel: `${formatMoney(unitCost)} ₽/${unitLabel(unitCostUnit)}`,
             costLabel: `${formatMoney(getItemCost(item))} ₽`,
             outputLabel: item.ingredientPreparationId != null && preparation?.outputWeight != null
                 ? `${formatQuantity(preparation.outputWeight)} г`
@@ -692,6 +696,13 @@ export default function TechCardPage() {
                 <CreateIngredientModal
                     form={createIngredientForm}
                     suppliers={suppliers}
+                    products={products}
+                    onPickExisting={(product) => {
+                        setItemError("");
+                        setSelectedIngredientType("product");
+                        setSelectedIngredientId(String(product.productId));
+                        setCreateIngredientOpen(false);
+                    }}
                     error={createIngredientError}
                     loading={createIngredientLoading}
                     onChange={handleCreateIngredientChange}

@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.0",
+    [string]$Version = "0.1.1",
     [string]$PrinterDriverSource = "",
     [switch]$SkipDockerBuild
 )
@@ -56,7 +56,18 @@ if (-not $SkipDockerBuild) {
     docker build --file (Join-Path $projectRoot "PyModule\Dockerfile") --tag $pythonImage (Join-Path $projectRoot "PyModule")
     docker build --file (Join-Path $projectRoot "vkbot\Dockerfile") --tag $vkBotImage (Join-Path $projectRoot "vkbot")
     docker pull $postgresImage
-    docker pull $minioImage
+    docker image inspect $minioImage *> $null
+    if ($LASTEXITCODE -ne 0) {
+        docker pull $minioImage
+        if ($LASTEXITCODE -ne 0) {
+            # Community-образы MinIO сняты с Docker Hub: собираем тот же релиз из исходников.
+            Write-Warning "Образ $minioImage недоступен в registry, собираем MinIO из исходников"
+            docker build --file (Join-Path $projectRoot "desktop\minio\Dockerfile") --tag $minioImage (Join-Path $projectRoot "desktop\minio")
+            if ($LASTEXITCODE -ne 0) {
+                throw "Не удалось собрать образ MinIO из исходников"
+            }
+        }
+    }
 }
 
 $requiredImages = @($backendImage, $pythonImage, $vkBotImage, $postgresImage, $minioImage)

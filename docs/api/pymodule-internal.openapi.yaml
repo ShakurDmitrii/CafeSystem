@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CafeHelp PyModule Internal API
-  version: 1.1.0
+  version: 1.2.0
   description: Внутренний контракт Java backend и FastAPI PyModule. Версия заголовка — 1.
 servers:
   - url: http://localhost:8000
@@ -9,6 +9,7 @@ tags:
   - name: System
   - name: ML
   - name: Analytics
+  - name: Speech
 paths:
   /health:
     get:
@@ -240,6 +241,73 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '409': {$ref: '#/components/responses/VersionMismatch'}
         '502': {$ref: '#/components/responses/BadGateway'}
+  /api/speech/status:
+    get:
+      tags: [Speech]
+      summary: Состояние движка распознавания речи
+      security: [{InternalServiceToken: [], InternalContractVersion: []}]
+      responses:
+        '200':
+          description: Включён ли движок и загружена ли модель
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, ready]
+                properties:
+                  enabled: {type: boolean}
+                  ready: {type: boolean}
+                  model: {type: [string, 'null']}
+                  language: {type: string}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/speech/transcribe:
+    post:
+      tags: [Speech]
+      summary: Распознать фразу кассира для голосового набора заказа
+      description: >-
+        Аудио одной фразы (webm/opus из MediaRecorder, ogg, wav). `hints` — JSON-массив названий
+        меню, который передаётся модели как подсказка. Разбор текста по меню выполняет Java.
+      security: [{InternalServiceToken: [], InternalContractVersion: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio: {type: string, format: binary}
+                hints: {type: string, description: JSON-массив строк}
+      responses:
+        '200':
+          description: Распознанный текст
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [text]
+                properties:
+                  text: {type: string}
+                  language: {type: [string, 'null']}
+                  durationSeconds: {type: number}
+                  confidence: {type: [number, 'null'], minimum: 0, maximum: 1}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/VersionMismatch'}
+        '413':
+          description: Запись длиннее SPEECH_MAX_AUDIO_BYTES
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HttpError'}
+        '422':
+          description: Пустая или нечитаемая запись, неверный формат hints (`detail.code=SPEECH_INPUT_INVALID`)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HttpError'}
+        '503':
+          description: Модель не загружена или движок выключен (`detail.code=SPEECH_UNAVAILABLE`)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HttpError'}
 components:
   securitySchemes:
     InternalServiceToken:
@@ -378,6 +446,10 @@ components:
           description: Сумма порций блюда за дату; Java агрегирует позиции заказов перед обучением.
         date: {type: string, format: date}
         rollName: {type: [string, 'null']}
+        dishId:
+          type: [integer, 'null']
+          minimum: 1
+          description: Блюдо; если указано во всех записях, дни без продаж восстанавливаются нулями.
     TrainingRequest:
       type: object
       additionalProperties: false

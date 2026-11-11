@@ -11,7 +11,8 @@ export default function DishCreatePanel({
     isImageUploading,
     onFormChange,
     onImageChange,
-    onCreate
+    onCreate,
+    onCancel
 }) {
     const isBusy = isCreating || isImageUploading;
 
@@ -26,7 +27,7 @@ export default function DishCreatePanel({
                 <div>
                     <p className={styles.sectionKicker}>Новая позиция</p>
                     <h2>Добавить блюдо</h2>
-                    <p>Заполните основное, а после создания мы сразу откроем техкарту.</p>
+                    <p>Заполните основное — после создания откроется техкарта, где задаётся состав и себестоимость.</p>
                 </div>
                 <div className={styles.counterChip}>{dishCount} в меню</div>
             </div>
@@ -55,6 +56,11 @@ export default function DishCreatePanel({
                     <button type="submit" className={styles.primaryButton} disabled={isBusy}>
                         {isCreating ? "Создаём блюдо…" : isImageUploading ? "Загружаем фото…" : "Создать и открыть техкарту"}
                     </button>
+                    {onCancel && (
+                        <button type="button" className={styles.secondaryButton} onClick={onCancel} disabled={isBusy}>
+                            Отмена
+                        </button>
+                    )}
                 </div>
             </form>
         </section>

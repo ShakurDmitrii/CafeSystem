@@ -42,4 +42,22 @@ class MlSalesDataTest {
         assertThat(sales.getFirst().getTotalCost()).isNull();
         verify(menu, times(1)).getDishIngredients(7);
     }
+
+    @Test
+    void withoutStartDateAllHistoryIsRequested() {
+        var fields = new org.jooq.Field<?>[]{ORDER.DATE, ORDER.ORDERID, DISH.DISHID,
+                DISH.DISHNAME, DISH.PRICE, DISH.FIRSTCOST, ORDERDISH.QTY};
+        var sqls = new java.util.ArrayList<String>();
+        var dsl = DSL.using(new MockConnection(context -> {
+            sqls.add(context.sql().toLowerCase());
+            return new MockResult[]{new MockResult(0, DSL.using(SQLDialect.POSTGRES).newResult(fields))};
+        }), SQLDialect.POSTGRES);
+
+        new SalesService(dsl, mock(MenuService.class)).getSalesForML(null, LocalDate.of(2026, 10, 4));
+
+        assertThat(sqls).singleElement().satisfies(sql -> {
+            assertThat(sql).contains("\"date\" <= cast(? as date)");
+            assertThat(sql).doesNotContain("between");
+        });
+    }
 }

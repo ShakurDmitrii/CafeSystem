@@ -3,6 +3,7 @@ import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { API_BASE_URL } from "../../auth";
 import styles from "./InventoryShiftReport.module.css";
+import { unitLabel } from "../../utils/units";
 
 const API_SHIFTS = `${API_BASE_URL}/api/shifts`;
 const API_WAREHOUSES = `${API_BASE_URL}/warehouses`;
@@ -449,21 +450,21 @@ export default function InventoryShiftReport({ warehouses, onApplied, initialShi
                                     <tr key={row.productId}>
                                         <td data-label="Продукт">
                                             <div className={styles.productName}>{row.productName}</div>
-                                            <div className={styles.productMeta}>ID: {row.productId} • {row.unit || "ед."}</div>
+                                            <div className={styles.productMeta}>ID: {row.productId} • {unitLabel(row.unit)}</div>
                                         </td>
-                                        <td data-label="Было">{formatQty(row.openingQty)} {row.unit}</td>
+                                        <td data-label="Было">{formatQty(row.openingQty)} {unitLabel(row.unit)}</td>
                                         <td data-label="Движения">
                                             <div className={movementNet < -0.000001 ? styles.netOut : movementNet > 0.000001 ? styles.netIn : styles.netNeutral}>
                                                 {movementNet > 0.000001 ? "+" : ""}
-                                                {formatQty(row.movementNetQty)} {row.unit}
+                                                {formatQty(row.movementNetQty)} {unitLabel(row.unit)}
                                             </div>
                                             <div className={styles.productMeta}>
                                                 +{formatQty(row.movementInQty)} / -{formatQty(row.movementOutQty)}
                                             </div>
                                         </td>
-                                        <td data-label="Продажи">{formatQty(row.soldQty)} {row.unit}</td>
-                                        <td data-label="Должно быть">{formatQty(row.expectedQty)} {row.unit}</td>
-                                        <td data-label="В системе">{formatQty(row.systemQty)} {row.unit}</td>
+                                        <td data-label="Продажи">{formatQty(row.soldQty)} {unitLabel(row.unit)}</td>
+                                        <td data-label="Должно быть">{formatQty(row.expectedQty)} {unitLabel(row.unit)}</td>
+                                        <td data-label="В системе">{formatQty(row.systemQty)} {unitLabel(row.unit)}</td>
                                         <td data-label="Фактический остаток">
                                             <input
                                                 className={styles.input}
@@ -480,7 +481,7 @@ export default function InventoryShiftReport({ warehouses, onApplied, initialShi
                                         <td data-label="Расхождение">
                                             <span className={`${styles.discrepancy} ${discrepancyClass}`}>
                                                 {discrepancy < -0.000001 ? "−" : discrepancy > 0.000001 ? "+" : ""}
-                                                {formatQty(Math.abs(discrepancy))} {row.unit}
+                                                {formatQty(Math.abs(discrepancy))} {unitLabel(row.unit)}
                                             </span>
                                             <div className={styles.productMeta}>
                                                 {discrepancy < -0.000001
@@ -493,7 +494,7 @@ export default function InventoryShiftReport({ warehouses, onApplied, initialShi
                                         <td data-label="Контроль">
                                             {row.shortageFlag ? (
                                                 <div className={styles.warningBadge}>
-                                                    Возможна нехватка: {formatQty(row.shortageQty)} {row.unit}
+                                                    Возможна нехватка: {formatQty(row.shortageQty)} {unitLabel(row.unit)}
                                                 </div>
                                             ) : (
                                                 <span className={styles.okBadge}>Ок</span>

@@ -1,5 +1,6 @@
 import ModalShell from "./ModalShell";
 import styles from "../TechCardPage.module.css";
+import { unitLabel } from "../../../utils/units";
 
 export default function IngredientPickerModal({
     search,
@@ -86,10 +87,23 @@ export default function IngredientPickerModal({
                             </span>
                             <span className={styles.ingredientOptionPrice}>
                                 {Number(group.averagePrice || 0).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ₽/
-                                {productsById.get(group.representativeId)?.baseUnit || productsById.get(group.representativeId)?.unit || "ед."}
+                                {unitLabel(productsById.get(group.representativeId)?.baseUnit || productsById.get(group.representativeId)?.unit)}
                             </span>
                         </button>
-                    )) : <div className={styles.emptyModalState}>Продукты по этому запросу не найдены.</div>
+                    )) : (
+                        <div className={styles.emptyModalState}>
+                            <span>Продукты по этому запросу не найдены.</span>
+                            {search.trim() ? (
+                                <button
+                                    type="button"
+                                    className={styles.primaryButton}
+                                    onClick={() => onCreateIngredient(search)}
+                                >
+                                    Создать «{search.trim()}»
+                                </button>
+                            ) : null}
+                        </div>
+                    )
                 ) : (
                     preparations.length > 0 ? preparations.map((preparation) => (
                         <button
