@@ -11,7 +11,7 @@ import { useSearchParams } from 'react-router-dom';
 import { API_BASE_URL } from '../../auth';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { ApiClient } from './api';
-import { formatCurrency, formatInteger, formatNumber, formatPercent, formatUnitCost } from './formatters';
+import { describeTrainingResult, formatCurrency, formatNumber, formatPercent, formatUnitCost } from './formatters';
 import styles from './MlPage.module.css';
 import OptimizationResults from './OptimizationResults';
 import PredictRollPage from './PredictRollPage';
@@ -70,13 +70,13 @@ export default function MlPage() {
 
     const sendTrainingData = async () => {
         setIsTraining(true);
-        setTrainingStatus({ type: 'progress', text: 'Собираем продажи и обновляем модель…' });
+        setTrainingStatus({ type: 'progress', text: 'Собираем продажи за всё время и обновляем модель…' });
         try {
             const response = await fetch(`${API_BASE_URL}/api/ml/train-with-recent-data`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                // Без days сервер берёт всю историю продаж.
                 body: JSON.stringify({
-                    days: 90,
                     includeMenu: true,
                     includeSales: true,
                     includeIngredients: true
@@ -87,16 +87,7 @@ export default function MlPage() {
                 throw new Error(result.error || result.message || 'Не удалось обучить модель.');
             }
 
-            const recordsCount = result.recordsCount
-                ?? result.records
-                ?? result.trainingResult?.recordsCount;
-            const ingredientsCount = result.newIngredientsCount
-                ?? result.ingredientsCount
-                ?? result.trainingResult?.ingredientsCount;
-            setTrainingStatus({
-                type: 'success',
-                text: `Модель обновлена: ${formatInteger(recordsCount, '—')} суточных записей, ${formatInteger(ingredientsCount, '—')} ингредиентов. ${(result.trainingResult?.warnings || []).join(' ')}`
-            });
+            setTrainingStatus({ type: 'success', text: describeTrainingResult(result) });
         } catch (error) {
             setTrainingStatus({
                 type: 'error',

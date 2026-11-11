@@ -148,6 +148,47 @@ class PythonMlContractTest {
     }
 
     @Test
+    void trainingRecordsCarryDishIdSoPythonCanRestoreDaysWithoutSales() {
+        MlTrainingService trainingService = new MlTrainingService(
+                mock(SalesService.class),
+                mock(MenuService.class),
+                mock(InventoryService.class),
+                restTemplate
+        );
+        SalesRecordDTO sale = SalesRecordDTO.builder()
+                .rollId("12")
+                .rollName("Филадельфия")
+                .ingredients(List.of("Лосось", "Рис"))
+                .quantity(4)
+                .saleDate(LocalDate.of(2026, 8, 29))
+                .build();
+
+        var records = trainingService.prepareTrainingData(List.of(sale), List.of());
+
+        assertThat(records).singleElement().satisfies(record -> assertThat(record.get("dishId")).isEqualTo(12));
+    }
+
+    @Test
+    void historyLongerThanOneRequestKeepsMostRecentRecords() {
+        MlTrainingService trainingService = new MlTrainingService(
+                mock(SalesService.class),
+                mock(MenuService.class),
+                mock(InventoryService.class),
+                restTemplate
+        );
+        List<Map<String, Object>> records = new java.util.ArrayList<>();
+        for (int i = 0; i < MlTrainingService.MAX_TRAINING_RECORDS + 5; i++) {
+            records.add(Map.of("n", i));
+        }
+
+        var kept = trainingService.keepMostRecent(records);
+
+        assertThat(kept).hasSize(MlTrainingService.MAX_TRAINING_RECORDS);
+        assertThat(kept.getFirst().get("n")).isEqualTo(5);
+        assertThat(kept.getLast().get("n")).isEqualTo(MlTrainingService.MAX_TRAINING_RECORDS + 4);
+    }
+
+    @Test
     void trainingSkipsSalesWithoutRecipeIngredients() {
         MlTrainingService trainingService = new MlTrainingService(
                 mock(SalesService.class),
