@@ -19,6 +19,7 @@ import {
     toDateInputValue,
     toTimeInputValue
 } from "./cashier-page/cashierUtils";
+import { describeHttpStatus, ensureOk, parseJsonSafe } from "../../../utils/apiError";
 
 const API_ORDERS = `${API_BASE_URL}/api/orders`;
 const API_SHIFTS = `${API_BASE_URL}/api/shifts`;
@@ -215,7 +216,7 @@ export default function CashierPage() {
         fetch(API_PERSONS)
             .then(async (r) => {
                 if (!r.ok) {
-                    throw new Error(`Не удалось загрузить сотрудников (${r.status})`);
+                    throw new Error(`Не удалось загрузить сотрудников: ${describeHttpStatus(r.status)}`);
                 }
                 const text = await r.text();
                 return text ? JSON.parse(text) : [];
@@ -226,7 +227,7 @@ export default function CashierPage() {
         fetch(API_DISHES)
             .then(async (r) => {
                 if (!r.ok) {
-                    throw new Error(`Не удалось загрузить блюда (${r.status})`);
+                    throw new Error(`Не удалось загрузить блюда: ${describeHttpStatus(r.status)}`);
                 }
                 const text = await r.text();
                 return text ? JSON.parse(text) : [];
@@ -237,7 +238,7 @@ export default function CashierPage() {
         fetch(API_DISH_SETS)
             .then(async (r) => {
                 if (!r.ok) {
-                    throw new Error(`Не удалось загрузить наборы (${r.status})`);
+                    throw new Error(`Не удалось загрузить наборы: ${describeHttpStatus(r.status)}`);
                 }
                 const text = await r.text();
                 return text ? JSON.parse(text) : [];
@@ -248,7 +249,7 @@ export default function CashierPage() {
         fetch(API_DISH_CATEGORIES)
             .then(async (r) => {
                 if (!r.ok) {
-                    throw new Error(`Не удалось загрузить категории (${r.status})`);
+                    throw new Error(`Не удалось загрузить категории: ${describeHttpStatus(r.status)}`);
                 }
                 const text = await r.text();
                 return text ? JSON.parse(text) : [];
@@ -393,7 +394,7 @@ export default function CashierPage() {
         try {
             const response = await fetch(API_SHIFTS);
             if (!response.ok) {
-                throw new Error(`Не удалось загрузить смены (${response.status})`);
+                throw new Error(`Не удалось загрузить смены: ${describeHttpStatus(response.status)}`);
             }
             const text = await response.text();
             const data = text ? JSON.parse(text) : [];
@@ -409,7 +410,7 @@ export default function CashierPage() {
         fetch(API_CLIENTS)
             .then(async (r) => {
                 if (!r.ok) {
-                    throw new Error(`Не удалось загрузить клиентов (${r.status})`);
+                    throw new Error(`Не удалось загрузить клиентов: ${describeHttpStatus(r.status)}`);
                 }
                 const text = await r.text();
                 return text ? JSON.parse(text) : [];
@@ -531,9 +532,9 @@ export default function CashierPage() {
         })
             .then(async (r) => {
                 const text = await r.text();
-                const body = text ? JSON.parse(text) : null;
+                const body = parseJsonSafe(text);
                 if (!r.ok) {
-                    throw new Error(body?.message || `Ошибка создания смены (${r.status})`);
+                    throw new Error(body?.message || `Ошибка создания смены: ${describeHttpStatus(r.status)}`);
                 }
                 return body;
             })
@@ -564,7 +565,10 @@ export default function CashierPage() {
             .then(() => {
                 console.log("Смена успешно открыта");
             })
-            .catch(e => console.error("Ошибка открытия смены:", e))
+            .catch(e => {
+                console.error("Ошибка открытия смены:", e);
+                alert(`Смена открыта, но заказы не загрузились: ${e.message || "неизвестная ошибка"}`);
+            })
             .finally(() => setIsLoading(false));
     };
 
@@ -585,9 +589,9 @@ export default function CashierPage() {
         })
             .then(async (response) => {
                 const text = await response.text();
-                const body = text ? JSON.parse(text) : null;
+                const body = parseJsonSafe(text);
                 if (!response.ok) {
-                    throw new Error(body?.message || `Ошибка закрытия смены (${response.status})`);
+                    throw new Error(body?.message || `Ошибка закрытия смены: ${describeHttpStatus(response.status)}`);
                 }
                 return body;
             })
@@ -629,7 +633,7 @@ export default function CashierPage() {
             const res = await fetch(`${API_SHIFTS}/${currentShift.shiftId}/z-report`);
             const report = await res.json();
             if (!res.ok) {
-                throw new Error(report?.message || `Ошибка Z-отчета (${res.status})`);
+                throw new Error(report?.message || `Ошибка Z-отчета: ${describeHttpStatus(res.status)}`);
             }
 
             const workers = Array.isArray(report.workers) && report.workers.length > 0
@@ -702,7 +706,7 @@ ${reportText}
             const res = await fetch(`${API_SHIFTS}/${shiftId}/z-report`);
             const body = await res.json();
             if (!res.ok) {
-                throw new Error(body?.message || `Ошибка загрузки отчета (${res.status})`);
+                throw new Error(body?.message || `Ошибка загрузки отчета: ${describeHttpStatus(res.status)}`);
             }
             setShiftReport(body);
         } catch (e) {
@@ -791,7 +795,7 @@ ${reportText}
 
             const order = await orderResponse.json();
             if (!orderResponse.ok) {
-                throw new Error(order?.message || order?.error || `Ошибка создания заказа (${orderResponse.status})`);
+                throw new Error(order?.message || order?.error || `Ошибка создания заказа: ${describeHttpStatus(orderResponse.status)}`);
             }
             console.log("Создан заказ с orderId:", order.orderId);
             order.paymentType = paymentType;
@@ -877,9 +881,9 @@ ${reportText}
         }
 
         const res = await fetch(`${API_ORDERS}/${order.orderId}`);
-        const fresh = await res.json().catch(() => null);
-        if (!res.ok || !fresh) {
-            throw new Error(fresh?.message || `Не удалось загрузить заказ #${order.orderId} (${res.status})`);
+        const fresh = await ensureOk(res, `Не удалось загрузить заказ #${order.orderId}`);
+        if (!fresh) {
+            throw new Error(`Не удалось загрузить заказ #${order.orderId}: сервер вернул пустой ответ`);
         }
         const reason = getOrderEditBlockReason(fresh);
         if (reason) {
@@ -974,10 +978,7 @@ ${reportText}
                     consumables: orderConsumables
                 })
             });
-            const body = await res.json().catch(() => null);
-            if (!res.ok) {
-                throw new Error(body?.message || body?.error || `Не удалось сохранить заказ #${editingOrder.orderId} (${res.status})`);
-            }
+            const body = await ensureOk(res, `Не удалось сохранить заказ #${editingOrder.orderId}`);
 
             const updated = {
                 ...body,
@@ -1014,7 +1015,7 @@ ${reportText}
                 number: newClient.number?.trim() || ""
             })
         })
-            .then(r => r.json())
+            .then(r => ensureOk(r, "Не удалось создать гостя"))
             .then(client => {
                 alert("✅ Клиент создан!");
                 setClients(prev => [client, ...prev]);
@@ -1028,7 +1029,7 @@ ${reportText}
             })
             .catch(e => {
                 console.error("Ошибка создания клиента:", e);
-                alert("❌ Ошибка создания клиента");
+                alert(e.message || "Не удалось создать гостя");
             });
     };
 
@@ -1050,18 +1051,17 @@ ${reportText}
         }
     };
 
-    const markOrderReady = (orderId) => {
-        fetch(`${API_ORDERS}/${orderId}/status`, {
+    const markOrderReady = async (orderId) => {
+        const res = await fetch(`${API_ORDERS}/${orderId}/status`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: true })
-        })
-            .then(() => {
-                setOrders(prev => prev.map(o =>
-                    o.orderId === orderId ? { ...o, status: true } : o
-                ));
-            })
-            .catch(e => console.error("Ошибка обновления статуса заказа:", e));
+        });
+        // Раньше ошибка тут молча терялась, и заказ выглядел готовым только до обновления.
+        await ensureOk(res, `Не удалось отметить заказ #${orderId} готовым`);
+        setOrders(prev => prev.map(o =>
+            o.orderId === orderId ? { ...o, status: true } : o
+        ));
     };
 
     const updateOrderPayment = async (orderId, nextPaymentType, cashReceived = null) => {
@@ -1083,7 +1083,7 @@ ${reportText}
         }
 
         if (!res.ok) {
-            throw new Error(body?.message || `Ошибка обновления оплаты (${res.status})`);
+            throw new Error(body?.message || `Ошибка обновления оплаты: ${describeHttpStatus(res.status)}`);
         }
 
         setOrders(prev => prev.map(o => (
@@ -1141,7 +1141,7 @@ ${reportText}
         }
 
         if (!res.ok) {
-            throw new Error(body?.message || `Ошибка выдачи заказа (${res.status})`);
+            throw new Error(body?.message || `Ошибка выдачи заказа: ${describeHttpStatus(res.status)}`);
         }
 
         setOrders((prev) => {

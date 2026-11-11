@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE_URL } from "../../../auth";
 import DishPickerModal from "./DishPickerModal";
 import styles from "./DishPage.module.css";
+import { describeHttpStatus } from "../../../utils/apiError";
 
 const API_DISH_SETS = `${API_BASE_URL}/api/dish-sets`;
 const API_UPLOAD = `${API_BASE_URL}/api/v1/files/images`;
@@ -123,7 +124,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
                 if (res.status === 409) {
                     throw new Error(data?.message || "Набор с таким названием уже существует");
                 }
-                throw new Error(data?.message || `Не удалось загрузить наборы (${res.status})`);
+                throw new Error(data?.message || `Не удалось загрузить наборы: ${describeHttpStatus(res.status)}`);
             }
             setDishSets(Array.isArray(data) ? data.map(normalizeSet) : []);
         } catch (err) {
@@ -169,7 +170,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
         const text = await res.text();
         const data = parseJsonSafe(text);
         if (!res.ok) {
-            throw new Error(data?.message || `Ошибка обновления набора (${res.status})`);
+            throw new Error(data?.message || `Ошибка обновления набора: ${describeHttpStatus(res.status)}`);
         }
         return data || payload;
     };
@@ -236,7 +237,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
             const text = await res.text();
             const data = parseJsonSafe(text);
             if (!res.ok) {
-                throw new Error(data?.message || `Ошибка создания набора (${res.status})`);
+                throw new Error(data?.message || `Ошибка создания набора: ${describeHttpStatus(res.status)}`);
             }
             setCreateForm(createSetForm());
             await loadSets();
@@ -318,7 +319,7 @@ export default function DishSetsSection({ dishes = [], categories = [] }) {
             if (!res.ok) {
                 const raw = await res.text().catch(() => "");
                 const data = parseJsonSafe(raw);
-                throw new Error(data?.message || data?.error || raw || `Ошибка удаления набора (${res.status})`);
+                throw new Error(data?.message || data?.error || raw || `Ошибка удаления набора: ${describeHttpStatus(res.status)}`);
             }
             setDishSets((prev) => prev.filter((item) => item.setId !== setItem.setId));
         } catch (err) {

@@ -11,6 +11,7 @@ import SupplierAssortmentCatalog from "./supplier-products/SupplierAssortmentCat
 import SupplierAssortmentHero from "./supplier-products/SupplierAssortmentHero";
 import SupplierProductEditor from "./supplier-products/SupplierProductEditor";
 import styles from "./SuppliersProductPage.module.css";
+import { describeHttpStatus } from "../../utils/apiError";
 
 const API_PRODUCTS = `${API_BASE_URL}/api/product`;
 const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
@@ -174,7 +175,7 @@ export default function SupplierProductPage() {
                 throw new Error(
                     getResponseMessage(
                         productsRaw,
-                        `Не удалось загрузить ассортимент (${productsResponse.status}).`
+                        `Не удалось загрузить ассортимент: ${describeHttpStatus(productsResponse.status)}.`
                     )
                 );
             }
@@ -182,7 +183,7 @@ export default function SupplierProductPage() {
                 throw new Error(
                     getResponseMessage(
                         supplierRaw,
-                        `Не удалось загрузить поставщика (${supplierResponse.status}).`
+                        `Не удалось загрузить поставщика: ${describeHttpStatus(supplierResponse.status)}.`
                     )
                 );
             }

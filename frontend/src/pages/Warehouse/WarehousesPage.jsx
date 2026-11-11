@@ -34,6 +34,7 @@ export default function WarehousePage() {
     const [suppliers, setSuppliers] = useState([]);
     const [movements, setMovements] = useState([]);
     const [warehouseProducts, setWarehouseProducts] = useState({});
+    const [warehousePreparations, setWarehousePreparations] = useState({});
     const [loading, setLoading] = useState(true);
     const [pageError, setPageError] = useState("");
     const [notice, setNotice] = useState("");
@@ -108,6 +109,44 @@ export default function WarehousePage() {
             }
         }));
         setWarehouseProducts(Object.fromEntries(entries));
+
+        // Заготовки, выпущенные на склад (sales.preparationwarehouse)
+        const preparationEntries = await Promise.all(warehouseList.map(async (warehouse) => {
+            const warehouseId = Number(warehouse.warehouseId);
+            try {
+                const response = await fetch(`${API_WAREHOUSES}/${warehouseId}/preparations`);
+                if (!response.ok) throw new Error(`Не удалось загрузить заготовки склада #${warehouseId}`);
+                const rows = normalizeCollection(await response.json().catch(() => []));
+                const merged = new Map();
+                rows.forEach((row) => {
+                    const preparationId = Number(row.preparationId);
+                    const current = merged.get(preparationId);
+                    const quantity = Number(row.quantity ?? 0);
+                    const value = Number(row.inventoryValue ?? 0);
+                    if (current) {
+                        current.quantity += quantity;
+                        current.inventoryValue += value;
+                    } else {
+                        merged.set(preparationId, {
+                            preparationId,
+                            preparationName: row.preparationName || `Заготовка #${preparationId}`,
+                            outputWeight: row.outputWeight,
+                            quantity,
+                            inventoryValue: value
+                        });
+                    }
+                });
+                return [warehouseId, [...merged.values()].map((row) => ({
+                    ...row,
+                    // Себестоимость за килограмм: остаток хранится в граммах.
+                    costPerKg: row.quantity > 0 ? (row.inventoryValue / row.quantity) * 1000 : null
+                }))];
+            } catch (error) {
+                console.error(error);
+                return [warehouseId, []];
+            }
+        }));
+        setWarehousePreparations(Object.fromEntries(preparationEntries));
     }, []);
 
     const loadData = useCallback(async () => {
@@ -518,6 +557,7 @@ export default function WarehousePage() {
                                 key={warehouse.warehouseId}
                                 warehouse={warehouse}
                                 products={warehouseProducts[warehouse.warehouseId] ?? []}
+                                preparations={warehousePreparations[warehouse.warehouseId] ?? []}
                                 showZeroStock={showZeroStock}
                                 busyKey={busyKey}
                                 openPanel={openStockPanel?.warehouseId === warehouse.warehouseId ? openStockPanel.mode : ""}

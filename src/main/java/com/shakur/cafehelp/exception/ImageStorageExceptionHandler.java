@@ -1,5 +1,7 @@
 package com.shakur.cafehelp.exception;
 
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +12,7 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import java.util.Map;
 
 @RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class ImageStorageExceptionHandler {
 
     @ExceptionHandler(ImageValidationException.class)

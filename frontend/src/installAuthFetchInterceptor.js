@@ -27,7 +27,18 @@ export function installAuthFetchInterceptor() {
             }
         }
 
-        const response = await originalFetch(input, { ...init, headers });
+        let response;
+        try {
+            response = await originalFetch(input, { ...init, headers });
+        } catch (error) {
+            if (error?.name === "AbortError" || !isBackendRequest(url)) throw error;
+            // Вместо «Failed to fetch» объясняем, что именно не так.
+            const networkError = new Error(
+                "Нет связи с сервером CafeHelp: проверьте, что сервер запущен и компьютер подключён к сети"
+            );
+            networkError.cause = error;
+            throw networkError;
+        }
 
         if (response.status === 401) {
             clearAuth();
