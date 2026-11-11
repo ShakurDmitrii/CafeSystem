@@ -17,6 +17,8 @@ import { findProductByName, presetForUnit } from "../../components/forms/units";
 const API_PRODUCTS = `${API_BASE_URL}/api/product`;
 const API_SUPPLIERS = `${API_BASE_URL}/api/supplier`;
 const API_UPLOAD = `${API_BASE_URL}/api/v1/files/images`;
+const API_CONSUMABLES = `${API_BASE_URL}/api/consumables`;
+const API_DISH_CATEGORIES = `${API_BASE_URL}/api/dish-categories`;
 
 const SORT_OPTIONS = new Set(["name_asc", "name_desc", "price_asc", "price_desc"]);
 
@@ -30,7 +32,13 @@ const createEmptyForm = (unit = "kg") => {
         unit: preset.value,
         baseUnit: preset.baseUnit,
         unitFactor: String(preset.unitFactor),
-        imageUrl: ""
+        imageUrl: "",
+        itemType: "ingredient",
+        consumableBasis: "per_order",
+        consumableDefaultQuantity: "1",
+        consumableTriggerQuantity: "1",
+        consumableDishCategoryId: "",
+        consumableActive: true
     };
 };
 
@@ -46,7 +54,13 @@ const normalizeProduct = (product) => ({
     baseUnit: product?.baseUnit || product?.unit || "g",
     unitFactor: Number(product?.supplierUnitFactor ?? product?.unitFactor ?? 1),
     averageStockPrice: product?.averageStockPrice,
-    imageUrl: product?.imageUrl ?? ""
+    imageUrl: product?.imageUrl ?? "",
+    itemType: product?.itemType || "ingredient",
+    consumableBasis: product?.consumableBasis || "per_order",
+    consumableDefaultQuantity: product?.consumableDefaultQuantity ?? 1,
+    consumableTriggerQuantity: product?.consumableTriggerQuantity ?? 1,
+    consumableDishCategoryId: product?.consumableDishCategoryId ?? "",
+    consumableActive: product?.consumableActive ?? true
 });
 
 const normalizeSupplier = (supplier, fallbackId) => ({
@@ -106,6 +120,7 @@ export default function SupplierProductPage() {
         normalizeSupplier(null, supplierId)
     ));
     const [products, setProducts] = useState([]);
+    const [dishCategories, setDishCategories] = useState([]);
     const [catalog, setCatalog] = useState([]);
     const [loading, setLoading] = useState(true);
     const [pageError, setPageError] = useState("");
@@ -135,10 +150,12 @@ export default function SupplierProductPage() {
         setPageError("");
 
         try {
-            const [productsResponse, supplierResponse, catalogResponse] = await Promise.all([
+            const [productsResponse, supplierResponse, catalogResponse, consumablesResponse, categoriesResponse] = await Promise.all([
                 fetch(`${API_PRODUCTS}/supplier/${supplierId}`),
                 fetch(`${API_SUPPLIERS}/${supplierId}`),
-                fetch(API_PRODUCTS).catch(() => null)
+                fetch(API_PRODUCTS).catch(() => null),
+                fetch(API_CONSUMABLES).catch(() => null),
+                fetch(API_DISH_CATEGORIES).catch(() => null)
             ]);
             const [productsRaw, supplierRaw, catalogRaw] = await Promise.all([
                 productsResponse.text(),
@@ -165,11 +182,31 @@ export default function SupplierProductPage() {
 
             const productsData = parseJsonSafe(productsRaw);
             const supplierData = parseJsonSafe(supplierRaw);
+            const [consumablesData, categoriesData] = await Promise.all([
+                consumablesResponse?.ok ? consumablesResponse.json().catch(() => []) : [],
+                categoriesResponse?.ok ? categoriesResponse.json().catch(() => []) : []
+            ]);
+            const rulesByProduct = new Map((Array.isArray(consumablesData) ? consumablesData : []).map((rule) => [
+                Number(rule.productId),
+                {
+                    consumableBasis: rule.basis,
+                    consumableDefaultQuantity: rule.defaultQuantity,
+                    consumableTriggerQuantity: rule.triggerQuantity,
+                    consumableDishCategoryId: rule.dishCategoryId,
+                    consumableActive: rule.active
+                }
+            ]));
             setProducts(
                 Array.isArray(productsData)
-                    ? productsData.map(normalizeProduct).filter((product) => product.productId > 0)
+                    ? productsData
+                        .map((product) => normalizeProduct({
+                            ...product,
+                            ...(rulesByProduct.get(Number(product?.productId ?? product?.id)) ?? {})
+                        }))
+                        .filter((product) => product.productId > 0)
                     : []
             );
+            setDishCategories(Array.isArray(categoriesData) ? categoriesData : []);
             setSupplier(normalizeSupplier(supplierData, supplierId));
             // Общий каталог нужен только для подсказки о дубле; без него форма работает как раньше.
             const catalogData = parseJsonSafe(catalogRaw);
@@ -371,6 +408,14 @@ export default function SupplierProductPage() {
                         waste,
                         isFavorite: Boolean(form.isFavorite),
                         imageUrl: form.imageUrl || null,
+                        itemType: form.itemType,
+                        consumableBasis: form.consumableBasis,
+                        consumableDefaultQuantity: Number(form.consumableDefaultQuantity || 0),
+                        consumableTriggerQuantity: Number(form.consumableTriggerQuantity || 1),
+                        consumableDishCategoryId: form.consumableDishCategoryId
+                            ? Number(form.consumableDishCategoryId)
+                            : null,
+                        consumableActive: Boolean(form.consumableActive),
                         ...(editing
                             ? {
                                 supplierPrice: productPrice,
@@ -429,7 +474,13 @@ export default function SupplierProductPage() {
             unit: product.unit,
             baseUnit: product.baseUnit,
             unitFactor: String(product.unitFactor),
-            imageUrl: product.imageUrl
+            imageUrl: product.imageUrl,
+            itemType: product.itemType,
+            consumableBasis: product.consumableBasis,
+            consumableDefaultQuantity: String(product.consumableDefaultQuantity),
+            consumableTriggerQuantity: String(product.consumableTriggerQuantity),
+            consumableDishCategoryId: product.consumableDishCategoryId ?? "",
+            consumableActive: product.consumableActive
         });
         setFormError("");
         setStatusMessage("");
@@ -461,6 +512,7 @@ export default function SupplierProductPage() {
                 <SupplierProductEditor
                     supplierName={supplier.name}
                     form={form}
+                    dishCategories={dishCategories}
                     supplierProducts={products}
                     catalog={catalog}
                     focusKey={focusKey}
