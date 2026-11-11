@@ -1,5 +1,6 @@
 package com.shakur.cafehelp.DTO;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -11,6 +12,7 @@ public class OrderEditRequestDTO {
     private Double timeDelay;
     private LocalDateTime readyAt;
     private Double deliveryCost;
+    private BigDecimal discountAmount;
     private String deliveryPhone;
     private String deliveryAddress;
     private List<OrderDishDTO> items;
@@ -63,6 +65,14 @@ public class OrderEditRequestDTO {
 
     public void setDeliveryCost(Double deliveryCost) {
         this.deliveryCost = deliveryCost;
+    }
+
+    public BigDecimal getDiscountAmount() {
+        return discountAmount;
+    }
+
+    public void setDiscountAmount(BigDecimal discountAmount) {
+        this.discountAmount = discountAmount;
     }
 
     public String getDeliveryPhone() {

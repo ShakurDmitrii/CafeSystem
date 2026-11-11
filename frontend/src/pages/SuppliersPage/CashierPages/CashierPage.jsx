@@ -121,6 +121,7 @@ export default function CashierPage() {
     const [editBusy, setEditBusy] = useState(false);
     const skipPhoneSyncRef = useRef(false);
     const [deliveryCost, setDeliveryCost] = useState(0);
+    const [discountAmount, setDiscountAmount] = useState(0);
     const [paymentType, setPaymentType] = useState(""); // "" (не выбрано) | cash | transfer | unpaid
     const [deliveryPhone, setDeliveryPhone] = useState("");
     const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -794,6 +795,7 @@ ${reportText}
                 shiftId: currentShift.shiftId,
                 date: new Date().toISOString().slice(0, 10),
                 amount: total,
+                discountAmount: appliedDiscount,
                 status: false,
                 time: readiness.time,
                 readyAt: readiness.readyAt,
@@ -859,6 +861,7 @@ ${reportText}
         setConsumableOverrides({});
         setOrderType(false);
         setDeliveryCost(0);
+        setDiscountAmount(0);
         setPaymentType("");
         setDeliveryPhone("");
         setDeliveryAddress("");
@@ -948,6 +951,7 @@ ${reportText}
         setConsumableOverrides(overrides);
         setOrderType(Boolean(fresh.type));
         setDeliveryCost(Number(fresh.deliveryCost || 0));
+        setDiscountAmount(Number(fresh.discountAmount || 0));
         setDeliveryPhone(fresh.deliveryPhone || "");
         setDeliveryAddress(fresh.deliveryAddress || "");
         setSelectedClient(client);
@@ -996,6 +1000,7 @@ ${reportText}
                     time: readiness.time,
                     readyAt: readiness.readyAt,
                     deliveryCost: orderType ? Number(deliveryCost || 0) : 0,
+                    discountAmount: appliedDiscount,
                     deliveryPhone: requiresContactDetails ? effectivePhone : null,
                     deliveryAddress: requiresContactDetails ? effectiveAddress : null,
                     items: orderItemsForApi,
@@ -1379,6 +1384,10 @@ ${reportText}
                     ${itemRows}
                     ${consumableRows}
                     <div style="margin-top:8px;border-top:1px solid #000;padding-top:8px;">
+                        ${Number(order.discountAmount || 0) > 0 ? `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin-bottom:4px;">
+                            <span>Скидка</span>
+                            <span>−${escapeHtml(formatTicketMoney(order.discountAmount))} ₽</span>
+                        </div>` : ""}
                         <div style="display:flex;justify-content:space-between;font-size:17px;font-weight:900;">
                             <span>ИТОГО</span>
                             <span>${escapeHtml(formatTicketMoney(order.amount))} ₽</span>
@@ -1442,6 +1451,7 @@ ${reportText}
                 const payloadOrder = {
                     ...order,
                     amount: payload?.total ?? order.amount,
+                    discountAmount: payload?.discountAmount ?? order.discountAmount ?? 0,
                     type: payload?.isDelivery ?? order.type,
                     paymentType: payload?.paymentType ?? order.paymentType,
                     deliveryPhone: payload?.deliveryPhone ?? order.deliveryPhone,
@@ -1506,9 +1516,11 @@ ${reportText}
         (sum, row) => sum + Number(row.surchargeAmount || 0),
         0
     );
-    const totalOrderAmount = orderItemsTotal
+    const grossOrderAmount = orderItemsTotal
         + consumableSurchargeTotal
         + (orderType ? Number(deliveryCost || 0) : 0);
+    const appliedDiscount = Math.min(Math.max(0, Number(discountAmount || 0)), grossOrderAmount);
+    const totalOrderAmount = Math.round((grossOrderAmount - appliedDiscount) * 100) / 100;
     const orderItemsForApi = expandOrderItemsForApi(currentOrderItems);
 
     // Функция для разделения заказов на группы
@@ -1638,6 +1650,9 @@ ${reportText}
                         consumableSurchargeTotal={consumableSurchargeTotal}
                         itemsTotal={orderItemsTotal}
                         total={totalOrderAmount}
+                        discountAmount={discountAmount}
+                        appliedDiscount={appliedDiscount}
+                        onDiscountChange={(value) => setDiscountAmount(Math.max(0, Number(value || 0)))}
                         isLoading={isLoading}
                         requiresContactDetails={requiresContactDetails}
                         effectivePhone={effectivePhone}

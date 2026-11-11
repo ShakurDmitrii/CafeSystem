@@ -52,6 +52,7 @@ public class OrderService {
     private static final Field<Integer> PERSON_COUNT_FIELD = DSL.field(DSL.name("person_count"), Integer.class);
     private static final Field<BigDecimal> CASH_RECEIVED_FIELD = DSL.field(DSL.name("cash_received"), BigDecimal.class);
     private static final Field<BigDecimal> CASH_CHANGE_FIELD = DSL.field(DSL.name("cash_change"), BigDecimal.class);
+    private static final Field<BigDecimal> DISCOUNT_AMOUNT_FIELD = DSL.field(DSL.name("discount_amount"), BigDecimal.class);
     private static final Field<Integer> ORDERDISH_SET_ID = DSL.field(DSL.name("set_id"), Integer.class);
     private static final Field<Double> ORDERDISH_UNIT_PRICE = DSL.field(DSL.name("unit_price"), Double.class);
     private static final Field<Double> ORDERDISH_UNIT_COST = DSL.field(DSL.name("unit_cost"), Double.class);
@@ -111,15 +112,24 @@ public class OrderService {
                     .reduce(BigDecimal.ZERO, BigDecimal::add)
                     .setScale(2, RoundingMode.HALF_UP)
                     .doubleValue();
+            BigDecimal requestedDiscount = orderDTO.getDiscountAmount();
+            if (requestedDiscount != null && requestedDiscount.signum() < 0) {
+                throw new InvalidOrderRequestException("Скидка не может быть отрицательной");
+            }
+            double requestedDiscountValue = requestedDiscount != null ? requestedDiscount.doubleValue() : 0.0;
+            // amount от клиента — итог к оплате (уже со скидкой), доставку восстанавливаем с учётом скидки
             double requestedTotal = orderDTO.getAmount() != null
                     ? normalizeNonNegative(orderDTO.getAmount(), "Сумма заказа")
-                    : itemsTotal;
+                    : Math.max(0.0, itemsTotal - requestedDiscountValue);
             double deliveryCost = delivery
-                    ? Math.max(0.0, requestedTotal - itemsTotal - consumables.surchargeTotal().doubleValue())
+                    ? Math.max(0.0, requestedTotal + requestedDiscountValue - itemsTotal - consumables.surchargeTotal().doubleValue())
                     : 0.0;
-            double serverTotal = BigDecimal.valueOf(itemsTotal)
+            BigDecimal grossTotal = BigDecimal.valueOf(itemsTotal)
                     .add(consumables.surchargeTotal())
                     .add(BigDecimal.valueOf(deliveryCost))
+                    .setScale(2, RoundingMode.HALF_UP);
+            BigDecimal discountAmount = normalizeDiscount(requestedDiscount, grossTotal);
+            double serverTotal = grossTotal.subtract(discountAmount)
                     .setScale(2, RoundingMode.HALF_UP)
                     .doubleValue();
 
@@ -174,6 +184,7 @@ public class OrderService {
                     .set(PERSON_COUNT_FIELD, consumables.personCount())
                     .set(CASH_RECEIVED_FIELD, cashSettlement != null ? cashSettlement.received() : null)
                     .set(CASH_CHANGE_FIELD, cashSettlement != null ? cashSettlement.change() : null)
+                    .set(DISCOUNT_AMOUNT_FIELD, discountAmount)
                     .returningResult(ORDER.ORDERID)
                     .fetchOne();
 
@@ -250,7 +261,8 @@ public class OrderService {
                         PERSON_COUNT_FIELD,
                         CASH_RECEIVED_FIELD,
                         CASH_CHANGE_FIELD,
-                        READY_AT_FIELD
+                        READY_AT_FIELD,
+                        DISCOUNT_AMOUNT_FIELD
                 )
                 .from(ORDER)
                 .where(ORDER.ORDERID.eq(id))
@@ -273,6 +285,7 @@ public class OrderService {
                     order.paid = record.get(IS_PAID_FIELD);
                     order.cashReceived = record.get(CASH_RECEIVED_FIELD);
                     order.cashChange = record.get(CASH_CHANGE_FIELD);
+                    order.discountAmount = record.get(DISCOUNT_AMOUNT_FIELD);
                     order.duty = record.get(ORDER.DUTY);
                     order.debt_payment_date = record.get(ORDER.DEBT_PAYMENT_DATE);
                     order.debtOriginalAmount = record.get(DEBT_ORIGINAL_AMOUNT_FIELD);
@@ -401,7 +414,7 @@ public class OrderService {
 public List<OrderDTO> getOrders() {
         var records = dsl.select(ORDER.fields())
                 .select(DELIVERY_PHONE_FIELD, DELIVERY_ADDRESS_FIELD, PAYMENT_TYPE_FIELD, IS_PAID_FIELD,
-                        CASH_RECEIVED_FIELD, CASH_CHANGE_FIELD, READY_AT_FIELD, VERSION_FIELD)
+                        CASH_RECEIVED_FIELD, CASH_CHANGE_FIELD, READY_AT_FIELD, VERSION_FIELD, DISCOUNT_AMOUNT_FIELD)
                 .from(ORDER)
                 .where(CANCELLED_AT_FIELD.isNull())
                 .fetch();
@@ -433,6 +446,7 @@ public List<OrderDTO> getOrders() {
                     order.setVersion(record.get(VERSION_FIELD));
                     order.setDuty(record.get(ORDER.DUTY));
                     order.setDebt_payment_date(record.get(ORDER.DEBT_PAYMENT_DATE));
+                    order.setDiscountAmount(record.get(DISCOUNT_AMOUNT_FIELD));
                     order.setItems(buildOrderDishDtos(
                             itemsByOrderId.getOrDefault(record.get(ORDER.ORDERID), List.of())
                     ));
@@ -503,9 +517,15 @@ public List<OrderDTO> getOrders() {
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP)
                 .doubleValue();
-        double total = BigDecimal.valueOf(itemsTotal)
+        BigDecimal grossTotal = BigDecimal.valueOf(itemsTotal)
                 .add(consumables.surchargeTotal())
                 .add(BigDecimal.valueOf(delivery ? deliveryCost : 0.0))
+                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal discountAmount = normalizeDiscount(
+                request.getDiscountAmount() != null ? request.getDiscountAmount() : currentDiscountAmount(orderId),
+                grossTotal
+        );
+        double total = grossTotal.subtract(discountAmount)
                 .setScale(2, RoundingMode.HALF_UP)
                 .doubleValue();
 
@@ -549,6 +569,7 @@ public List<OrderDTO> getOrders() {
                 .set(READY_AT_FIELD, readyAt)
                 .set(ORDER.TIMEDELAY, delay)
                 .set(ORDER.AMOUNT, total)
+                .set(DISCOUNT_AMOUNT_FIELD, discountAmount)
                 .set(DELIVERY_PHONE_FIELD, trimToNull(request.getDeliveryPhone()))
                 .set(DELIVERY_ADDRESS_FIELD, trimToNull(request.getDeliveryAddress()))
                 .set(VERSION_FIELD, currentVersion + 1)
@@ -1043,7 +1064,8 @@ public List<OrderDTO> getOrders() {
                 .sum();
 
         double itemsTotal = computedTotal;
-        double total = order.getAmount() != null && order.getAmount() > 0
+        double storedDiscount = currentDiscountAmount(orderId).doubleValue();
+        double total = order.getAmount() != null && (order.getAmount() > 0 || storedDiscount > 0)
                 ? order.getAmount()
                 : computedTotal;
         boolean isDelivery = Boolean.TRUE.equals(order.getType());
@@ -1060,8 +1082,9 @@ public List<OrderDTO> getOrders() {
                 .fetchOne();
         String dbPaymentType = paymentData != null ? paymentData.get(PAYMENT_TYPE_FIELD) : null;
         Boolean dbIsPaid = paymentData != null ? paymentData.get(IS_PAID_FIELD) : null;
+        double discountAmount = storedDiscount;
         if (isDelivery) {
-            deliveryCost = Math.max(0.0, total - itemsTotal);
+            deliveryCost = Math.max(0.0, total + discountAmount - itemsTotal);
             if (deliveryCostOverride != null && deliveryCostOverride >= 0) {
                 deliveryCost = deliveryCostOverride;
             }
@@ -1083,6 +1106,7 @@ public List<OrderDTO> getOrders() {
             return row;
         }).toList());
         payload.put("total", total);
+        payload.put("discountAmount", discountAmount);
         payload.put("isDelivery", isDelivery);
         payload.put("deliveryCost", deliveryCost);
         String resolvedPayment = paymentType != null && !paymentType.trim().isEmpty()
@@ -1368,7 +1392,24 @@ public List<OrderDTO> getOrders() {
                 .filter(java.util.Objects::nonNull)
                 .mapToDouble(BigDecimal::doubleValue)
                 .sum();
-        return Math.max(0.0, safeDouble(order.getAmount(), 0.0) - itemsTotal - surchargeTotal);
+        double discount = currentDiscountAmount(orderId).doubleValue();
+        return Math.max(0.0, safeDouble(order.getAmount(), 0.0) + discount - itemsTotal - surchargeTotal);
+    }
+
+    private BigDecimal currentDiscountAmount(int orderId) {
+        BigDecimal value = dsl.select(DISCOUNT_AMOUNT_FIELD)
+                .from(ORDER)
+                .where(ORDER.ORDERID.eq(orderId))
+                .fetchOne(DISCOUNT_AMOUNT_FIELD);
+        return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private BigDecimal normalizeDiscount(BigDecimal discount, BigDecimal grossTotal) {
+        try {
+            return OrderDiscountCalculator.normalize(discount, grossTotal);
+        } catch (IllegalArgumentException e) {
+            throw new InvalidOrderRequestException(e.getMessage());
+        }
     }
 
     private double normalizeNonNegative(Double value, String fieldName) {
@@ -1421,7 +1462,8 @@ public List<OrderDTO> getOrders() {
                 .filter(java.util.Objects::nonNull)
                 .mapToDouble(BigDecimal::doubleValue)
                 .sum();
-        double value = safeDouble(order.amount, 0.0) - itemsTotal - surchargeTotal;
+        double discount = order.discountAmount != null ? order.discountAmount.doubleValue() : 0.0;
+        double value = safeDouble(order.amount, 0.0) + discount - itemsTotal - surchargeTotal;
         return BigDecimal.valueOf(Math.max(0.0, value)).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 

@@ -43,6 +43,7 @@ public class ShiftService {
     private static final Field<String> PAYMENT_TYPE_FIELD = DSL.field(DSL.name("payment_type"), String.class);
     private static final Field<Boolean> IS_PAID_FIELD = DSL.field(DSL.name("is_paid"), Boolean.class);
     private static final Field<LocalDateTime> PAID_AT_FIELD = DSL.field(DSL.name("paid_at"), LocalDateTime.class);
+    private static final Field<BigDecimal> DISCOUNT_AMOUNT_FIELD = DSL.field(DSL.name("discount_amount"), BigDecimal.class);
     private static final Field<LocalDateTime> SHIFT_CLOSED_AT_FIELD = DSL.field(DSL.name("closed_at"), LocalDateTime.class);
     private static final Field<BigDecimal> DEBT_ORIGINAL_AMOUNT_FIELD = DSL.field(DSL.name("debt_original_amount"), BigDecimal.class);
     private static final Field<BigDecimal> DEBT_REMAINING_AMOUNT_FIELD = DSL.field(DSL.name("debt_remaining_amount"), BigDecimal.class);
@@ -443,7 +444,8 @@ public class ShiftService {
                         PAID_AT_FIELD,
                         Order.ORDER.DUTY,
                         DEBT_ORIGINAL_AMOUNT_FIELD,
-                        DEBT_REMAINING_AMOUNT_FIELD
+                        DEBT_REMAINING_AMOUNT_FIELD,
+                        DISCOUNT_AMOUNT_FIELD
                 )
                 .from(Order.ORDER)
                 .leftJoin(Client.CLIENT).on(Client.CLIENT.CLIENTID.eq(Order.ORDER.CLIENTID))
@@ -471,6 +473,7 @@ public class ShiftService {
         double totalCost = 0.0;
         double totalDeliveryExpense = 0.0;
         double totalItemsAmount = 0.0;
+        double totalDiscountAmount = 0.0;
         int totalDishesCount = 0;
         int paidOrdersCount = 0;
         int unpaidOrdersCount = 0;
@@ -518,9 +521,12 @@ public class ShiftService {
             orderCost += consumables.cost();
             Double orderAmount = orderRow.get(Order.ORDER.AMOUNT) != null ? orderRow.get(Order.ORDER.AMOUNT) : itemsTotal;
             boolean isDelivery = Boolean.TRUE.equals(orderRow.get(Order.ORDER.TYPE));
-            // Сумма заказа = позиции + доплаты за упаковку + доставка.
+            double discountAmount = orderRow.get(DISCOUNT_AMOUNT_FIELD) != null
+                    ? orderRow.get(DISCOUNT_AMOUNT_FIELD).doubleValue()
+                    : 0.0;
+            // Сумма заказа = позиции + доплаты за упаковку + доставка − скидка.
             double deliveryExpense = isDelivery
-                    ? Math.max(0.0, orderAmount - itemsTotal - consumables.surcharge())
+                    ? Math.max(0.0, orderAmount + discountAmount - itemsTotal - consumables.surcharge())
                     : 0.0;
             boolean currentlyPaid = Boolean.TRUE.equals(orderRow.get(IS_PAID_FIELD));
             LocalDateTime paidAt = orderRow.get(PAID_AT_FIELD);
@@ -540,6 +546,7 @@ public class ShiftService {
             }
             totalItemsAmount += itemsTotal;
             totalDeliveryExpense += deliveryExpense;
+            totalDiscountAmount += discountAmount;
 
             Map<String, Object> orderData = new HashMap<>();
             orderData.put("orderId", orderId);
@@ -552,6 +559,7 @@ public class ShiftService {
             orderData.put("paidAt", paidAt != null ? paidAt.toString() : null);
             orderData.put("itemsTotal", itemsTotal);
             orderData.put("deliveryExpense", deliveryExpense);
+            orderData.put("discountAmount", discountAmount);
             orderData.put("orderAmount", orderAmount);
             orderData.put("delayMinutes", orderRow.get(Order.ORDER.TIMEDELAY) != null ? orderRow.get(Order.ORDER.TIMEDELAY) : 0.0);
             orderData.put("clientName", orderRow.get(Client.CLIENT.FULLNAME));
@@ -599,6 +607,7 @@ public class ShiftService {
         totals.put("dishesCount", totalDishesCount);
         totals.put("itemsAmount", totalItemsAmount);
         totals.put("deliveryExpense", totalDeliveryExpense);
+        totals.put("discountAmount", totalDiscountAmount);
         totals.put("revenue", totalRevenue);
         totals.put("unpaidAmount", totalUnpaidAmount);
         totals.put("cost", totalCost);
