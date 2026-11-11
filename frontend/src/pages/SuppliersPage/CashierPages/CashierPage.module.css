@@ -343,7 +343,7 @@
 
 .clientSearch input,
 .deliveryFields input,
-.orderSettings input:not([type="checkbox"]),
+.orderSettings input:not([type="checkbox"]):not([type="radio"]),
 .modalField input,
 .modalForm input {
     width: 100%;
@@ -734,6 +734,104 @@
 
 .debtToggle small {
     color: var(--cash-muted);
+}
+
+/* Когда приготовить: через N минут или к конкретному времени */
+.readinessField {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+}
+
+.readinessTitle {
+    color: #567068;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+.readinessModes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+}
+
+.readinessModes label {
+    display: flex;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    border: 1px solid var(--cash-line);
+    border-radius: 9px;
+    color: #5f756e;
+    font-size: 11px;
+    font-weight: 750;
+    text-align: center;
+    cursor: pointer;
+}
+
+.readinessModes input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.readinessModes .optionActive {
+    color: white;
+    border-color: var(--cash-deep);
+    background: var(--cash-deep);
+}
+
+.readinessInputs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    align-items: end;
+}
+
+.readinessInputs label {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    color: #567068;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+.readinessInputs small {
+    grid-column: 1 / -1;
+    color: var(--cash-muted);
+}
+
+/* Режим редактирования существующего заказа */
+.orderCardEditing {
+    outline: 2px solid var(--cash-amber);
+    outline-offset: 2px;
+}
+
+.orderComposerEditing {
+    border-color: var(--cash-amber);
+    box-shadow: 0 0 0 2px rgba(244, 181, 87, 0.35), 0 16px 40px rgba(21, 57, 49, 0.06);
+}
+
+.editPaymentNote {
+    padding: 11px;
+    border: 1px dashed var(--cash-amber);
+    border-radius: 9px;
+    color: var(--cash-ink);
+    background: #fffaf0;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.cancelEditButton {
+    min-height: 43px;
+    padding: 10px 15px;
+    border: 1px solid #bfd3cc;
+    border-radius: 9px;
+    color: var(--cash-deep);
+    background: white;
+    font-weight: 800;
 }
 
 /* Общее правило .orderSettings input растягивало чекбокс на всю ширину */

@@ -203,7 +203,11 @@ public class OrderController {
     // Заказ по ID
     @GetMapping("/{id}")
     public OrderDTO getOrderById(@PathVariable int id) {
-        return orderService.getOrderById(id);
+        OrderDTO order = orderService.getOrderById(id);
+        if (order == null) {
+            throw new OrderNotFoundException(id);
+        }
+        return order;
     }
 
     // Заказы клиента

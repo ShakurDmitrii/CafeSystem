@@ -4,6 +4,12 @@ import { unitLabel } from "../../../utils/units";
 import UnitChips from "../../../components/forms/UnitChips";
 import styles from "../WarehousePage.module.css";
 
+// Остаток заготовки хранится в граммах: показываем «750 г» или «2,4 кг».
+const formatPreparationQuantity = (grams) => {
+    const value = Number(grams ?? 0);
+    return Math.abs(value) >= 1000 ? `${formatQuantity(value / 1000)} кг` : `${formatQuantity(value)} г`;
+};
+
 const STOCK_MODES = [
     ["in", "Приход"],
     ["out", "Списание"],
@@ -13,6 +19,7 @@ const STOCK_MODES = [
 export default function WarehouseCard({
     warehouse,
     products,
+    preparations = [],
     showZeroStock,
     busyKey,
     openPanel,
@@ -39,10 +46,11 @@ export default function WarehouseCard({
     const [activeRow, setActiveRow] = useState(null);
     const [rowMode, setRowMode] = useState("in");
     const visibleProducts = products.filter((product) => showZeroStock || Number(product.quantityBase) > 0);
+    const visiblePreparations = preparations.filter((item) => showZeroStock || Number(item.quantity) > 0);
     const totalValue = products.reduce(
         (sum, product) => sum + Number(product.inventoryValue ?? 0),
         0
-    );
+    ) + preparations.reduce((sum, item) => sum + Number(item.inventoryValue ?? 0), 0);
     const selectedCatalog = catalogProducts.find(
         (product) => String(product.productId) === String(catalogForm.productId)
     );
@@ -56,6 +64,7 @@ export default function WarehouseCard({
                     <div className={styles.warehouseMeta}>
                         {warehouse.isMain ? <strong>Главный</strong> : <span>Резервный</span>}
                         <span>{products.length} позиций</span>
+                        {preparations.length ? <span>{visiblePreparations.length} заготовок</span> : null}
                         <span>{formatMoney(totalValue)}</span>
                     </div>
                 </div>
@@ -259,6 +268,45 @@ export default function WarehouseCard({
                     })}
                 </div>
             ) : <div className={styles.cardEmpty}>Нет позиций с положительным остатком.</div>}
+
+            <div className={styles.stockToolbar}>
+                <div>
+                    <strong>Заготовки</strong>
+                    <span>Выпущенные в цехе партии. Остаток уменьшается при продаже блюд и выпуске других заготовок.</span>
+                </div>
+            </div>
+            {visiblePreparations.length ? (
+                <div className={styles.stockList}>
+                    {visiblePreparations.map((item) => (
+                        <div className={`${styles.stockRow} ${styles.preparationRow}`} key={`prep-${item.preparationId}`}>
+                            <div className={styles.productIdentity}>
+                                <strong>{item.preparationName}</strong>
+                                <span>
+                                    Заготовка #{item.preparationId}
+                                    {Number(item.outputWeight) > 0 ? ` · партия ${formatQuantity(item.outputWeight)} г` : ""}
+                                </span>
+                            </div>
+                            <div className={styles.balanceCell}>
+                                <span>В наличии</span>
+                                <strong className={Number(item.quantity) <= 0 ? styles.zeroBalance : ""}>
+                                    {formatPreparationQuantity(item.quantity)}
+                                </strong>
+                            </div>
+                            <div className={styles.priceCell}>
+                                <span>Себестоимость / сумма</span>
+                                <strong>{item.costPerKg == null ? "—" : `${formatMoney(item.costPerKg)} / кг`}</strong>
+                                <small>{formatMoney(item.inventoryValue)}</small>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className={styles.cardEmpty}>
+                    {preparations.length
+                        ? "Все заготовки на этом складе израсходованы."
+                        : "Заготовок на складе нет. Выпустите партию в разделе «Заготовки» и выберите этот склад."}
+                </div>
+            )}
         </article>
     );
 }

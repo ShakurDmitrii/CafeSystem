@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { API_BASE_URL } from "../../auth";
 import styles from "./AddPersonForm.module.css";
+import { describeHttpStatus, parseJsonSafe } from "../../utils/apiError";
 
 const API_PERSON_REGISTER = `${API_BASE_URL}/api/persons/register`;
 
@@ -43,9 +44,9 @@ export default function AddPersonForm({ onPersonAdded }) {
             });
 
             const text = await response.text();
-            const created = text ? JSON.parse(text) : null;
+            const created = parseJsonSafe(text);
             if (!response.ok) {
-                throw new Error(created?.message || created?.error || `Ошибка сервера (${response.status})`);
+                throw new Error(created?.message || created?.error || `Ошибка сервера: ${describeHttpStatus(response.status)}`);
             }
 
             setForm(initialForm);

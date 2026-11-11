@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PageHeader from "../../components/layout/PageHeader";
 import { API_BASE_URL } from "../../auth";
 import styles from "./TaxPage.module.css";
+import { describeHttpStatus } from "../../utils/apiError";
 
 const API_OVERVIEW = `${API_BASE_URL}/api/tax/overview`;
 const API_BACKFILL = `${API_BASE_URL}/api/tax/backfill-existing`;
@@ -298,7 +299,7 @@ export default function TaxPage() {
         try {
             const response = await fetch(`${API_OVERVIEW}?limit=50`);
             const body = parseJsonSafe(await response.text());
-            if (!response.ok) throw new Error(body?.message || `Ошибка загрузки (${response.status})`);
+            if (!response.ok) throw new Error(body?.message || `Ошибка загрузки: ${describeHttpStatus(response.status)}`);
             setOverview({
                 paidOrdersCount: Number(body?.paidOrdersCount || 0),
                 dispatchIntegration: body?.dispatchIntegration || body?.myTaxIntegration || emptyOverview.dispatchIntegration,
@@ -343,7 +344,7 @@ export default function TaxPage() {
                 body: JSON.stringify(payload || {})
             });
             const body = parseJsonSafe(await response.text()) || {};
-            if (!response.ok) throw new Error(body?.message || `Ошибка (${response.status})`);
+            if (!response.ok) throw new Error(body?.message || `Ошибка: ${describeHttpStatus(response.status)}`);
             setMessage("Операция выполнена");
             await loadOverview();
             return body;
@@ -363,7 +364,7 @@ export default function TaxPage() {
         try {
             const response = await fetch(`${API_RECEIPT_DETAILS}?orderId=${id}`);
             const body = parseJsonSafe(await response.text()) || {};
-            if (!response.ok) throw new Error(body?.message || `Ошибка (${response.status})`);
+            if (!response.ok) throw new Error(body?.message || `Ошибка: ${describeHttpStatus(response.status)}`);
             setSelectedReceipt({
                 orderId: id,
                 order: body?.order || null,

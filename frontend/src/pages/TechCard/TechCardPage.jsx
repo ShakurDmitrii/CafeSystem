@@ -7,6 +7,7 @@ import IngredientList from "./tech-card/IngredientList";
 import IngredientPickerModal from "./tech-card/IngredientPickerModal";
 import TechCardHeader from "./tech-card/TechCardHeader";
 import styles from "./TechCardPage.module.css";
+import { describeHttpStatus } from "../../utils/apiError";
 import { unitLabel } from "../../utils/units";
 
 const API_TECH = `${API_BASE_URL}/api/tech-products`;
@@ -285,7 +286,7 @@ export default function TechCardPage() {
                     setSuppliers([]);
                     return;
                 }
-                throw new Error(`Ошибка загрузки поставщиков (${res.status})`);
+                throw new Error(`Ошибка загрузки поставщиков: ${describeHttpStatus(res.status)}`);
             }
             const data = await res.json();
             setSuppliers(Array.isArray(data) ? data : []);
@@ -540,7 +541,7 @@ export default function TechCardPage() {
                 throw new Error(
                     errorData?.message ||
                     rawError ||
-                    `Ошибка создания ингредиента (${res.status})`
+                    `Ошибка создания ингредиента: ${describeHttpStatus(res.status)}`
                 );
             }
 

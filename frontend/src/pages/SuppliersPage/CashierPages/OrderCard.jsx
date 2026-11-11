@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL } from "../../../auth";
 import styles from "./CashierPage.module.css";
-import { formatDate, formatMoney } from "./cashier-page/cashierUtils";
+import {
+    formatDate,
+    formatMoney,
+    formatReadyAt,
+    getOrderEditBlockReason,
+    parseBusinessDateTime
+} from "./cashier-page/cashierUtils";
 import { unitLabel } from "../../../utils/units";
 
 async function loadOrderDishes(orderId) {
@@ -38,15 +44,17 @@ async function saveDelay(orderId, delayMinutes) {
 }
 
 function getOrderStartTimestamp(order) {
-    const rawDate = order.created_at || order.createdAt;
-    if (!rawDate) return Date.now();
-
-    const raw = String(rawDate).trim();
-    const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(raw);
-    const normalized = raw.replace(/\.(\d{3})\d+/, ".$1").replace(" ", "T");
     // Backend пишет created_at в зоне бизнеса (app.business-zone = Europe/Moscow, UTC+3) без смещения.
-    const timestamp = new Date(hasTimezone ? normalized : `${normalized}+03:00`).getTime();
-    return Number.isFinite(timestamp) ? timestamp : Date.now();
+    return parseBusinessDateTime(order.created_at || order.createdAt) ?? Date.now();
+}
+
+function formatDuration(totalSeconds) {
+    const seconds = Math.max(0, Math.floor(totalSeconds));
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const rest = seconds % 60;
+    const mmss = `${minutes.toString().padStart(2, "0")}:${rest.toString().padStart(2, "0")}`;
+    return hours > 0 ? `${hours}:${mmss}` : mmss;
 }
 
 function getDebtStatus(dateString) {
@@ -69,7 +77,9 @@ export default function OrderCard({
     onPrintOrderDetails,
     onUpdatePayment,
     onRequestCashPayment,
-    onIssueOrder
+    onIssueOrder,
+    onEditOrder,
+    editingOrderId = null
 }) {
     const hasInlineItems = Array.isArray(order.items)
         && order.items.some((item) => item?.dishName || item?.name || item?.title);
@@ -84,8 +94,8 @@ export default function OrderCard({
     const isIssued = Boolean(order.date_issue || order.dateIssue);
     const isReady = Boolean(order.status);
     const isPaid = order.paid === true;
-    const isDelayed = !isReady && Number(order.time || 0) > 0
-        && secondsPassed >= Number(order.time) * 60;
+    const isEditing = editingOrderId != null && Number(editingOrderId) === Number(order.orderId);
+    const editBlockReason = getOrderEditBlockReason(order);
     const debtStatus = getDebtStatus(order.debtPaymentDate);
     const startedAt = useMemo(
         () => getOrderStartTimestamp({
@@ -94,6 +104,12 @@ export default function OrderCard({
         }),
         [order.createdAt, order.created_at]
     );
+    const readyAtTimestamp = useMemo(() => parseBusinessDateTime(order.readyAt), [order.readyAt]);
+    // Сколько секунд от создания до момента «должен быть готов».
+    const planSeconds = readyAtTimestamp != null
+        ? Math.max(0, Math.round((readyAtTimestamp - startedAt) / 1000))
+        : Number(order.time || 0) * 60;
+    const isDelayed = !isReady && planSeconds > 0 && secondsPassed >= planSeconds;
 
     useEffect(() => {
         if (hasInlineItems) {
@@ -133,29 +149,24 @@ export default function OrderCard({
     }, [isReady, startedAt]);
 
     useEffect(() => {
-        if (isReady || !order.time) return;
-        const nextDelay = Math.max(0, Math.floor(secondsPassed / 60) - Math.floor(Number(order.time)));
+        if (isReady || !planSeconds) return;
+        const nextDelay = Math.max(0, Math.floor((secondsPassed - planSeconds) / 60));
         if (nextDelay === previousDelayRef.current) return;
         previousDelayRef.current = nextDelay;
         setDelayMinutes(nextDelay);
         saveDelay(order.orderId, nextDelay);
-    }, [isReady, order.orderId, order.time, secondsPassed]);
+    }, [isReady, order.orderId, planSeconds, secondsPassed]);
 
     const timer = useMemo(() => {
-        if (isReady || !order.time) return null;
+        if (isReady || !planSeconds) return null;
         if (isDelayed) {
-            const delaySeconds = Math.max(0, secondsPassed - Number(order.time) * 60);
-            return {
-                delayed: true,
-                value: `+${Math.floor(delaySeconds / 60).toString().padStart(2, "0")}:${(delaySeconds % 60).toString().padStart(2, "0")}`
-            };
+            return { delayed: true, value: `+${formatDuration(secondsPassed - planSeconds)}` };
         }
-        const remaining = Math.max(0, Number(order.time) * 60 - secondsPassed);
-        return {
-            delayed: false,
-            value: `${Math.floor(remaining / 60).toString().padStart(2, "0")}:${Math.floor(remaining % 60).toString().padStart(2, "0")}`
-        };
-    }, [isDelayed, isReady, order.time, secondsPassed]);
+        return { delayed: false, value: formatDuration(planSeconds - secondsPassed) };
+    }, [isDelayed, isReady, planSeconds, secondsPassed]);
+    const planLabel = order.readyAt
+        ? `К ${formatReadyAt(order.readyAt)}`
+        : `План: ${order.time} мин`;
 
     const paymentType = String(order.paymentType || "").toLowerCase();
     const paymentLabel = paymentType === "cash"
@@ -169,8 +180,8 @@ export default function OrderCard({
         setBusyAction(actionName);
         setMessage(null);
         try {
-            await action();
-            setMessage({ type: "success", text: successText });
+            const result = await action();
+            if (result !== false) setMessage({ type: "success", text: successText });
         } catch (error) {
             setMessage({ type: "error", text: error.message || "Операция не выполнена" });
         } finally {
@@ -185,7 +196,8 @@ export default function OrderCard({
                 isReady ? styles.ready : styles.cooking,
                 isDelayed ? styles.orderCardDelayed : "",
                 !isPaid ? styles.orderCardUnpaid : "",
-                isIssued ? styles.orderCardIssued : ""
+                isIssued ? styles.orderCardIssued : "",
+                isEditing ? styles.orderCardEditing : ""
             ].filter(Boolean).join(" ")}
         >
             <header className={styles.orderCardHeader}>
@@ -205,7 +217,7 @@ export default function OrderCard({
                 <div className={timer.delayed ? styles.timerDelayed : styles.timerRunning}>
                     <span>{timer.delayed ? "Задержка" : "Осталось"}</span>
                     <strong>{timer.value}</strong>
-                    <small>План: {order.time} мин</small>
+                    <small>{planLabel}</small>
                 </div>
             )}
 
@@ -290,14 +302,36 @@ export default function OrderCard({
             )}
 
             <div className={styles.orderCardActions}>
+                {onEditOrder && !isIssued && (
+                    <button
+                        className={styles.orderActionQuiet}
+                        type="button"
+                        disabled={Boolean(busyAction) || isEditing}
+                        title={editBlockReason || "Открыть заказ в конструкторе для изменения"}
+                        onClick={() => runAction("edit", () => onEditOrder(order), "Заказ открыт в конструкторе слева")}
+                    >
+                        {isEditing ? "Редактируется" : busyAction === "edit" ? "Открываем…" : "Изменить"}
+                    </button>
+                )}
+
                 {!isReady && (
-                    <button className={styles.orderActionStatus} type="button" onClick={() => markOrderReady(order.orderId)}>
-                        Готово
+                    <button
+                        className={styles.orderActionStatus}
+                        type="button"
+                        disabled={Boolean(busyAction)}
+                        onClick={() => runAction("ready", () => markOrderReady(order.orderId), "Заказ отмечен готовым")}
+                    >
+                        {busyAction === "ready" ? "Отмечаем…" : "Готово"}
                     </button>
                 )}
                 {isReady && !isIssued && (
-                    <button className={styles.orderActionIssue} type="button" onClick={() => onIssueOrder?.(order.orderId)}>
-                        Выдать
+                    <button
+                        className={styles.orderActionIssue}
+                        type="button"
+                        disabled={Boolean(busyAction)}
+                        onClick={() => runAction("issue", () => onIssueOrder?.(order.orderId), "Заказ выдан")}
+                    >
+                        {busyAction === "issue" ? "Выдаём…" : "Выдать"}
                     </button>
                 )}
                 {isIssued && <span className={styles.issuedLabel}>Выдан</span>}

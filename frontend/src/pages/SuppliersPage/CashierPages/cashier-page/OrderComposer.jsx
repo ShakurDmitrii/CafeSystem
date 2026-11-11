@@ -1,6 +1,88 @@
 import styles from "../CashierPage.module.css";
-import { formatMoney, getInitials } from "./cashierUtils";
+import { formatMoney, formatReadyAt, getInitials, toDateInputValue } from "./cashierUtils";
 import { unitLabel } from "../../../../utils/units";
+
+function ReadinessField({
+    readyMode,
+    readyDate,
+    readyTime,
+    preparationTime,
+    onReadyModeChange,
+    onReadyDateChange,
+    onReadyTimeChange,
+    onPreparationTimeChange
+}) {
+    const today = toDateInputValue();
+    const readyLabel = readyTime ? formatReadyAt(`${readyDate || today}T${readyTime}:00`) : "";
+    return (
+        <div className={`${styles.wideField} ${styles.readinessField}`}>
+            <span className={styles.readinessTitle}>Когда приготовить</span>
+            <div className={styles.readinessModes} role="radiogroup" aria-label="Режим готовности">
+                <label className={readyMode === "minutes" ? styles.optionActive : ""}>
+                    <input
+                        type="radio"
+                        name="readyMode"
+                        checked={readyMode === "minutes"}
+                        onChange={() => onReadyModeChange?.("minutes")}
+                    />
+                    Через N минут
+                </label>
+                <label className={readyMode === "at" ? styles.optionActive : ""}>
+                    <input
+                        type="radio"
+                        name="readyMode"
+                        checked={readyMode === "at"}
+                        onChange={() => onReadyModeChange?.("at")}
+                    />
+                    К времени
+                </label>
+            </div>
+            {readyMode === "at" ? (
+                <div className={styles.readinessInputs}>
+                    <label htmlFor="ready-time">
+                        Готов к
+                        <input
+                            id="ready-time"
+                            name="readyTime"
+                            type="time"
+                            step="300"
+                            value={readyTime}
+                            onChange={(event) => onReadyTimeChange?.(event.target.value)}
+                        />
+                    </label>
+                    <label htmlFor="ready-date">
+                        Дата
+                        <input
+                            id="ready-date"
+                            name="readyDate"
+                            type="date"
+                            min={today}
+                            value={readyDate || today}
+                            onChange={(event) => onReadyDateChange?.(event.target.value)}
+                        />
+                    </label>
+                    {readyLabel && <small>Кухня увидит: «к {readyLabel}»</small>}
+                </div>
+            ) : (
+                <div className={styles.readinessInputs}>
+                    <label htmlFor="preparation-time">
+                        Готовить, минут
+                        <input
+                            id="preparation-time"
+                            name="preparationTime"
+                            type="number"
+                            min="1"
+                            max="600"
+                            inputMode="numeric"
+                            value={preparationTime}
+                            onChange={(event) => onPreparationTimeChange(event.target.value)}
+                        />
+                    </label>
+                </div>
+            )}
+        </div>
+    );
+}
 
 export default function OrderComposer({
     selectedClient,
@@ -16,6 +98,11 @@ export default function OrderComposer({
     showDatePicker,
     debtPaymentDate,
     preparationTime,
+    readyMode = "minutes",
+    readyDate,
+    readyTime,
+    editingOrderId = null,
+    editBusy = false,
     personCount,
     consumables,
     consumablesLoading,
@@ -42,18 +129,24 @@ export default function OrderComposer({
     onDebtChange,
     onDebtDateChange,
     onPreparationTimeChange,
+    onReadyModeChange,
+    onReadyDateChange,
+    onReadyTimeChange,
+    onSaveEdit,
+    onCancelEdit,
     onPersonCountChange,
     onConsumableChange,
     onConsumableReset,
     onCreateOrder
 }) {
+    const isEditing = editingOrderId != null;
     const paymentMissing = !paymentType && !isDebt;
     return (
-        <section className={styles.orderComposer}>
+        <section className={`${styles.orderComposer} ${isEditing ? styles.orderComposerEditing : ""}`}>
             <div className={styles.sectionHeading}>
                 <div>
-                    <p className={styles.kicker}>Новый чек</p>
-                    <h2>Собрать заказ</h2>
+                    <p className={styles.kicker}>{isEditing ? "Редактирование" : "Новый чек"}</p>
+                    <h2>{isEditing ? `Заказ #${editingOrderId}` : "Собрать заказ"}</h2>
                 </div>
                 <span>{items.reduce((sum, item) => sum + Number(item.qty || 1), 0)}</span>
             </div>
@@ -299,6 +392,11 @@ export default function OrderComposer({
                 </div>
             )}
 
+            {isEditing ? (
+                <div className={styles.editPaymentNote}>
+                    Оплата при редактировании не меняется. Принять оплату можно на карточке заказа после сохранения.
+                </div>
+            ) : (
             <fieldset className={`${styles.paymentFieldset} ${paymentMissing && items.length > 0 ? styles.paymentFieldsetRequired : ""}`}>
                 <legend>Оплата{paymentMissing ? " — выберите способ" : ""}</legend>
                 {[
@@ -318,8 +416,10 @@ export default function OrderComposer({
                     </label>
                 ))}
             </fieldset>
+            )}
 
             <div className={styles.orderSettings}>
+                {!isEditing && (
                 <label className={styles.debtToggle}>
                     <input
                         name="isDebt"
@@ -333,20 +433,18 @@ export default function OrderComposer({
                         <small>{selectedClient ? "Сохранится в профиле гостя." : "Сначала выберите гостя."}</small>
                     </span>
                 </label>
-                <label htmlFor="preparation-time">
-                    Готовить, минут
-                    <input
-                        id="preparation-time"
-                        name="preparationTime"
-                        type="number"
-                        min="1"
-                        max="600"
-                        inputMode="numeric"
-                        value={preparationTime}
-                        onChange={(event) => onPreparationTimeChange(event.target.value)}
-                    />
-                </label>
-                {showDatePicker && isDebt && selectedClient && (
+                )}
+                <ReadinessField
+                    readyMode={readyMode}
+                    readyDate={readyDate}
+                    readyTime={readyTime}
+                    preparationTime={preparationTime}
+                    onReadyModeChange={onReadyModeChange}
+                    onReadyDateChange={onReadyDateChange}
+                    onReadyTimeChange={onReadyTimeChange}
+                    onPreparationTimeChange={onPreparationTimeChange}
+                />
+                {!isEditing && showDatePicker && isDebt && selectedClient && (
                     <label className={styles.wideField} htmlFor="debt-payment-date">
                         Обещанная дата оплаты
                         <input
@@ -387,19 +485,27 @@ export default function OrderComposer({
             <button
                 className={styles.createOrderButton}
                 type="button"
-                onClick={onCreateOrder}
+                onClick={isEditing ? onSaveEdit : onCreateOrder}
                 disabled={
                     items.length === 0 ||
                     isLoading ||
+                    editBusy ||
                     consumablesLoading ||
                     paymentMissing ||
                     (requiresContactDetails && (!effectivePhone || !effectiveAddress))
                 }
             >
-                Отправить заказ на кухню
+                {isEditing
+                    ? (editBusy ? "Сохраняем…" : `Сохранить изменения #${editingOrderId}`)
+                    : "Отправить заказ на кухню"}
             </button>
-            {items.length > 0 && paymentMissing && (
+            {items.length > 0 && paymentMissing && !isEditing && (
                 <p className={styles.composerHint}>Выберите способ оплаты, чтобы отправить заказ.</p>
+            )}
+            {isEditing && (
+                <button className={styles.cancelEditButton} type="button" onClick={onCancelEdit} disabled={editBusy}>
+                    Отменить редактирование
+                </button>
             )}
         </section>
     );

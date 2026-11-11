@@ -22,6 +22,10 @@ public class OrderDTO {
     public Boolean duty;
     public Double time;
     public Double timeDelay;
+    /** Момент, к которому заказ должен быть готов (время бизнеса). null — режим «через N минут». */
+    public LocalDateTime readyAt;
+    /** Стоимость доставки, восстановленная из суммы заказа (только в ответах). */
+    public Double deliveryCost;
     public LocalDateTime created_at;
     public LocalDate debt_payment_date;
     public LocalDate date_issue;
@@ -224,6 +228,10 @@ public class OrderDTO {
     public List<OrderConsumableDTO> getConsumables() { return consumables; }
     public void setConsumables(List<OrderConsumableDTO> consumables) { this.consumables = consumables; }
     public String getCreatedBy() { return createdBy; }
+    public LocalDateTime getReadyAt() { return readyAt; }
+    public void setReadyAt(LocalDateTime readyAt) { this.readyAt = readyAt; }
+    public Double getDeliveryCost() { return deliveryCost; }
+    public void setDeliveryCost(Double deliveryCost) { this.deliveryCost = deliveryCost; }
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
 
 }

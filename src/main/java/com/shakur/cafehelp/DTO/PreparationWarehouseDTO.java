@@ -9,6 +9,15 @@ public class PreparationWarehouseDTO {
     private Double quantity;
     private BigDecimal inventoryValue;
     private BigDecimal averageUnitCost;
+    /** Название заготовки (для отображения на складе). */
+    private String preparationName;
+    /** Выход одной партии, г. */
+    private Double outputWeight;
+
+    public String getPreparationName() { return preparationName; }
+    public void setPreparationName(String preparationName) { this.preparationName = preparationName; }
+    public Double getOutputWeight() { return outputWeight; }
+    public void setOutputWeight(Double outputWeight) { this.outputWeight = outputWeight; }
 
     public Integer getPreparationWarehouseId() {
         return preparationWarehouseId;
