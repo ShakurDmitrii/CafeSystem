@@ -136,3 +136,40 @@ class SpeechEndpointTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AudioDecodeTest(unittest.TestCase):
+    """Настоящее декодирование PyAV: ловит несовместимость faster-whisper и av."""
+
+    @staticmethod
+    def _webm_opus_tone(seconds: float = 1.0) -> bytes:
+        import io
+
+        import av
+        import numpy as np
+
+        rate = 48000
+        buffer = io.BytesIO()
+        container = av.open(buffer, "w", format="webm")
+        stream = container.add_stream("libopus", rate=rate)
+        stream.layout = "mono"
+        t = np.arange(int(rate * seconds)) / rate
+        frame = av.AudioFrame.from_ndarray(
+            (np.sin(2 * np.pi * 440 * t) * 0.3).astype(np.float32).reshape(1, -1), format="flt", layout="mono"
+        )
+        frame.sample_rate = rate
+        for packet in stream.encode(frame):
+            container.mux(packet)
+        for packet in stream.encode(None):
+            container.mux(packet)
+        container.close()
+        return buffer.getvalue()
+
+    def test_decodes_media_recorder_webm_opus(self) -> None:
+        samples = speech._decode_audio(self._webm_opus_tone(1.0))
+        self.assertAlmostEqual(samples.shape[0], 16000, delta=1600)
+
+    def test_garbage_is_input_error(self) -> None:
+        with self.assertLogs("app.services.speech", level="WARNING"):
+            with self.assertRaises(SpeechInputError):
+                speech._decode_audio(b"not an audio file")
