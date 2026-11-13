@@ -1,0 +1,547 @@
+--
+-- PostgreSQL database dump
+--
+
+\restrict dIqnJt5RtGkfhzz3DOWkUmPiBqHrSGYalNzay2dhYZbkSyOVoMfKnuC9iDhF9Zc
+
+-- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+-- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: tax; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA tax;
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: cafehelp_schema_migration; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cafehelp_schema_migration (
+    id bigint NOT NULL,
+    migration_name character varying(255) NOT NULL,
+    checksum_sha256 character varying(64) NOT NULL,
+    applied_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: cafehelp_schema_migration_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.cafehelp_schema_migration_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: cafehelp_schema_migration_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.cafehelp_schema_migration_id_seq OWNED BY public.cafehelp_schema_migration.id;
+
+
+--
+-- Name: tax_provider_account; Type: TABLE; Schema: tax; Owner: -
+--
+
+CREATE TABLE tax.tax_provider_account (
+    id bigint NOT NULL,
+    provider character varying(50) NOT NULL,
+    is_active boolean DEFAULT false NOT NULL,
+    login_hint character varying(255),
+    secret_ref character varying(500),
+    token_encrypted text,
+    token_expires_at timestamp without time zone,
+    settings_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    last_auth_at timestamp without time zone,
+    last_auth_error text,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tax_provider_account_id_seq; Type: SEQUENCE; Schema: tax; Owner: -
+--
+
+ALTER TABLE tax.tax_provider_account ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME tax.tax_provider_account_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: tax_receipt_attempt; Type: TABLE; Schema: tax; Owner: -
+--
+
+CREATE TABLE tax.tax_receipt_attempt (
+    id bigint NOT NULL,
+    job_id bigint NOT NULL,
+    attempt_no integer NOT NULL,
+    started_at timestamp without time zone DEFAULT now() NOT NULL,
+    finished_at timestamp without time zone,
+    duration_ms integer,
+    http_status integer,
+    request_json jsonb,
+    response_json jsonb,
+    error_code character varying(120),
+    error_message text,
+    retryable boolean DEFAULT true NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT tax_receipt_attempt_attempt_positive_chk CHECK ((attempt_no > 0))
+);
+
+
+--
+-- Name: tax_receipt_attempt_id_seq; Type: SEQUENCE; Schema: tax; Owner: -
+--
+
+ALTER TABLE tax.tax_receipt_attempt ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME tax.tax_receipt_attempt_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: tax_receipt_job; Type: TABLE; Schema: tax; Owner: -
+--
+
+CREATE TABLE tax.tax_receipt_job (
+    id bigint NOT NULL,
+    source_system character varying(50) DEFAULT 'cafehelp'::character varying NOT NULL,
+    source_event_id bigint,
+    order_id integer NOT NULL,
+    shift_id integer,
+    business_date date,
+    amount numeric(14,2) NOT NULL,
+    payment_type character varying(20) NOT NULL,
+    customer_phone character varying(50),
+    customer_email character varying(255),
+    payload_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    status character varying(20) DEFAULT 'pending'::character varying NOT NULL,
+    attempt_count integer DEFAULT 0 NOT NULL,
+    max_attempts integer DEFAULT 10 NOT NULL,
+    next_attempt_at timestamp without time zone DEFAULT now() NOT NULL,
+    processing_started_at timestamp without time zone,
+    idempotency_key character varying(140) NOT NULL,
+    provider_receipt_id character varying(255),
+    provider_receipt_url text,
+    provider_payload jsonb,
+    last_error_code character varying(120),
+    last_error_message text,
+    sent_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    operation_type character varying(20) DEFAULT 'sale'::character varying NOT NULL,
+    original_idempotency_key character varying(140),
+    CONSTRAINT tax_receipt_job_amount_nonnegative_chk CHECK ((amount >= (0)::numeric)),
+    CONSTRAINT tax_receipt_job_attempt_nonnegative_chk CHECK (((attempt_count >= 0) AND (max_attempts > 0))),
+    CONSTRAINT tax_receipt_job_operation_type_chk CHECK (((operation_type)::text = ANY ((ARRAY['sale'::character varying, 'refund'::character varying])::text[]))),
+    CONSTRAINT tax_receipt_job_status_chk CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying, 'sent'::character varying, 'failed'::character varying, 'manual_required'::character varying, 'cancelled'::character varying])::text[])))
+);
+
+
+--
+-- Name: COLUMN tax_receipt_job.processing_started_at; Type: COMMENT; Schema: tax; Owner: -
+--
+
+COMMENT ON COLUMN tax.tax_receipt_job.processing_started_at IS 'Claim timestamp. Stale processing jobs are automatically returned to pending for idempotent retry.';
+
+
+--
+-- Name: COLUMN tax_receipt_job.operation_type; Type: COMMENT; Schema: tax; Owner: -
+--
+
+COMMENT ON COLUMN tax.tax_receipt_job.operation_type IS 'Immutable fiscal operation: sale for the original receipt, refund for cancellation correction.';
+
+
+--
+-- Name: COLUMN tax_receipt_job.original_idempotency_key; Type: COMMENT; Schema: tax; Owner: -
+--
+
+COMMENT ON COLUMN tax.tax_receipt_job.original_idempotency_key IS 'For refund jobs, identifies the original sale job that must be sent first.';
+
+
+--
+-- Name: tax_receipt_job_id_seq; Type: SEQUENCE; Schema: tax; Owner: -
+--
+
+ALTER TABLE tax.tax_receipt_job ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME tax.tax_receipt_job_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: tax_reconcile_gap; Type: TABLE; Schema: tax; Owner: -
+--
+
+CREATE TABLE tax.tax_reconcile_gap (
+    id bigint NOT NULL,
+    reconcile_run_id bigint NOT NULL,
+    order_id integer NOT NULL,
+    reason character varying(80) NOT NULL,
+    snapshot_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    resolved boolean DEFAULT false NOT NULL,
+    resolved_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tax_reconcile_gap_id_seq; Type: SEQUENCE; Schema: tax; Owner: -
+--
+
+ALTER TABLE tax.tax_reconcile_gap ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME tax.tax_reconcile_gap_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: tax_reconcile_run; Type: TABLE; Schema: tax; Owner: -
+--
+
+CREATE TABLE tax.tax_reconcile_run (
+    id bigint NOT NULL,
+    business_date date NOT NULL,
+    started_at timestamp without time zone DEFAULT now() NOT NULL,
+    finished_at timestamp without time zone,
+    source_orders_count integer DEFAULT 0 NOT NULL,
+    jobs_created_count integer DEFAULT 0 NOT NULL,
+    sent_count integer DEFAULT 0 NOT NULL,
+    failed_count integer DEFAULT 0 NOT NULL,
+    missing_count integer DEFAULT 0 NOT NULL,
+    status character varying(20) DEFAULT 'running'::character varying NOT NULL,
+    details_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT tax_reconcile_run_status_chk CHECK (((status)::text = ANY ((ARRAY['running'::character varying, 'completed'::character varying, 'failed'::character varying])::text[])))
+);
+
+
+--
+-- Name: tax_reconcile_run_id_seq; Type: SEQUENCE; Schema: tax; Owner: -
+--
+
+ALTER TABLE tax.tax_reconcile_run ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME tax.tax_reconcile_run_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: cafehelp_schema_migration id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cafehelp_schema_migration ALTER COLUMN id SET DEFAULT nextval('public.cafehelp_schema_migration_id_seq'::regclass);
+
+
+--
+-- Data for Name: cafehelp_schema_migration; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.cafehelp_schema_migration (id, migration_name, checksum_sha256, applied_at) FROM stdin;
+1	2026-04-07_tax_schema.sql	727cb4d96789abc1483c8d356b7218dbe70287f2ed6c1aa45f0f6c8cf908f8b8	2026-11-13 14:54:05.120536
+2	2026-08-07_tax_job_recovery.sql	37c0d5b9ea5e7df8ac293bad58d698a286fc120a8a242298a28348a5f923c1e0	2026-11-13 14:54:05.154672
+3	2026-08-11_tax_correction_events.sql	190fa5f614786f596c1d34849c4fb90e8539237f5f68080a38e273075b9cd4c2	2026-11-13 14:54:05.157985
+\.
+
+
+--
+-- Data for Name: tax_provider_account; Type: TABLE DATA; Schema: tax; Owner: -
+--
+
+COPY tax.tax_provider_account (id, provider, is_active, login_hint, secret_ref, token_encrypted, token_expires_at, settings_json, last_auth_at, last_auth_error, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: tax_receipt_attempt; Type: TABLE DATA; Schema: tax; Owner: -
+--
+
+COPY tax.tax_receipt_attempt (id, job_id, attempt_no, started_at, finished_at, duration_ms, http_status, request_json, response_json, error_code, error_message, retryable, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: tax_receipt_job; Type: TABLE DATA; Schema: tax; Owner: -
+--
+
+COPY tax.tax_receipt_job (id, source_system, source_event_id, order_id, shift_id, business_date, amount, payment_type, customer_phone, customer_email, payload_json, status, attempt_count, max_attempts, next_attempt_at, processing_started_at, idempotency_key, provider_receipt_id, provider_receipt_url, provider_payload, last_error_code, last_error_message, sent_at, created_at, updated_at, operation_type, original_idempotency_key) FROM stdin;
+\.
+
+
+--
+-- Data for Name: tax_reconcile_gap; Type: TABLE DATA; Schema: tax; Owner: -
+--
+
+COPY tax.tax_reconcile_gap (id, reconcile_run_id, order_id, reason, snapshot_json, resolved, resolved_at, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: tax_reconcile_run; Type: TABLE DATA; Schema: tax; Owner: -
+--
+
+COPY tax.tax_reconcile_run (id, business_date, started_at, finished_at, source_orders_count, jobs_created_count, sent_count, failed_count, missing_count, status, details_json, created_at) FROM stdin;
+\.
+
+
+--
+-- Name: cafehelp_schema_migration_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.cafehelp_schema_migration_id_seq', 3, true);
+
+
+--
+-- Name: tax_provider_account_id_seq; Type: SEQUENCE SET; Schema: tax; Owner: -
+--
+
+SELECT pg_catalog.setval('tax.tax_provider_account_id_seq', 1, false);
+
+
+--
+-- Name: tax_receipt_attempt_id_seq; Type: SEQUENCE SET; Schema: tax; Owner: -
+--
+
+SELECT pg_catalog.setval('tax.tax_receipt_attempt_id_seq', 1, false);
+
+
+--
+-- Name: tax_receipt_job_id_seq; Type: SEQUENCE SET; Schema: tax; Owner: -
+--
+
+SELECT pg_catalog.setval('tax.tax_receipt_job_id_seq', 1, false);
+
+
+--
+-- Name: tax_reconcile_gap_id_seq; Type: SEQUENCE SET; Schema: tax; Owner: -
+--
+
+SELECT pg_catalog.setval('tax.tax_reconcile_gap_id_seq', 1, false);
+
+
+--
+-- Name: tax_reconcile_run_id_seq; Type: SEQUENCE SET; Schema: tax; Owner: -
+--
+
+SELECT pg_catalog.setval('tax.tax_reconcile_run_id_seq', 1, false);
+
+
+--
+-- Name: cafehelp_schema_migration cafehelp_schema_migration_migration_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cafehelp_schema_migration
+    ADD CONSTRAINT cafehelp_schema_migration_migration_name_key UNIQUE (migration_name);
+
+
+--
+-- Name: cafehelp_schema_migration cafehelp_schema_migration_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cafehelp_schema_migration
+    ADD CONSTRAINT cafehelp_schema_migration_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tax_provider_account tax_provider_account_pkey; Type: CONSTRAINT; Schema: tax; Owner: -
+--
+
+ALTER TABLE ONLY tax.tax_provider_account
+    ADD CONSTRAINT tax_provider_account_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tax_receipt_attempt tax_receipt_attempt_pkey; Type: CONSTRAINT; Schema: tax; Owner: -
+--
+
+ALTER TABLE ONLY tax.tax_receipt_attempt
+    ADD CONSTRAINT tax_receipt_attempt_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tax_receipt_job tax_receipt_job_pkey; Type: CONSTRAINT; Schema: tax; Owner: -
+--
+
+ALTER TABLE ONLY tax.tax_receipt_job
+    ADD CONSTRAINT tax_receipt_job_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tax_reconcile_gap tax_reconcile_gap_pkey; Type: CONSTRAINT; Schema: tax; Owner: -
+--
+
+ALTER TABLE ONLY tax.tax_reconcile_gap
+    ADD CONSTRAINT tax_reconcile_gap_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tax_reconcile_run tax_reconcile_run_pkey; Type: CONSTRAINT; Schema: tax; Owner: -
+--
+
+ALTER TABLE ONLY tax.tax_reconcile_run
+    ADD CONSTRAINT tax_reconcile_run_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tax_provider_account_one_active_provider_uq_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE UNIQUE INDEX tax_provider_account_one_active_provider_uq_idx ON tax.tax_provider_account USING btree (provider) WHERE (is_active = true);
+
+
+--
+-- Name: tax_provider_account_provider_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE INDEX tax_provider_account_provider_idx ON tax.tax_provider_account USING btree (provider);
+
+
+--
+-- Name: tax_receipt_attempt_job_attempt_uq_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE UNIQUE INDEX tax_receipt_attempt_job_attempt_uq_idx ON tax.tax_receipt_attempt USING btree (job_id, attempt_no);
+
+
+--
+-- Name: tax_receipt_attempt_job_created_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE INDEX tax_receipt_attempt_job_created_idx ON tax.tax_receipt_attempt USING btree (job_id, created_at);
+
+
+--
+-- Name: tax_receipt_job_created_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE INDEX tax_receipt_job_created_idx ON tax.tax_receipt_job USING btree (created_at);
+
+
+--
+-- Name: tax_receipt_job_idempotency_uq_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE UNIQUE INDEX tax_receipt_job_idempotency_uq_idx ON tax.tax_receipt_job USING btree (idempotency_key);
+
+
+--
+-- Name: tax_receipt_job_order_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE INDEX tax_receipt_job_order_idx ON tax.tax_receipt_job USING btree (order_id);
+
+
+--
+-- Name: tax_receipt_job_original_key_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE INDEX tax_receipt_job_original_key_idx ON tax.tax_receipt_job USING btree (original_idempotency_key) WHERE (original_idempotency_key IS NOT NULL);
+
+
+--
+-- Name: tax_receipt_job_processing_lock_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE INDEX tax_receipt_job_processing_lock_idx ON tax.tax_receipt_job USING btree (processing_started_at) WHERE ((status)::text = 'processing'::text);
+
+
+--
+-- Name: tax_receipt_job_shift_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE INDEX tax_receipt_job_shift_idx ON tax.tax_receipt_job USING btree (shift_id);
+
+
+--
+-- Name: tax_receipt_job_status_next_attempt_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE INDEX tax_receipt_job_status_next_attempt_idx ON tax.tax_receipt_job USING btree (status, next_attempt_at);
+
+
+--
+-- Name: tax_reconcile_gap_order_resolved_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE INDEX tax_reconcile_gap_order_resolved_idx ON tax.tax_reconcile_gap USING btree (order_id, resolved);
+
+
+--
+-- Name: tax_reconcile_gap_run_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE INDEX tax_reconcile_gap_run_idx ON tax.tax_reconcile_gap USING btree (reconcile_run_id);
+
+
+--
+-- Name: tax_reconcile_run_business_date_idx; Type: INDEX; Schema: tax; Owner: -
+--
+
+CREATE INDEX tax_reconcile_run_business_date_idx ON tax.tax_reconcile_run USING btree (business_date, started_at DESC);
+
+
+--
+-- Name: tax_receipt_attempt tax_receipt_attempt_job_fk; Type: FK CONSTRAINT; Schema: tax; Owner: -
+--
+
+ALTER TABLE ONLY tax.tax_receipt_attempt
+    ADD CONSTRAINT tax_receipt_attempt_job_fk FOREIGN KEY (job_id) REFERENCES tax.tax_receipt_job(id) ON DELETE CASCADE;
+
+
+--
+-- Name: tax_reconcile_gap tax_reconcile_gap_run_fk; Type: FK CONSTRAINT; Schema: tax; Owner: -
+--
+
+ALTER TABLE ONLY tax.tax_reconcile_gap
+    ADD CONSTRAINT tax_reconcile_gap_run_fk FOREIGN KEY (reconcile_run_id) REFERENCES tax.tax_reconcile_run(id) ON DELETE CASCADE;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict dIqnJt5RtGkfhzz3DOWkUmPiBqHrSGYalNzay2dhYZbkSyOVoMfKnuC9iDhF9Zc
+

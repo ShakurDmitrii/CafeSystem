@@ -1,0 +1,107 @@
+# CafeHelp — тестовый стенд для ВМ (Docker 18.09+, docker-compose 1.29).
+# Формат 2.4: поддерживает depends_on: condition и mem_limit в старом compose.
+version: "2.4"
+
+x-common: &common
+  restart: unless-stopped
+  # Старый Docker 18.09 не знает новых системных вызовов (clone3) и ломает
+  # современные glibc-образы; без seccomp-профиля всё работает.
+  security_opt:
+    - seccomp=unconfined
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "2"
+
+services:
+  db:
+    <<: *common
+    image: postgres:16-alpine
+    container_name: cafehelp-db
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=50", "-c", "work_mem=4MB"]
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: Europe/Moscow
+      PGTZ: Europe/Moscow
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d taxdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    mem_limit: 300m
+
+  minio:
+    <<: *common
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: cafehelp-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    mem_limit: 300m
+
+  backend:
+    <<: *common
+    image: cafehelp-vm/backend:1
+    container_name: cafehelp-backend
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      TZ: Europe/Moscow
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m -XX:MaxMetaspaceSize=192m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/postgres
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "5"
+      TAX_DATASOURCE_URL: jdbc:postgresql://db:5432/taxdb
+      TAX_DATASOURCE_USERNAME: postgres
+      TAX_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      TAX_MYTAX_ENABLED: "false"
+      TAX_DISPATCH_MODE: SAFE
+      SECURITY_JWT_SECRET: ${SECURITY_JWT_SECRET}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      PYTHON_API_URL: http://pymodule:8000
+      ML_PYTHON_SERVICE_URL: http://pymodule:8000
+      ML_SERVICE_URL: http://pymodule:8000
+      STORAGE_MINIO_ENDPOINT: http://minio:9000
+      STORAGE_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      STORAGE_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      STORAGE_MINIO_BUCKET: cafehelp-files
+      STORAGE_MINIO_PUBLIC_BASE_URL: http://localhost:8080
+    ports:
+      - "8080:8080"
+    mem_limit: 700m
+
+  frontend:
+    <<: *common
+    image: cafehelp-vm/frontend:1
+    container_name: cafehelp-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    mem_limit: 64m
+
+volumes:
+  pg_data:
+  minio_data:
